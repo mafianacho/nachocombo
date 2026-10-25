@@ -15,12 +15,12 @@ public extension ModuleID {
 
     var toolSummary: String {
         switch self {
-        case .menuBar: return "구분선 왼쪽 아이콘을 접거나 펼칩니다."
-        case .systemMonitor: return "CPU·메모리·네트워크를 메뉴 막대에 표시합니다."
-        case .windowSnap: return "활성 창을 왼쪽·오른쪽 절반 또는 최대화로 배치합니다."
-        case .fileShelf: return "파일·이미지·텍스트를 잠시 모아 두고 다시 끌어냅니다."
-        case .captureFloat: return "화면 영역을 캡처해 다른 창 위에 고정합니다."
-        case .focusDim: return "활성 창만 밝게 두고 나머지를 어둡게 합니다."
+        case .menuBar: return "Collapses or expands the icons left of the divider."
+        case .systemMonitor: return "Shows CPU, memory, disk, network and sensors in the menu bar."
+        case .windowSnap: return "Snaps the active window to the left or right half, or maximizes it."
+        case .fileShelf: return "Holds files, images and text for a moment so you can drag them out again."
+        case .captureFloat: return "Captures an area of the screen and floats it above other windows."
+        case .focusDim: return "Keeps the active window bright and dims the rest."
         }
     }
 }
@@ -47,35 +47,35 @@ public struct ToolStatusPresentation: Equatable {
     public static func make(enabled: Bool, state: ModuleState) -> ToolStatusPresentation {
         guard enabled else {
             // OFF never keeps a setup badge: nothing is requested while the tool is off.
-            return ToolStatusPresentation(dot: .off, stateText: "꺼짐", detail: nil, accessibilityText: "꺼짐")
+            return ToolStatusPresentation(dot: .off, stateText: "Off", detail: nil, accessibilityText: "Off")
         }
         switch state {
         case .running:
-            return ToolStatusPresentation(dot: .on, stateText: "동작 중", detail: nil,
-                                          accessibilityText: "켜짐, 동작 중")
+            return ToolStatusPresentation(dot: .on, stateText: "Running", detail: nil,
+                                          accessibilityText: "On, running")
         case .needsPermission(let message):
-            return ToolStatusPresentation(dot: .onNeedsSetup, stateText: "권한 필요", detail: message,
-                                          accessibilityText: "켜짐, 권한 필요, 추가 설정이 필요합니다")
+            return ToolStatusPresentation(dot: .onNeedsSetup, stateText: "Needs Permission", detail: message,
+                                          accessibilityText: "On, needs permission, more setup required")
         case .failed(let message):
-            return ToolStatusPresentation(dot: .onError, stateText: "오류", detail: message,
-                                          accessibilityText: "켜짐, 오류: \(message)")
+            return ToolStatusPresentation(dot: .onError, stateText: "Error", detail: message,
+                                          accessibilityText: "On, error: \(message)")
         case .off:
-            return ToolStatusPresentation(dot: .onNeedsSetup, stateText: "시작 대기", detail: nil,
-                                          accessibilityText: "켜짐, 아직 시작되지 않음")
+            return ToolStatusPresentation(dot: .onNeedsSetup, stateText: "Not Started", detail: nil,
+                                          accessibilityText: "On, not started yet")
         }
     }
 }
 
 public extension ToolStatusPresentation {
-    /// "3개 켜짐 · 1개 권한 필요 · 1개 오류": only tools that really run count as on; a tool that is switched on but
+    /// "3 on · 1 needs permission · 1 error": only tools that really run count as on; a tool that is switched on but
     /// still waits for a permission (or failed) is named separately instead of being counted as on.
     static func summary(of dots: [StatusDotKind]) -> String {
         let running = dots.filter { $0 == .on }.count
         let setup = dots.filter { $0 == .onNeedsSetup }.count
         let failed = dots.filter { $0 == .onError }.count
-        var text = "\(running)개 켜짐"
-        if setup > 0 { text += " · \(setup)개 권한 필요" }
-        if failed > 0 { text += " · \(failed)개 오류" }
+        var text = "\(running) on"
+        if setup > 0 { text += " · \(setup) " + (setup == 1 ? "needs" : "need") + " permission" }
+        if failed > 0 { text += " · \(failed) error" + (failed == 1 ? "" : "s") }
         return text
     }
 }

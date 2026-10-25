@@ -51,7 +51,7 @@ final class ShortcutRecorderButton: NSButton {
     }
 
     private func refreshTitle() {
-        let text = isRecording ? "키를 누르세요… (Esc 취소)" : (shortcut?.label ?? "미설정 — 클릭해서 지정")
+        let text = isRecording ? "Press keys… (Esc cancels)" : (shortcut?.label ?? "Not set — click to record")
         // The control glyph (U+2303) is enlarged so it does not read as a plain "^".
         attributedTitle = UI.styled(text, font: UI.font(.callout), color: .labelColor)
         setAccessibilityValue(text)

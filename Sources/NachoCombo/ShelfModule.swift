@@ -153,7 +153,7 @@ final class ShelfPanel: NSPanel {
     private let dropView = ShelfDropView()
     private let stack = NSStackView()
     private let scroll = NSScrollView()
-    private let hint = NSTextField(wrappingLabelWithString: "여기에 파일·이미지·텍스트를 끌어다 놓으세요.\n항목을 다른 앱으로 끌어내면 복사됩니다(원본은 그대로).")
+    private let hint = NSTextField(wrappingLabelWithString: "Drop files, images or text here.\nDragging an item out to another app copies it (the original stays put).")
     private let countLabel = NSTextField(labelWithString: "")
     private var positioned = false
 
@@ -161,7 +161,7 @@ final class ShelfPanel: NSPanel {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 280, height: 360),
                    styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
                    backing: .buffered, defer: false)
-        title = "파일 선반"
+        title = "File Shelf"
         isFloatingPanel = true
         level = .floating
         hidesOnDeactivate = false
@@ -203,7 +203,7 @@ final class ShelfPanel: NSPanel {
         header.spacing = 8
         countLabel.font = NSFont.systemFont(ofSize: 11)
         countLabel.textColor = .secondaryLabelColor
-        let clear = NSButton(title: "모두 비우기", target: self, action: #selector(clearTapped))
+        let clear = NSButton(title: "Clear All", target: self, action: #selector(clearTapped))
         clear.controlSize = .small
         clear.bezelStyle = .rounded
         clear.setAccessibilityIdentifier("shelf-clear")
@@ -263,7 +263,7 @@ final class ShelfPanel: NSPanel {
             row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         hint.isHidden = !items.isEmpty
-        countLabel.stringValue = items.isEmpty ? "비어 있음" : "\(items.count)개 항목"
+        countLabel.stringValue = items.isEmpty ? "Empty" : (items.count == 1 ? "1 item" : "\(items.count) items")
         onModelChange?()
     }
 
@@ -343,7 +343,7 @@ final class ShelfRowView: NSView, NSDraggingSource {
         let remove = NSButton(title: "✕", target: self, action: #selector(removeTapped))
         remove.isBordered = false
         remove.font = NSFont.systemFont(ofSize: 12, weight: .bold)
-        remove.setAccessibilityLabel("항목 제거")
+        remove.setAccessibilityLabel("Remove item")
         remove.setAccessibilityIdentifier("shelf-remove")
         remove.translatesAutoresizingMaskIntoConstraints = false
 
@@ -380,10 +380,10 @@ final class ShelfRowView: NSView, NSDraggingSource {
 
     static func detail(for item: ShelfItem) -> String {
         switch item.kind {
-        case .text: return "텍스트 \(item.text?.count ?? 0)자"
+        case .text: return "Text, \(item.text?.count ?? 0) characters"
         case .image, .file:
             let path = item.fileURL?.deletingLastPathComponent().path ?? ""
-            return item.ownsFile ? "선반이 보관한 이미지 사본" : path
+            return item.ownsFile ? "Image copy kept by the shelf" : path
         }
     }
 

@@ -48,7 +48,7 @@ public enum KeyNames {
     }
 
     public static func label(keyCode: UInt32, modifiers: UInt32) -> String {
-        modifierGlyphs(modifiers) + (names[keyCode] ?? "키\(keyCode)")
+        modifierGlyphs(modifiers) + (names[keyCode] ?? "Key \(keyCode)")
     }
 }
 
@@ -62,15 +62,15 @@ public enum ShortcutIssue: Equatable {
     public var message: String {
         switch self {
         case .unsupportedKey:
-            return "이 키는 단축키로 쓸 수 없습니다."
+            return "This key cannot be used in a shortcut."
         case .needsMoreModifiers:
-            return "⌃ 또는 ⌥를 포함해 수정 키를 두 개 이상 눌러야 합니다(일반 입력·앱 단축키와의 충돌 방지)."
+            return "Use at least two modifier keys including ⌃ or ⌥ (so it never clashes with typing or app shortcuts)."
         case .reservedBySystem(let name):
-            return "macOS가 쓰는 조합입니다(\(name))."
+            return "macOS uses this combination (\(name))."
         case .conflictsWithAction(let name):
-            return "이미 기능 실행 단축키로 쓰입니다(\(name))."
+            return "Already used as an action shortcut (\(name))."
         case .conflictsWithTool(let id):
-            return "‘\(id.displayName)’ 열기 단축키와 같습니다."
+            return "Same as the open shortcut of ‘\(id.displayName)’."
         }
     }
 }
@@ -80,19 +80,19 @@ public enum ShortcutPolicy {
     public static let actionShortcuts: [(name: String, keyCode: UInt32, modifiers: UInt32)] = {
         let co = ToolShortcut.control | ToolShortcut.option
         return [
-            ("창 배치 왼쪽 ⌃⌥←", 123, co), ("창 배치 오른쪽 ⌃⌥→", 124, co), ("창 배치 최대화 ⌃⌥↩", 36, co),
-            ("파일 선반 ⌃⌥S", 1, co), ("캡처 고정 ⌃⌥C", 8, co), ("집중 디밍 해제 ⌃⌥D", 2, co),
+            ("Window Snap left ⌃⌥←", 123, co), ("Window Snap right ⌃⌥→", 124, co), ("Window Snap maximize ⌃⌥↩", 36, co),
+            ("File Shelf ⌃⌥S", 1, co), ("Capture Float ⌃⌥C", 8, co), ("Focus Dim release ⌃⌥D", 2, co),
         ]
     }()
 
     private static let reserved: [(name: String, keyCode: UInt32, modifiers: UInt32)] = {
         let c = ToolShortcut.command, o = ToolShortcut.option, ct = ToolShortcut.control, s = ToolShortcut.shift
         return [
-            ("화면 잠금 ⌃⌘Q", 12, ct | c), ("전체 화면 ⌃⌘F", 3, ct | c), ("이모지 ⌃⌘Space", 49, ct | c),
-            ("강제 종료 ⌘⌥⎋", 53, c | o), ("Dock 숨김 ⌘⌥D", 2, c | o), ("Finder 검색 ⌘⌥Space", 49, c | o),
-            ("다른 앱 숨기기 ⌘⌥H", 4, c | o), ("모두 최소화 ⌘⌥M", 46, c | o),
-            ("화면 캡처 ⌃⇧⌘3", 20, ct | s | c), ("화면 캡처 ⌃⇧⌘4", 21, ct | s | c), ("화면 캡처 ⌃⇧⌘5", 23, ct | s | c),
-            ("스페이스 이동 ⌃⌥Space", 49, ct | o),
+            ("Lock Screen ⌃⌘Q", 12, ct | c), ("Full Screen ⌃⌘F", 3, ct | c), ("Emoji ⌃⌘Space", 49, ct | c),
+            ("Force Quit ⌘⌥⎋", 53, c | o), ("Hide Dock ⌘⌥D", 2, c | o), ("Finder Search ⌘⌥Space", 49, c | o),
+            ("Hide Others ⌘⌥H", 4, c | o), ("Minimize All ⌘⌥M", 46, c | o),
+            ("Screenshot ⌃⇧⌘3", 20, ct | s | c), ("Screenshot ⌃⇧⌘4", 21, ct | s | c), ("Screenshot ⌃⇧⌘5", 23, ct | s | c),
+            ("Switch Space ⌃⌥Space", 49, ct | o),
         ]
     }()
 

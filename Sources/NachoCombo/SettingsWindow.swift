@@ -2,7 +2,7 @@ import AppKit
 import NachoComboCore
 
 /// One window for every gadget: an independent switch, a description, the *actual* state
-/// (꺼짐 / 동작 중 / 권한 필요 / 오류) and, when needed, the permission guidance for that gadget.
+/// (Off / Running / Needs Permission / Error) and, when needed, the permission guidance for that gadget.
 /// A switch being on never implies "running": the state label always comes from the module's start result.
 final class SettingsWindowController: NSObject {
     private let manager: ModuleManager
@@ -20,10 +20,10 @@ final class SettingsWindowController: NSObject {
     private var shortcutMessages: [ModuleID: NSTextField] = [:]
     private let summaryLabel = UI.label("", style: .headline, weight: .semibold)
 
-    private let collapseButton = NSButton(title: "숨김 아이콘 접기", target: nil, action: nil)
-    private let shelfButton = NSButton(title: "선반 열기", target: nil, action: nil)
-    private let captureButton = NSButton(title: "영역 캡처 시작", target: nil, action: nil)
-    private let releaseDimButton = NSButton(title: "디밍 즉시 해제", target: nil, action: nil)
+    private let collapseButton = NSButton(title: "Collapse Hidden Icons", target: nil, action: nil)
+    private let shelfButton = NSButton(title: "Open Shelf", target: nil, action: nil)
+    private let captureButton = NSButton(title: "Capture Area", target: nil, action: nil)
+    private let releaseDimButton = NSButton(title: "Release Dim", target: nil, action: nil)
     private let dimSlider = NSSlider(value: 0.5, minValue: FocusDimLogic.minimumIntensity,
                                      maxValue: FocusDimLogic.maximumIntensity, target: nil, action: nil)
     private let dimLabel = UI.label("", style: .callout, color: UI.secondaryText)
@@ -53,12 +53,12 @@ final class SettingsWindowController: NSObject {
     private static var innerWidth: CGFloat { cardWidth - 2 * cardInset }
 
     private static let hints: [ModuleID: String] = [
-        .menuBar: "구분선(┊) 왼쪽의 아이콘을 접습니다. 숨길 아이콘은 ⌘ 키를 누른 채 구분선 왼쪽으로 끌어 놓습니다. 권한 불필요.",
+        .menuBar: "Collapses the icons left of the divider (┊). To hide an icon, ⌘-drag it left of the divider. No permission needed.",
         .systemMonitor: "Shows CPU, memory, disk, network and sensors in the menu bar; click one for charts, processes, temperatures, fans and power (every 2 s). No permission needed.",
-        .windowSnap: "⌃⌥← 왼쪽 절반 · ⌃⌥→ 오른쪽 절반 · ⌃⌥↩ 최대화. 켜면 손쉬운 사용 권한 동의가 필요합니다.",
-        .fileShelf: "파일·이미지·텍스트를 선반에 끌어다 놓고 다른 앱으로 다시 끌어냅니다(복사만, 원본 이동·삭제 없음). \(ShelfModule.hotKeyLabel)로 열기/닫기. 권한 불필요.",
-        .captureFloat: "\(CaptureFloatModule.hotKeyLabel)로 영역을 선택해 캡처하고 다른 창 위에 고정합니다. 이동·크기 조절·복사·저장·고정 해제·닫기 지원. 켜면 화면 기록 권한 동의가 필요합니다.",
-        .focusDim: "활성 창만 밝게 두고 배경 창을 어둡게 합니다(클릭은 그대로 통과). \(FocusDimModule.hotKeyLabel)로 즉시 해제. 권한 불필요.",
+        .windowSnap: "⌃⌥← left half · ⌃⌥→ right half · ⌃⌥↩ maximize. Switching it on asks for Accessibility permission.",
+        .fileShelf: "Drop files, images and text on the shelf and drag them out to other apps again (copies only; originals are never moved or deleted). \(ShelfModule.hotKeyLabel) opens / closes it. No permission needed.",
+        .captureFloat: "\(CaptureFloatModule.hotKeyLabel) captures a selected area and floats it above other windows: move, resize, copy, save, unpin, close. Switching it on asks for Screen Recording permission.",
+        .focusDim: "Keeps the active window bright and dims the windows behind it (clicks pass through). \(FocusDimModule.hotKeyLabel) releases it at once. No permission needed.",
     ]
 
     init(manager: ModuleManager, organizer: MenuBarOrganizerModule) {
@@ -101,7 +101,7 @@ final class SettingsWindowController: NSObject {
         // No second app title (the window title already says it): the first line answers what is on right now.
         summaryLabel.setAccessibilityIdentifier("settings-summary")
         let subtitle = UI.wrapLabel(
-            "각 도구를 따로 켜고 끕니다. 끄면 그 도구의 감시·단축키·오버레이가 모두 중지됩니다. 이 창을 닫아도 켜 둔 도구는 계속 동작합니다.",
+            "Switch each tool on or off. Switching one off stops all of its monitoring, shortcuts and overlays. Tools that are on keep running when this window is closed.",
             width: 500, style: .callout)
         let header = UI.vstack([summaryLabel, subtitle], spacing: 4)
 
@@ -122,11 +122,11 @@ final class SettingsWindowController: NSObject {
         scroll.drawsBackground = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let quit = NSButton(title: "Nacho Combo 종료", target: self, action: #selector(quitClicked))
+        let quit = NSButton(title: "Quit Nacho Combo", target: self, action: #selector(quitClicked))
         quit.setAccessibilityIdentifier("quit-app")
-        quit.setAccessibilityHelp("모든 도구의 감시·단축키·오버레이를 정리하고 앱을 종료합니다")
+        quit.setAccessibilityHelp("Cleans up every tool's monitoring, shortcuts and overlays and quits the app")
         let footnote = UI.wrapLabel(
-            "종료하면 모든 도구가 정리됩니다. 설정은 자동 저장되어 다음 실행 때 복원됩니다. 메뉴 막대의 NC ▸ 설정…에서 이 창을 다시 열 수 있습니다.",
+            "Quitting cleans up every tool. Settings are saved automatically and restored on the next launch. Reopen this window from NC ▸ Settings… in the menu bar.",
             width: 330, style: .subheadline)
         let footer = NSStackView(views: [footnote, quit])
         footer.orientation = .horizontal
@@ -170,16 +170,16 @@ final class SettingsWindowController: NSObject {
         toggle.identifier = NSUserInterfaceItemIdentifier(id.rawValue)
         toggle.target = self
         toggle.action = #selector(toggled(_:))
-        toggle.setAccessibilityLabel("\(id.displayName) 사용")
+        toggle.setAccessibilityLabel("Enable \(id.displayName)")
         toggle.setAccessibilityIdentifier("toggle-\(id.rawValue)")
         switches[id] = toggle
 
         let status = UI.label("", style: .callout, weight: .medium, color: UI.secondaryText)
         status.alignment = .left                 // the word sits right next to its dot
         status.translatesAutoresizingMaskIntoConstraints = false
-        status.widthAnchor.constraint(equalToConstant: 72).isActive = true       // the dot keeps its place for every state
+        status.widthAnchor.constraint(equalToConstant: 112).isActive = true       // the dot keeps its place for every state
         status.setAccessibilityIdentifier("status-\(id.rawValue)")
-        status.setAccessibilityLabel("\(id.displayName) 상태")
+        status.setAccessibilityLabel("\(id.displayName) status")
         statusLabels[id] = status
 
         let dot = StatusDotView()
@@ -188,7 +188,7 @@ final class SettingsWindowController: NSObject {
 
         // Dot and state words are one fixed-width group: the dot always sits right next to its words, in every card.
         let state = UI.hstack([dot, status], spacing: 6)
-        state.widthAnchor.constraint(equalToConstant: StatusDotView.width + 6 + 72).isActive = true
+        state.widthAnchor.constraint(equalToConstant: StatusDotView.width + 6 + 112).isActive = true
         let top = UI.hstack([symbol, name, UI.spacer(), state, toggle], spacing: 8)
         top.setCustomSpacing(12, after: state)
         top.widthAnchor.constraint(equalToConstant: width).isActive = true
@@ -205,12 +205,12 @@ final class SettingsWindowController: NSObject {
         // Permission guidance lives with the gadget that needs it.
         switch id {
         case .windowSnap:
-            let row = permissionButtons(for: id, open: #selector(openAccessibilityClicked), title: "손쉬운 사용 설정 열기",
+            let row = permissionButtons(for: id, open: #selector(openAccessibilityClicked), title: "Open Accessibility Settings",
                                         recheck: #selector(recheckAccessibilityClicked))
             permissionRows[id] = row
             card.addArrangedSubview(row)
         case .captureFloat:
-            let row = permissionButtons(for: id, open: #selector(openScreenClicked), title: "화면 기록 설정 열기",
+            let row = permissionButtons(for: id, open: #selector(openScreenClicked), title: "Open Screen Recording Settings",
                                         recheck: #selector(recheckScreenClicked))
             permissionRows[id] = row
             card.addArrangedSubview(row)
@@ -257,7 +257,7 @@ final class SettingsWindowController: NSObject {
             dimSlider.isContinuous = true
             dimSlider.widthAnchor.constraint(equalToConstant: 200).isActive = true
             dimSlider.setAccessibilityIdentifier("dim-intensity")
-            dimSlider.setAccessibilityLabel("디밍 강도")
+            dimSlider.setAccessibilityLabel("Dim strength")
             releaseDimButton.target = self
             releaseDimButton.action = #selector(releaseDimClicked)
             releaseDimButton.setAccessibilityIdentifier("dim-release")
@@ -271,32 +271,32 @@ final class SettingsWindowController: NSObject {
         }
 
         // Menu bar pin and tool-open shortcut: both are separate from ON/OFF.
-        let pin = NSButton(checkboxWithTitle: "메뉴 막대에 고정", target: self, action: #selector(pinToggled(_:)))
+        let pin = NSButton(checkboxWithTitle: "Pin to Menu Bar", target: self, action: #selector(pinToggled(_:)))
         pin.font = UI.font(.callout)
         pin.identifier = NSUserInterfaceItemIdentifier(id.rawValue)
         pin.setAccessibilityIdentifier("pin-\(id.rawValue)")
-        pin.setAccessibilityLabel("\(id.displayName) 메뉴 막대에 고정")
-        pin.setAccessibilityHelp("고정하면 아이콘을 눌러 이 도구 화면으로 바로 이동합니다. 켜기·끄기와는 별개입니다")
-        pin.toolTip = "아이콘을 누르면 이 도구 화면으로 바로 이동"
+        pin.setAccessibilityLabel("Pin \(id.displayName) to the menu bar")
+        pin.setAccessibilityHelp("A pinned icon opens this tool's controls directly. Separate from on / off")
+        pin.toolTip = "Clicking the icon opens this tool's controls"
         pinChecks[id] = pin
 
         let recorder = ShortcutRecorderButton()
         recorder.font = UI.font(.callout)
         recorder.translatesAutoresizingMaskIntoConstraints = false
-        recorder.widthAnchor.constraint(equalToConstant: 168).isActive = true      // "해제" keeps its place in every card
+        recorder.widthAnchor.constraint(equalToConstant: 168).isActive = true      // "Clear" keeps its place in every card
         recorder.setAccessibilityIdentifier("shortcut-\(id.rawValue)")
-        recorder.setAccessibilityLabel("\(id.displayName) 화면 열기 단축키")
-        recorder.setAccessibilityHelp("누른 뒤 새 단축키를 입력합니다. Esc로 취소합니다")
+        recorder.setAccessibilityLabel("\(id.displayName) open shortcut")
+        recorder.setAccessibilityHelp("Click, then type the new shortcut. Esc cancels")
         recorder.onRecordingChange = { [weak self] on in self?.recordingChanged?(on) }
         recorder.onRecord = { [weak self] shortcut in self?.record(id, shortcut) }
         recorders[id] = recorder
-        let clear = NSButton(title: "해제", target: self, action: #selector(clearShortcutClicked(_:)))
+        let clear = NSButton(title: "Clear", target: self, action: #selector(clearShortcutClicked(_:)))
         clear.font = UI.font(.callout)
         clear.identifier = NSUserInterfaceItemIdentifier(id.rawValue)
         clear.setAccessibilityIdentifier("shortcut-clear-\(id.rawValue)")
-        clear.setAccessibilityLabel("\(id.displayName) 화면 열기 단축키 해제")
+        clear.setAccessibilityLabel("Clear the \(id.displayName) open shortcut")
         clearButtons[id] = clear
-        let shortcutTitle = UI.label("화면 열기 단축키", style: .callout, color: UI.secondaryText)
+        let shortcutTitle = UI.label("Open shortcut", style: .callout, color: UI.secondaryText)
         shortcutTitle.setAccessibilityElement(false)
         let shortcutMessage = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
         shortcutMessage.isHidden = true
@@ -325,9 +325,9 @@ final class SettingsWindowController: NSObject {
 
     private func permissionButtons(for id: ModuleID, open: Selector, title: String, recheck: Selector) -> NSStackView {
         let openButton = NSButton(title: title, target: self, action: open)
-        let recheckButton = NSButton(title: "권한 다시 확인", target: self, action: recheck)
+        let recheckButton = NSButton(title: "Check Again", target: self, action: recheck)
         openButton.setAccessibilityLabel("\(id.displayName) \(title)")
-        recheckButton.setAccessibilityLabel("\(id.displayName) 권한 다시 확인")
+        recheckButton.setAccessibilityLabel("Check \(id.displayName) permission again")
         openButton.setAccessibilityIdentifier("permission-open-\(id.rawValue)")
         recheckButton.setAccessibilityIdentifier("permission-recheck-\(id.rawValue)")
         let row = NSStackView(views: [openButton, recheckButton])
@@ -362,17 +362,17 @@ final class SettingsWindowController: NSObject {
                 color = .labelColor
             case .needsPermission(let m):
                 color = .labelColor
-                message = UI.notice(m + "\n허용하기 전까지 이 도구는 동작하지 않습니다.", tint: .systemOrange, style: .callout)
+                message = UI.notice(m + "\nThis tool stays off until it is allowed.", tint: .systemOrange, style: .callout)
             case .failed(let m):
                 color = .labelColor
                 message = UI.notice(m, tint: .systemRed, style: .callout)
             case .off:
                 break
             }
-            // A switch that is on while the module is not running must never read as "동작 중".
-            if enabled, case .off = state { text = "시작 대기" }
+            // A switch that is on while the module is not running must never read as "Running".
+            if enabled, case .off = state { text = "Not Started" }
             dots[id]?.kind = manager.status(of: id).dot
-            dots[id]?.setAccessibilityLabel("\(id.displayName) 상태: \(manager.status(of: id).accessibilityText)")
+            dots[id]?.setAccessibilityLabel("\(id.displayName) status: \(manager.status(of: id).accessibilityText)")
             pinChecks[id]?.state = manager.settings.isPinned(id) ? .on : .off
             if recorders[id]?.isRecording != true { recorders[id]?.shortcut = manager.settings.shortcut(for: id) }
             clearButtons[id]?.isEnabled = manager.settings.shortcut(for: id) != nil      // nothing to clear when unset
@@ -390,19 +390,19 @@ final class SettingsWindowController: NSObject {
                 if case .needsPermission = state { row.isHidden = false } else { row.isHidden = true }
             }
         }
-        summaryLabel.stringValue = "\(ModuleID.allCases.count)개 도구 중 " + ToolStatusPresentation.summary(of: dotKinds)
+        summaryLabel.stringValue = "Of \(ModuleID.allCases.count) tools: " + ToolStatusPresentation.summary(of: dotKinds)
         let running: (ModuleID) -> Bool = { self.manager.states[$0] == .running }
         collapseButton.isEnabled = organizer.isRunning
-        collapseButton.title = organizer.collapsed ? "숨김 아이콘 펼치기" : "숨김 아이콘 접기"
+        collapseButton.title = organizer.collapsed ? "Expand Hidden Icons" : "Collapse Hidden Icons"
         shelfButton.isEnabled = running(.fileShelf)
-        shelfButton.title = (shelfVisible?() ?? false) ? "선반 닫기" : "선반 열기"
+        shelfButton.title = (shelfVisible?() ?? false) ? "Close Shelf" : "Open Shelf"
         captureButton.isEnabled = running(.captureFloat)
         releaseDimButton.isEnabled = running(.focusDim)
         dimSlider.doubleValue = manager.settings.dimIntensity
         let percent = Int((manager.settings.dimIntensity * 100).rounded())
         let dimRunning = running(.focusDim)
         dimSlider.isEnabled = dimRunning          // off: the slider is dimmed, not blue and inviting
-        dimLabel.stringValue = "강도"
+        dimLabel.stringValue = "Strength"
         dimLabel.textColor = dimRunning ? UI.secondaryText : UI.tertiaryText
         dimValueLabel.textColor = dimRunning ? .labelColor : UI.tertiaryText
         dimValueLabel.stringValue = "\(percent)%"

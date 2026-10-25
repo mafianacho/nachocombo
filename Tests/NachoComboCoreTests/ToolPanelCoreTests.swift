@@ -14,17 +14,17 @@ final class ToolPanelCoreTests: XCTestCase {
     func testStatusPresentationDotsFollowRealState() {
         XCTAssertEqual(ToolStatusPresentation.make(enabled: false, state: .off).dot, .off)
         XCTAssertEqual(ToolStatusPresentation.make(enabled: true, state: .running).dot, .on)
-        let perm = ToolStatusPresentation.make(enabled: true, state: .needsPermission("권한"))
+        let perm = ToolStatusPresentation.make(enabled: true, state: .needsPermission("Permission"))
         XCTAssertEqual(perm.dot, .onNeedsSetup)
-        XCTAssertEqual(perm.stateText, "권한 필요")
-        XCTAssertEqual(perm.detail, "권한")
-        let err = ToolStatusPresentation.make(enabled: true, state: .failed("충돌"))
+        XCTAssertEqual(perm.stateText, "Needs Permission")
+        XCTAssertEqual(perm.detail, "Permission")
+        let err = ToolStatusPresentation.make(enabled: true, state: .failed("Conflict"))
         XCTAssertEqual(err.dot, .onError)
-        XCTAssertTrue(err.accessibilityText.contains("오류"))
+        XCTAssertTrue(err.accessibilityText.contains("error"))
         // Switched on but not started yet must not read as green "running".
         let pending = ToolStatusPresentation.make(enabled: true, state: .off)
         XCTAssertEqual(pending.dot, .onNeedsSetup)
-        XCTAssertEqual(pending.stateText, "시작 대기")
+        XCTAssertEqual(pending.stateText, "Not Started")
     }
 
     func testOffDropsSetupBadgeEvenIfStaleStateRemains() {
@@ -112,7 +112,7 @@ final class ToolPanelCoreTests: XCTestCase {
     func testStatusViaManagerUsesRealModuleState() {
         final class Stub: FeatureModule {
             let id = ModuleID.windowSnap
-            func start() -> ModuleState { .needsPermission("동의 필요") }
+            func start() -> ModuleState { .needsPermission("Consent needed") }
             func stop() {}
             var diagnostics: [String: String] { [:] }
         }
@@ -125,11 +125,11 @@ final class ToolPanelCoreTests: XCTestCase {
     }
 
     func testSummarySeparatesPermissionAndErrorFromRunning() {
-        XCTAssertEqual(ToolStatusPresentation.summary(of: [.off, .off]), "0개 켜짐")
-        XCTAssertEqual(ToolStatusPresentation.summary(of: [.on, .on, .off, .off, .off, .off]), "2개 켜짐")
+        XCTAssertEqual(ToolStatusPresentation.summary(of: [.off, .off]), "0 on")
+        XCTAssertEqual(ToolStatusPresentation.summary(of: [.on, .on, .off, .off, .off, .off]), "2 on")
         XCTAssertEqual(ToolStatusPresentation.summary(of: [.on, .on, .on, .onNeedsSetup, .off, .off]),
-                       "3개 켜짐 · 1개 권한 필요")
+                       "3 on · 1 needs permission")
         XCTAssertEqual(ToolStatusPresentation.summary(of: [.on, .onNeedsSetup, .onError]),
-                       "1개 켜짐 · 1개 권한 필요 · 1개 오류")
+                       "1 on · 1 needs permission · 1 error")
     }
 }

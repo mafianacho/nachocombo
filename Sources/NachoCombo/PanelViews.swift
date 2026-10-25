@@ -33,14 +33,14 @@ final class ToolListView: NSView {
         }
         views.append(UI.separator(width: inner))
 
-        let settings = UI.linkButton("설정…", color: .labelColor, target: self, action: #selector(settingsClicked))
+        let settings = UI.linkButton("Settings…", color: .labelColor, target: self, action: #selector(settingsClicked))
         settings.setAccessibilityIdentifier("panel-settings")
-        settings.setAccessibilityHelp("설정 창을 엽니다")
+        settings.setAccessibilityHelp("Opens the settings window")
         settings.keyEquivalent = ","
         settings.keyEquivalentModifierMask = .command
-        let quit = UI.linkButton("종료", color: .labelColor, target: self, action: #selector(quitClicked))
+        let quit = UI.linkButton("Quit", color: .labelColor, target: self, action: #selector(quitClicked))
         quit.setAccessibilityIdentifier("panel-quit")
-        quit.setAccessibilityHelp("Nacho Combo를 종료하고 모든 도구를 정리합니다")
+        quit.setAccessibilityHelp("Quits Nacho Combo and cleans up every tool")
         let footer = UI.hstack([settings, UI.spacer(), quit], spacing: 8)
         footer.widthAnchor.constraint(equalToConstant: inner).isActive = true
         views.append(footer)
@@ -92,8 +92,8 @@ final class ToolDetailView: NSView {
     private let permissionRow = NSStackView()
     // The pin row never changes text in place: two labels and two buttons are shown/hidden instead, so the
     // revealed area is always repainted by the row (changed text kept the old glyphs on screen on Monterey).
-    private let pinStatusOn = UI.label("상단바 고정됨", style: .callout, weight: .medium, color: .labelColor)
-    private let pinStatusOff = UI.label("상단바에 고정되지 않음", style: .callout, weight: .medium, color: UI.secondaryText)
+    private let pinStatusOn = UI.label("Pinned to menu bar", style: .callout, weight: .medium, color: .labelColor)
+    private let pinStatusOff = UI.label("Not pinned", style: .callout, weight: .medium, color: UI.secondaryText)
     private let pinButtonOn = LinkButton(title: "", target: nil, action: nil)
     private let pinButtonOff = LinkButton(title: "", target: nil, action: nil)
     private let shortcutLabel = UI.label("", style: .subheadline, color: UI.secondaryText)
@@ -101,7 +101,7 @@ final class ToolDetailView: NSView {
     private let inner = UI.panelWidth - 2 * UI.margin
 
     // tool specific
-    private let collapseButton = NSButton(title: "숨김 아이콘 접기", target: nil, action: nil)
+    private let collapseButton = NSButton(title: "Collapse Hidden Icons", target: nil, action: nil)
     private let cpuValue = UI.label("–", style: .callout, color: .labelColor)
     private let memValue = UI.label("–", style: .callout, color: .labelColor)
     private let rxValue = UI.label("–", style: .callout, color: .labelColor)
@@ -109,10 +109,10 @@ final class ToolDetailView: NSView {
     private let snapSegments = NSSegmentedControl(labels: SnapAction.allCases.map { $0.displayName },
                                                   trackingMode: .selectOne, target: nil, action: nil)
     private let snapPreview = SnapPreviewView()
-    private let snapApply = NSButton(title: "적용", target: nil, action: nil)
-    private let shelfButton = NSButton(title: "선반 열기", target: nil, action: nil)
+    private let snapApply = NSButton(title: "Apply", target: nil, action: nil)
+    private let shelfButton = NSButton(title: "Open Shelf", target: nil, action: nil)
     private let shelfCount = UI.label("", style: .subheadline, color: UI.secondaryText)
-    private let captureButton = NSButton(title: "영역 캡처 시작", target: nil, action: nil)
+    private let captureButton = NSButton(title: "Capture Area", target: nil, action: nil)
     private let dimSlider = NSSlider(value: 0.5, minValue: FocusDimLogic.minimumIntensity,
                                      maxValue: FocusDimLogic.maximumIntensity, target: nil, action: nil)
     private let dimValue = UI.label("", style: .callout, color: .labelColor)
@@ -125,10 +125,10 @@ final class ToolDetailView: NSView {
         super.init(frame: .zero)
 
         // Back: standard chevron + title. Esc and Command-[ do the same.
-        let back = UI.linkButton("모든 도구", symbol: "chevron.left", target: self, action: #selector(backClicked))
+        let back = UI.linkButton("All Tools", symbol: "chevron.left", target: self, action: #selector(backClicked))
         back.setAccessibilityIdentifier("panel-back")
-        back.setAccessibilityLabel("모든 도구로 돌아가기")
-        back.setAccessibilityHelp("도구 목록으로 돌아갑니다. Esc 키로도 돌아갈 수 있습니다")
+        back.setAccessibilityLabel("Back to all tools")
+        back.setAccessibilityHelp("Returns to the tool list. Esc does the same")
         back.keyEquivalent = "["
         back.keyEquivalentModifierMask = .command
         let top = UI.hstack([back, UI.spacer()], spacing: 8)
@@ -139,13 +139,13 @@ final class ToolDetailView: NSView {
         name.setAccessibilityRole(.staticText)
         dot.setAccessibilityElement(false)       // the state label below says the same in words
         stateLabel.setAccessibilityIdentifier("panel-state")
-        stateLabel.setAccessibilityLabel("상태")
+        stateLabel.setAccessibilityLabel("Status")
         let titleRow = UI.hstack([symbol, name, UI.spacer(), dot, stateLabel], spacing: 8)
 
-        let enableLabel = UI.label("사용", style: .body)
+        let enableLabel = UI.label("Enabled", style: .body)
         enableSwitch.target = self
         enableSwitch.action = #selector(enableToggled)
-        enableSwitch.setAccessibilityLabel("\(module.displayName) 사용")
+        enableSwitch.setAccessibilityLabel("Enable \(module.displayName)")
         enableSwitch.setAccessibilityIdentifier("panel-enable")
         let enableRow = UI.hstack([enableLabel, UI.spacer(), enableSwitch], spacing: 8)
 
@@ -154,17 +154,17 @@ final class ToolDetailView: NSView {
         permissionRow.spacing = 8
         permissionRow.isHidden = true
         permissionRow.translatesAutoresizingMaskIntoConstraints = false
-        let openPane = NSButton(title: module == .captureFloat ? "화면 기록 설정 열기" : "손쉬운 사용 설정 열기",
+        let openPane = NSButton(title: module == .captureFloat ? "Open Screen Recording Settings" : "Open Accessibility Settings",
                                 target: self, action: #selector(openPaneClicked))
         openPane.setAccessibilityIdentifier("panel-open-permission")
         openPane.bezelStyle = .rounded
         openPane.keyEquivalent = "\r"          // the one thing to do on this screen
-        let recheck = NSButton(title: "권한 다시 확인", target: self, action: #selector(recheckClicked))
+        let recheck = NSButton(title: "Check Again", target: self, action: #selector(recheckClicked))
         recheck.setAccessibilityIdentifier("panel-recheck")
         permissionRow.addArrangedSubview(openPane)
         permissionRow.addArrangedSubview(recheck)
 
-        for (button, title) in [(pinButtonOn, "고정 해제"), (pinButtonOff, "상단바에 고정")] {
+        for (button, title) in [(pinButtonOn, "Unpin"), (pinButtonOff, "Pin to Menu Bar")] {
             button.isBordered = false
             button.target = self
             button.action = #selector(pinClicked)
@@ -184,7 +184,7 @@ final class ToolDetailView: NSView {
             label.widthAnchor.constraint(equalToConstant: 150).isActive = true
             label.drawsBackground = true
             label.backgroundColor = UI.rowSurface
-            label.setAccessibilityLabel("메뉴 막대 고정 상태")
+            label.setAccessibilityLabel("Menu bar pin status")
         }
 
         let desc = UI.wrapLabel(module.toolSummary, width: inner, style: .callout)
@@ -196,11 +196,11 @@ final class ToolDetailView: NSView {
         shortcutLabel.setAccessibilityIdentifier("panel-shortcut")
         views.append(shortcutLabel)
         views.append(UI.separator(width: inner))
-        let settingsLink = UI.linkButton("\(module.displayName) 설정…", symbol: "arrow.up.forward.square",
+        let settingsLink = UI.linkButton("\(module.displayName) Settings…", symbol: "arrow.up.forward.square",
                                          symbolTrailing: true, target: self, action: #selector(settingsClicked))
         settingsLink.setAccessibilityIdentifier("panel-tool-settings")
-        settingsLink.setAccessibilityLabel("\(module.displayName) 설정 열기")
-        settingsLink.setAccessibilityHelp("설정 창을 엽니다")
+        settingsLink.setAccessibilityLabel("Open \(module.displayName) settings")
+        settingsLink.setAccessibilityHelp("Opens the settings window")
         settingsLink.keyEquivalent = ","
         settingsLink.keyEquivalentModifierMask = .command
         views.append(UI.hstack([settingsLink, UI.spacer()], spacing: 8))
@@ -229,7 +229,7 @@ final class ToolDetailView: NSView {
             collapseButton.action = #selector(collapseClicked)
             collapseButton.setAccessibilityIdentifier("panel-collapse")
             controls.append(collapseButton)
-            let note = UI.wrapLabel("숨길 아이콘은 ⌘ 키를 누른 채 구분선(┊) 왼쪽으로 끌어 놓습니다.", width: inner)
+            let note = UI.wrapLabel("To hide an icon, ⌘-drag it left of the divider (┊).", width: inner)
             return [collapseButton, note]
         case .systemMonitor:
             func line(_ title: String, _ value: NSTextField) -> NSView {
@@ -245,30 +245,30 @@ final class ToolDetailView: NSView {
             memValue.setAccessibilityIdentifier("panel-mem")
             rxValue.setAccessibilityIdentifier("panel-rx")
             txValue.setAccessibilityIdentifier("panel-tx")
-            return [line("CPU", cpuValue), line("메모리", memValue), line("네트워크 내려받기", rxValue),
-                    line("네트워크 올리기", txValue)]
+            return [line("CPU", cpuValue), line("Memory", memValue), line("Network down", rxValue),
+                    line("Network up", txValue)]
         case .windowSnap:
             snapSegments.target = self
             snapSegments.action = #selector(snapSelected)
             snapSegments.selectedSegment = 0
             snapSegments.setAccessibilityIdentifier("panel-snap-choice")
-            snapSegments.setAccessibilityLabel("배치 방식")
+            snapSegments.setAccessibilityLabel("Snap layout")
             snapApply.target = self
             snapApply.action = #selector(snapApplyClicked)
             snapApply.bezelStyle = .rounded
             snapApply.keyEquivalent = ""
             snapApply.setAccessibilityIdentifier("panel-snap-apply")
-            snapApply.setAccessibilityLabel("선택한 배치 적용")
+            snapApply.setAccessibilityLabel("Apply the selected layout")
             snapPreview.action = .left
             snapPreview.setAccessibilityElement(true)
             snapPreview.setAccessibilityRole(.image)
-            snapPreview.setAccessibilityLabel("배치 미리보기: 왼쪽 절반")
+            snapPreview.setAccessibilityLabel("Snap preview: Left Half")
             controls.append(contentsOf: [snapSegments, snapApply])
             snapSegments.translatesAutoresizingMaskIntoConstraints = false
             snapSegments.segmentDistribution = .fillEqually
             snapSegments.widthAnchor.constraint(equalToConstant: inner).isActive = true
             let bottom = UI.hstack([snapPreview, UI.spacer(), snapApply], spacing: 12, alignment: .bottom)
-            let note = UI.wrapLabel("직전에 쓰던 앱의 창이 대상입니다.", width: inner)
+            let note = UI.wrapLabel("Targets the window of the app you used last.", width: inner)
             return [snapSegments, bottom, note]
         case .fileShelf:
             shelfButton.target = self
@@ -276,28 +276,28 @@ final class ToolDetailView: NSView {
             shelfButton.setAccessibilityIdentifier("panel-shelf-toggle")
             controls.append(shelfButton)
             shelfCount.setAccessibilityIdentifier("panel-shelf-count")
-            shelfCount.setAccessibilityLabel("선반 항목 수")
+            shelfCount.setAccessibilityLabel("Shelf item count")
             return [UI.hstack([shelfButton, shelfCount], spacing: 12)]
         case .captureFloat:
             captureButton.target = self
             captureButton.action = #selector(captureClicked)
             captureButton.setAccessibilityIdentifier("panel-capture-start")
             controls.append(captureButton)
-            let note = UI.wrapLabel("패널이 닫힌 뒤 영역을 고릅니다. 켤 때 화면 기록 권한 동의가 필요합니다.", width: inner)
+            let note = UI.wrapLabel("Pick the area after the panel closes. Switching it on asks for Screen Recording permission.", width: inner)
             return [captureButton, note]
         case .focusDim:
             dimSlider.target = self
             dimSlider.action = #selector(dimChanged(_:))
             dimSlider.isContinuous = true
             dimSlider.setAccessibilityIdentifier("panel-dim-slider")
-            dimSlider.setAccessibilityLabel("디밍 강도")
+            dimSlider.setAccessibilityLabel("Dim strength")
             dimValue.setAccessibilityIdentifier("panel-dim-value")
             dimValue.alignment = .right
             dimValue.translatesAutoresizingMaskIntoConstraints = false
             dimValue.widthAnchor.constraint(equalToConstant: 44).isActive = true
             dimValue.font = UI.digitsFont(.callout)
             controls.append(dimSlider)
-            let row = UI.hstack([UI.label("강도", style: .callout, color: UI.secondaryText), dimSlider, dimValue],
+            let row = UI.hstack([UI.label("Strength", style: .callout, color: UI.secondaryText), dimSlider, dimValue],
                                 spacing: 12)       // slider takes the free width; the value ends at the right edge
             dimSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
             dimSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
@@ -318,7 +318,7 @@ final class ToolDetailView: NSView {
         enableSwitch.state = enabled ? .on : .off
 
         if let detail = status.detail {
-            let extra = status.dot == .onNeedsSetup ? "\n허용하기 전까지 이 도구는 동작하지 않습니다." : ""
+            let extra = status.dot == .onNeedsSetup ? "\nThis tool stays off until it is allowed." : ""
             messageLabel.setLive(attributed: UI.notice(detail + extra,
                                                       tint: status.dot == .onError ? .systemRed : .systemOrange))
             messageLabel.isHidden = false
@@ -335,9 +335,9 @@ final class ToolDetailView: NSView {
         pinButtonOff.isHidden = pinned
 
         if let shortcut = manager.settings.shortcut(for: module) {
-            shortcutLabel.setLive("이 화면 열기 단축키: \(shortcut.label)")
+            shortcutLabel.setLive("Shortcut for this screen: \(shortcut.label)")
         } else {
-            shortcutLabel.setLive("이 화면 열기 단축키: 미설정 (설정 창에서 지정)")
+            shortcutLabel.setLive("Shortcut for this screen: not set (set it in Settings)")
         }
 
         let running = status.dot == .on
@@ -346,7 +346,7 @@ final class ToolDetailView: NSView {
         case .menuBar:
             let info = host.panelCollapse
             collapseButton.isEnabled = running && info.running
-            collapseButton.title = info.collapsed ? "숨김 아이콘 펼치기" : "숨김 아이콘 접기"
+            collapseButton.title = info.collapsed ? "Expand Hidden Icons" : "Collapse Hidden Icons"
         case .systemMonitor:
             let r = host.panelReading
             if running {
@@ -365,8 +365,8 @@ final class ToolDetailView: NSView {
             }
         case .fileShelf:
             let info = host.panelShelf
-            shelfButton.title = info.visible ? "선반 닫기" : "선반 열기"
-            shelfCount.setLive(running ? "\(info.count)개 항목" : "")
+            shelfButton.title = info.visible ? "Close Shelf" : "Open Shelf"
+            shelfCount.setLive(running ? (info.count == 1 ? "1 item" : "\(info.count) items") : "")
         case .focusDim:
             if NSApp.currentEvent?.type != .leftMouseDragged { dimSlider.doubleValue = manager.settings.dimIntensity }
             let percent = Int((manager.settings.dimIntensity * 100).rounded())
@@ -379,7 +379,7 @@ final class ToolDetailView: NSView {
         }
         // Off: say why the controls are dimmed - on the dimmed controls only, not on the whole screen. When the tool is
         // on but not running, the notice already says why in words.
-        for c in controls { c.toolTip = (!running && !enabled) ? "켜면 사용할 수 있습니다" : nil }
+        for c in controls { c.toolTip = (!running && !enabled) ? "Available when the tool is on" : nil }
     }
 
     // MARK: actions

@@ -228,8 +228,8 @@ final class PanelViewController: NSViewController {
         child.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(child)
         switch route {
-        case .list: view.setAccessibilityLabel("Nacho Combo 도구 목록")
-        case .tool(let id): view.setAccessibilityLabel("\(id.displayName) 조작 화면")
+        case .list: view.setAccessibilityLabel("Nacho Combo tool list")
+        case .tool(let id): view.setAccessibilityLabel("\(id.displayName) controls")
         }
         NSLayoutConstraint.activate([
             child.leadingAnchor.constraint(equalTo: view.leadingAnchor),

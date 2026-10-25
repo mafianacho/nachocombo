@@ -9,7 +9,7 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
     let id = ModuleID.captureFloat
     static let hotKeyLabel = "⌃⌥C"
     static let permissionMessage =
-        "화면을 캡처하려면 시스템 환경설정 ▸ 보안 및 개인 정보 보호 ▸ 화면 기록에서 Nacho Combo를 허용해야 합니다. 허용한 뒤 앱을 다시 실행해야 적용될 수 있습니다."
+        "To capture the screen, allow Nacho Combo in System Settings ▸ Privacy & Security ▸ Screen Recording (Monterey: System Preferences ▸ Security & Privacy ▸ Screen Recording). The app may need a restart before it applies."
 
     private let hotKeys = HotKeyCenter(signature: 0x4E43_4350)   // 'NCCP'
     private(set) var floats: [FloatingCaptureWindow] = []
@@ -273,7 +273,7 @@ final class FloatingCaptureWindow: NSPanel {
         isFloatingPanel = value
         level = value ? .floating : .normal
         pinButton.title = value ? "📌" : "◻︎"
-        pinButton.toolTip = value ? "고정 해제" : "다시 고정"
+        pinButton.toolTip = value ? "Unpin" : "Pin Again"
         orderFrontRegardless()
     }
 
@@ -300,7 +300,7 @@ final class FloatingCaptureWindow: NSPanel {
         panel.allowedFileTypes = ["png"]
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
-        panel.nameFieldStringValue = "캡처 \(formatter.string(from: Date())).png"
+        panel.nameFieldStringValue = "Capture \(formatter.string(from: Date())).png"
         NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK, let url = panel.url { save(to: url) }
     }
@@ -354,18 +354,18 @@ final class CaptureCanvasView: NSView {
     }
 
     func buildControls(pinButton: NSButton) {
-        let close = Self.smallButton("✕", tip: "닫기", id: "float-close", action: #selector(closeTapped))
+        let close = Self.smallButton("✕", tip: "Close", id: "float-close", action: #selector(closeTapped))
         close.target = self
         pinButton.title = "📌"
-        pinButton.toolTip = "고정 해제"
+        pinButton.toolTip = "Unpin"
         Self.style(pinButton)
         pinButton.target = self
         pinButton.action = #selector(pinTapped)
         pinButton.setAccessibilityIdentifier("float-pin")
-        pinButton.setAccessibilityLabel("고정 해제")
+        pinButton.setAccessibilityLabel("Unpin")
         let grip = ResizeGripView()
         grip.owner = owner
-        grip.toolTip = "끌어서 크기 조절"
+        grip.toolTip = "Drag to resize"
         for control in [close, pinButton] { addSubview(control) }
         addSubview(grip)
         close.frame = NSRect(x: 4, y: bounds.height - 22, width: 20, height: 18)
@@ -408,15 +408,15 @@ final class CaptureCanvasView: NSView {
             let item = ClosureMenuItem(title: title, handler: action)
             menu.addItem(item)
         }
-        add("복사") { owner.copyToPasteboard() }
-        add("저장…") { owner.saveWithPanel() }
+        add("Copy") { owner.copyToPasteboard() }
+        add("Save…") { owner.saveWithPanel() }
         menu.addItem(.separator())
-        add(owner.pinned ? "고정 해제" : "다시 고정") { owner.togglePin() }
-        add("원본 크기 (100%)") { owner.resize(percent: 100) }
+        add(owner.pinned ? "Unpin" : "Pin Again") { owner.togglePin() }
+        add("Actual Size (100%)") { owner.resize(percent: 100) }
         add("50%") { owner.resize(percent: 50) }
         add("200%") { owner.resize(percent: 200) }
         menu.addItem(.separator())
-        add("닫기") { owner.close() }
+        add("Close") { owner.close() }
         return menu
     }
 

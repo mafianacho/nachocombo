@@ -41,8 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, NSMenuDeleg
         // Created first, so it is the right-most item and never swallowed by the divider.
         mainItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         mainItem.button?.title = "NC"
-        mainItem.button?.toolTip = "Nacho Combo — 도구 목록 열기"
-        mainItem.button?.setAccessibilityLabel("Nacho Combo 도구 목록")
+        mainItem.button?.toolTip = "Nacho Combo — open the tool list"
+        mainItem.button?.setAccessibilityLabel("Nacho Combo tool list")
         mainItem.button?.target = self
         mainItem.button?.action = #selector(mainClicked(_:))
         _ = mainItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -178,7 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, NSMenuDeleg
         panel.close()
         let menu = NSMenu()
         menu.delegate = self
-        let settings = NSMenuItem(title: "설정…", action: #selector(menuSettings), keyEquivalent: ",")
+        let settings = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
         let quit = NSMenuItem(title: "Quit Nacho Combo", action: #selector(menuQuit), keyEquivalent: "q")
@@ -229,8 +229,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, NSMenuDeleg
     private func refreshPinnedItems() {
         for (id, item) in pinnedItems {
             let status = manager.status(of: id)
-            item.button?.toolTip = "\(id.displayName) — \(status.stateText) (메뉴 막대에 고정됨)"
-            item.button?.setAccessibilityLabel("\(id.displayName) 열기, \(status.accessibilityText)")
+            item.button?.toolTip = "\(id.displayName) — \(status.stateText) (pinned to the menu bar)"
+            item.button?.setAccessibilityLabel("Open \(id.displayName), \(status.accessibilityText)")
             item.button?.appearsDisabled = status.dot == .off
         }
     }
@@ -255,7 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, NSMenuDeleg
             toolShortcuts.apply(manager.settings.toolShortcuts)
             lastShortcutResult = "refused:os-in-use"
             writeDiagnostics()
-            return "다른 앱이 이미 쓰고 있어 등록하지 못했습니다."
+            return "Another app already uses this shortcut, so it was not registered."
         }
         lastShortcutResult = shortcut.map { "saved:\($0.label)" } ?? "cleared"
         writeDiagnostics()

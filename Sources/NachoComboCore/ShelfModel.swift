@@ -65,7 +65,7 @@ public final class ShelfStore {
         let url = ownedDirectory.appendingPathComponent(name)
         try data.write(to: url, options: .atomic)
         let item = ShelfItem(id: UUID(), kind: .image, fileURL: url.standardizedFileURL, text: nil,
-                             ownsFile: true, title: "이미지 \(imageCounter).png")
+                             ownsFile: true, title: "Image \(imageCounter).png")
         items.append(item)
         return item
     }
