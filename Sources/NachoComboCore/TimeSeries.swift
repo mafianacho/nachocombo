@@ -54,15 +54,17 @@ public final class TimeSeries {
 
     /// Splits the last `span` seconds into `bucketCount` buckets aligned to multiples of the bucket width
     /// (so bars do not shift between redraws). Each bucket holds one value per channel, or nil when no
-    /// sample fell into it (app off, machine asleep).
+    /// sample fell into it (app off, machine asleep). `picked` selects (and orders) the channels; default all.
     public func buckets(span: Double, count bucketCount: Int, now: Double,
-                        reduction: Reduction = .mean) -> [[Double]?] {
-        guard bucketCount > 0, span > 0 else { return [] }
+                        reduction: Reduction = .mean, channels picked: [Int]? = nil) -> [[Double]?] {
+        let selected = picked ?? Array(0..<channels)
+        let n = selected.count
+        guard bucketCount > 0, span > 0, n > 0 else { return [] }
         let width = span / Double(bucketCount)
         let lastStart = (now / width).rounded(.down) * width
         let start = lastStart - Double(bucketCount - 1) * width
-        var acc = [Double](repeating: 0, count: bucketCount * channels)
-        var hits = [Int](repeating: 0, count: bucketCount * channels)
+        var acc = [Double](repeating: 0, count: bucketCount * n)
+        var hits = [Int](repeating: 0, count: bucketCount * n)
         var i = 0
         while i < count {
             let index = (head - 1 - i + capacity) % capacity
@@ -71,10 +73,10 @@ public final class TimeSeries {
             if t < start { break }
             let bucket = Int(((t - start) / width).rounded(.down))
             guard bucket >= 0, bucket < bucketCount else { continue }
-            for c in 0..<channels {
+            for (k, c) in selected.enumerated() {
                 let v = storage[index * channels + c]
                 if v.isNaN { continue }
-                let slot = bucket * channels + c
+                let slot = bucket * n + k
                 switch reduction {
                 case .mean: acc[slot] += Double(v)
                 case .max: acc[slot] = hits[slot] == 0 ? Double(v) : Swift.max(acc[slot], Double(v))
@@ -83,12 +85,12 @@ public final class TimeSeries {
             }
         }
         return (0..<bucketCount).map { bucket -> [Double]? in
-            let base = bucket * channels
-            guard (0..<channels).contains(where: { hits[base + $0] > 0 }) else { return nil }
-            return (0..<channels).map { c -> Double in
-                let n = hits[base + c]
-                if n == 0 { return 0 }
-                return reduction == .mean ? acc[base + c] / Double(n) : acc[base + c]
+            let base = bucket * n
+            guard (0..<n).contains(where: { hits[base + $0] > 0 }) else { return nil }
+            return (0..<n).map { k -> Double in
+                let hitCount = hits[base + k]
+                if hitCount == 0 { return 0 }
+                return reduction == .mean ? acc[base + k] / Double(hitCount) : acc[base + k]
             }
         }
     }
@@ -96,14 +98,26 @@ public final class TimeSeries {
     /// Largest raw value of a channel at or after `since`.
     public func maximum(channel: Int, since: Double) -> Double? {
         var best: Double?
+        forEachValue(channel: channel, since: since) { best = Swift.max(best ?? -Double.infinity, $0) }
+        return best
+    }
+
+    /// Mean of a channel's raw values at or after `since`.
+    public func mean(channel: Int, since: Double) -> Double? {
+        var sum = 0.0, n = 0
+        forEachValue(channel: channel, since: since) { sum += $0; n += 1 }
+        return n > 0 ? sum / Double(n) : nil
+    }
+
+    /// Non-missing values of a channel at or after `since`, newest first.
+    private func forEachValue(channel: Int, since: Double, _ body: (Double) -> Void) {
         var i = 0
         while i < count {
             let index = (head - 1 - i + capacity) % capacity
             i += 1
             if times[index] < since { break }
             let v = storage[index * channels + channel]
-            if !v.isNaN { best = Swift.max(best ?? -Double.infinity, Double(v)) }
+            if !v.isNaN { body(Double(v)) }
         }
-        return best
     }
 }

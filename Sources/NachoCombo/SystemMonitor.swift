@@ -2,7 +2,8 @@ import AppKit
 import NachoComboCore
 
 /// iStat-style system monitor: one status item per metric group (CPU, memory, disk, network, sensors),
-/// each opening a dropdown panel with history charts, processes and details.
+/// each opening a dropdown panel with history charts, processes and details. Resting the pointer on a
+/// card opens a flyout with a larger chart (or the disk usage ring) beside the panel.
 final class SystemMonitorModule: NSObject, FeatureModule {
     let id = ModuleID.systemMonitor
 
@@ -17,6 +18,7 @@ final class SystemMonitorModule: NSObject, FeatureModule {
     private var statusViews: [MonitorItem: StatusItemView] = [:]
     private let panels = MonitorPanelController()
     private var panel: PanelContent?
+    private var flyout: FlyoutContent?
 
     var isRunning: Bool { engine != nil }
     private var shownOrder: [MonitorItem] { MonitorItem.allCases.filter { statusItems[$0] != nil } }
@@ -27,6 +29,14 @@ final class SystemMonitorModule: NSObject, FeatureModule {
             self?.panel = nil
             self?.engine?.focus = nil
         }
+        panels.makeFlyout = { [weak self] make in
+            guard let self = self, let engine = self.engine else { return nil }
+            let content = make(self.makeContext(relayout: .flyout))
+            content.update(engine)
+            self.flyout = content
+            return content.root
+        }
+        panels.onFlyoutClose = { [weak self] in self?.flyout = nil }
     }
 
     func start() -> ModuleState {
@@ -60,6 +70,7 @@ final class SystemMonitorModule: NSObject, FeatureModule {
             onStatusItemsRebuilt?()
         } else if let panel = panel {
             panel.update(engine)
+            flyout?.update(engine)
         }
     }
 
@@ -103,7 +114,9 @@ final class SystemMonitorModule: NSObject, FeatureModule {
 
     private func render() {
         statusViews.values.forEach { $0.needsDisplay = true }
-        if let engine = engine, let panel = panel { panel.update(engine) }
+        guard let engine = engine else { return }
+        panel?.update(engine)
+        flyout?.update(engine)
     }
 
     // MARK: Panels
@@ -115,14 +128,22 @@ final class SystemMonitorModule: NSObject, FeatureModule {
         panel = content
         engine.focus = item
         content.update(engine)
-        panels.show(content.root, item: item, anchor: statusItems[item]?.button)
+        panels.show(content.root, item: item, anchor: statusItems[item]?.button, hoverTargets: content.hoverTargets)
     }
 
     func hidePanel() { panels.close() }
 
+    /// Opens the flyout of the open panel's `index`-th hover card, as if the pointer rested on it.
+    func showFlyout(_ index: Int) {
+        guard let targets = panel?.hoverTargets, targets.indices.contains(index) else { return }
+        panels.openFlyout(for: targets[index].card, make: targets[index].make, pinned: true)
+    }
+
     func lookupPublicIP() { engine?.lookupPublicIP() }
 
-    private func makeContext(relayout: Bool = true) -> PanelContext {
+    private enum RelayoutTarget { case none, panel, flyout }
+
+    private func makeContext(relayout: RelayoutTarget = .panel) -> PanelContext {
         PanelContext(
             settings: { [weak self] in self?.settingsProvider() ?? .defaults },
             setRange: { [weak self] chart, range in
@@ -132,8 +153,12 @@ final class SystemMonitorModule: NSObject, FeatureModule {
                 self.settingsChanged(settings)
             },
             relayout: { [weak self] in
-                guard relayout, let self = self, let root = self.panel?.root else { return }
-                self.panels.relayout(root)
+                guard let self = self else { return }
+                switch relayout {
+                case .none: break
+                case .panel: if let root = self.panel?.root { self.panels.relayout(root) }
+                case .flyout: self.panels.relayoutFlyout()
+                }
             },
             perform: { [weak self] action in self?.perform(action) },
             lookupPublicIP: { [weak self] in self?.engine?.lookupPublicIP() })
@@ -157,10 +182,26 @@ final class SystemMonitorModule: NSObject, FeatureModule {
 
     func writeSnapshot(_ item: MonitorItem, to url: URL, dark: Bool) -> Bool {
         guard let engine = engine else { return false }
-        let content = PanelContent.make(item, context: makeContext(relayout: false))
+        let content = PanelContent.make(item, context: makeContext(relayout: .none))
         content.update(engine)
         let size = content.root.relayout()
         return MonitorPanelController.renderPNG(content.root, size: size, appearance: dark ? .darkAqua : .aqua, to: url)
+    }
+
+    /// The panel with its `index`-th hover card highlighted and that card's flyout beside it.
+    func writeFlyoutSnapshot(_ item: MonitorItem, index: Int, to url: URL, dark: Bool) -> Bool {
+        guard let engine = engine else { return false }
+        let content = PanelContent.make(item, context: makeContext(relayout: .none))
+        content.update(engine)
+        guard content.hoverTargets.indices.contains(index) else { return false }
+        let target = content.hoverTargets[index]
+        let detail = target.make(makeContext(relayout: .none))
+        detail.update(engine)
+        content.root.relayout()
+        detail.root.relayout()
+        target.card.highlighted = true
+        return MonitorPanelController.renderFlyoutPNG(panel: content.root, flyout: detail.root, card: target.card,
+                                                      appearance: dark ? .darkAqua : .aqua, to: url)
     }
 
     func writeMenuBarSnapshot(to url: URL, dark: Bool) -> Bool {
@@ -183,6 +224,8 @@ final class SystemMonitorModule: NSObject, FeatureModule {
             "panel": panels.item?.rawValue ?? "-",
             "panelFrame": panels.geometry.panel,
             "anchorFrame": panels.geometry.anchor,
+            "flyoutFrame": panels.geometry.flyout,
+            "hoverCards": "\(panel?.hoverTargets.count ?? 0)",
             "panelIsKey": "\(panels.isKey)",
             "cpuBusy": number(s?.cpu?.busy),
             "cores": "\(s?.cores.count ?? 0)",
@@ -201,6 +244,7 @@ final class SystemMonitorModule: NSObject, FeatureModule {
             "gpuTemperature": number(s?.gpuTemperature),
             "fans": s?.fans.map { String(format: "%.0f", $0.rpm) }.joined(separator: ",") ?? "-",
             "powerWatts": number(s?.power),
+            "ssdHealth": s?.ssd.map { "\($0.healthPercent)" } ?? "-",
             "processGroups": "\(s?.processes.count ?? 0)",
             "networkProcessGroups": "\(s?.networkProcesses.count ?? 0)",
         ]

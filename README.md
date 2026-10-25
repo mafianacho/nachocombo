@@ -16,6 +16,8 @@
 ## 시스템 모니터
 메뉴 막대에 항목별 아이템(CPU, 메모리, 디스크, 네트워크, 센서)을 따로 띄우고, 클릭하면 상세 패널을 연다.
 표시할 항목은 설정 창에서 고른다. 패널은 바깥 클릭·Esc·Space 전환으로 닫힌다.
+패널의 카드에 마우스를 올려 두면 카드가 파랗게 강조되고, 패널 왼쪽(공간이 없으면 오른쪽)에 큰 그래프 플라이아웃이 열린다.
+플라이아웃 안으로 마우스를 옮겨 기간이나 지표(제목 옆 ⌃⌄)를 바꿀 수 있고, 카드와 플라이아웃을 모두 벗어나면 닫힌다.
 
 | 패널 | 내용 |
 |---|---|
@@ -25,12 +27,27 @@
 | 네트워크 | 업로드/다운로드 속도와 히스토리, 인터페이스, 공용 IP(옵트인), 로컬 IP, 프로세스별 ↑/↓ |
 | 센서 | CPU/GPU 온도·클럭, 팬, 온도 센서 목록, 총 전력 히스토리 |
 
-- 히스토리 그래프 기간: 10분 / 1시간 / 3시간 / 24시간(그래프마다 선택, 설정에 저장). 히스토리는 메모리에만 24시간 보관하고 재시작하면 비워진다.
+| 카드 | 플라이아웃 |
+|---|---|
+| CPU 그래프 | 사용자/시스템 히스토리와 기간 평균 |
+| 코어 | 성능 코어 / 효율 코어 평균 히스토리 |
+| GPU | 프로세서 / 메모리 / 온도 / 클럭 히스토리 |
+| 평균 부하 | 1분 / 5분 / 15분 히스토리 |
+| 메모리 링 | 메모리 압력 / 사용량 히스토리 |
+| 앱·와이어드·압축됨 | 구성별 누적 히스토리 |
+| 페이지 입출력 · 스왑 | 입력/출력 속도, 사용된 스왑 공간 히스토리 |
+| 시동 볼륨 | 사용됨·제거 가능·여유 링, SSD 건강(NVMe SMART 수명)과 온도 |
+| 디스크 활성 상태 | 읽기/쓰기 히스토리, 기간 내 최고치, 부팅 후 누적 |
+| 네트워크 | 업로드/다운로드 히스토리, 기간 내 최고치 |
+| 센서 링 · 전원 · 팬 | CPU/GPU 온도·팬 속도, 총 전력, 팬 속도 히스토리 |
+
+- 히스토리 그래프 기간: 10분 / 1시간 / 3시간 / 24시간(그래프마다 선택, 설정에 저장. 플라이아웃은 패널 그래프와 따로 저장). 히스토리는 메모리에만 24시간 보관하고 재시작하면 비워진다.
 - 데이터 출처와 한계:
   - 공개 API: Mach 호스트 통계(CPU·메모리), sysctl(압력·스왑·부하), IOKit 레지스트리(디스크 누적량, GPU 사용률), getifaddrs·SystemConfiguration(네트워크).
   - 프로세스 통계는 `proc_pid_rusage`로 **내 계정 소유 프로세스만** 집계한다(root 소유 프로세스는 macOS가 거부). 도우미 프로세스는 앱 번들 단위로 합산한다.
   - 프로세스별 네트워크는 `/usr/bin/nettop` 단발 스냅샷을 네트워크 패널이 열려 있을 때만 2초마다 실행해 차이를 계산한다.
   - 온도·팬·전력은 SMC 키(비문서화)를, CPU/GPU 클럭은 비공개 라이브러리 IOReport(dlopen)를 읽는다. 없거나 실패하면 "–"로 표시하고 다른 기능에는 영향이 없다.
+  - SSD 건강·온도는 공개 헤더 `IOKit/storage/nvme/NVMeSMARTLibExternal.h`의 NVMe SMART 인터페이스로 읽는다(권한 불필요). 건강 = 100 − 수명 사용률. 디스크 패널이 열려 있을 때만 1분마다 읽는다.
     코어별 온도 이름은 키 배치를 확인한 M1 Pro/M1 Max에서만 붙이고, 다른 Apple 실리콘은 CPU 평균·최고로 표시한다. 클럭 표는 M1 Pro에서 검증했다.
   - 공용 IP는 외부 요청(`https://www.cloudflare.com/cdn-cgi/trace`)이므로 기본 OFF다. 패널의 "확인" 버튼 또는 설정의 자동 조회를 켰을 때만 요청한다.
 
@@ -49,8 +66,9 @@
 - 디버그 제어 채널: `NachoCombo --debug-ctl`로 실행 후 `NachoCombo ctl set systemMonitor off|on`, `ctl collapse on|off`,
   `ctl snap left|right|maximize`, `ctl dump`, `ctl quit`. 상태 JSON을 출력한다. 릴리스 사용 대상 아님.
   - 시스템 모니터: `ctl monitor show cpu|memory|disk|network|sensors`, `ctl monitor hide`, `ctl monitor items cpu,network`,
-    `ctl monitor range <cpu|disk|network|power> <600|3600|10800|86400>`, `ctl monitor publicip`,
+    `ctl monitor range <cpu|disk|network|power|flyout.*> <600|3600|10800|86400>`, `ctl monitor publicip`,
     `ctl monitor snapshot <항목> <파일.png> [light]`(패널을 PNG로 렌더), `ctl monitor menubar <파일.png> [light]`, `ctl settings snapshot <파일.png>`.
+  - 플라이아웃: `ctl monitor hover <n>`(열린 패널의 n번째 호버 카드 플라이아웃을 연다), `ctl monitor flyout <항목> <n> <파일.png> [light]`(패널과 플라이아웃을 나란히 PNG로 렌더).
 
 ## 라이선스
 [MIT](LICENSE) © 2026 Mafianacho (마피아나초). "Nacho Combo" 이름과 로고는 이 라이선스의 허락 대상이 아니다.

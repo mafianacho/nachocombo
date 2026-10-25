@@ -40,6 +40,10 @@ struct MonitorSnapshot {
     var gpuMemoryInUse: UInt64?
     var gpuMemoryAllocated: UInt64?
     var gpuMHz: Double?
+    var gpuMemoryPercent: Double? {
+        guard let used = gpuMemoryInUse, let allocated = gpuMemoryAllocated, allocated > 0 else { return nil }
+        return Double(used) / Double(allocated) * 100
+    }
     // Memory
     var memory: MemoryBreakdown?
     var pressure: Double?
@@ -54,6 +58,7 @@ struct MonitorSnapshot {
     var diskReadTotal: UInt64 = 0
     var diskWriteTotal: UInt64 = 0
     var volume: VolumeInfo?
+    var ssd: SMARTHealth?
     // Network
     var netUp: Double?
     var netDown: Double?
@@ -85,12 +90,17 @@ final class MonitorEngine {
     static let publicIPEndpoint = URL(string: "https://www.cloudflare.com/cdn-cgi/trace")!
 
     let cpuHistory = TimeSeries(channels: 2, capacity: historyCapacity)       // user, system %
-    let gpuHistory = TimeSeries(channels: 1, capacity: historyCapacity)       // utilization %
-    let memoryHistory = TimeSeries(channels: 2, capacity: historyCapacity)    // used %, pressure %
+    let coreHistory = TimeSeries(channels: 2, capacity: historyCapacity)      // performance, efficiency core average %
+    let loadHistory = TimeSeries(channels: 3, capacity: historyCapacity)      // 1, 5, 15 min load average
+    let gpuHistory = TimeSeries(channels: 3, capacity: historyCapacity)       // utilization %, memory %, MHz
+    let memoryHistory = TimeSeries(channels: 5, capacity: historyCapacity)    // used, pressure, app, wired, compressed %
+    let swapHistory = TimeSeries(channels: 1, capacity: historyCapacity)      // used bytes
+    let pagingHistory = TimeSeries(channels: 2, capacity: historyCapacity)    // page in, page out B/s
     let diskHistory = TimeSeries(channels: 2, capacity: historyCapacity)      // read, write B/s
     let networkHistory = TimeSeries(channels: 2, capacity: historyCapacity)   // up, down B/s
     let powerHistory = TimeSeries(channels: 1, capacity: historyCapacity)     // W
     let temperatureHistory = TimeSeries(channels: 2, capacity: historyCapacity) // CPU, GPU °C
+    let fanHistory = TimeSeries(channels: 1, capacity: historyCapacity)       // mean rpm
 
     private(set) var snapshot = MonitorSnapshot()
     private(set) var sampleCount = 0
@@ -240,6 +250,7 @@ final class MonitorEngine {
             s.diskWrite = rates[1]
         }
         if ticks % (focus == .disk ? 5 : 30) == 0 { s.volume = SystemSampler.volumeInfo() }
+        if focus == .disk && ticks % 30 == 0 { s.ssd = SystemSampler.ssdHealth() }
 
         // Network
         let counters = SystemSampler.networkCounters()
@@ -271,12 +282,19 @@ final class MonitorEngine {
         }
 
         cpuHistory.append(time: now, values: [s.cpu?.user, s.cpu?.system])
-        gpuHistory.append(time: now, values: [s.gpuUtilization])
-        memoryHistory.append(time: now, values: [s.memory?.usedPercent, s.pressure])
+        coreHistory.append(time: now, values: [s.performanceAverage, s.efficiencyAverage])
+        loadHistory.append(time: now, values: s.loadAverage.map { $0 })
+        gpuHistory.append(time: now, values: [s.gpuUtilization, s.gpuMemoryPercent, s.gpuMHz])
+        let m = s.memory
+        memoryHistory.append(time: now, values: [m?.usedPercent, s.pressure, m.map { $0.fraction($0.app) * 100 },
+                                                 m.map { $0.fraction($0.wired) * 100 }, m.map { $0.fraction($0.compressed) * 100 }])
+        swapHistory.append(time: now, values: [Double(s.swapUsed)])
+        pagingHistory.append(time: now, values: [s.pageInRate, s.pageOutRate])
         diskHistory.append(time: now, values: [s.diskRead, s.diskWrite])
         networkHistory.append(time: now, values: [s.netUp, s.netDown])
         powerHistory.append(time: now, values: [s.power])
         temperatureHistory.append(time: now, values: [s.cpuTemperature, s.gpuTemperature])
+        fanHistory.append(time: now, values: [s.fans.isEmpty ? nil : s.fans.map { $0.rpm }.reduce(0, +) / Double(s.fans.count)])
         onSample?()
     }
 
@@ -349,7 +367,10 @@ final class MonitorEngine {
                 self.onSample?()
             }
         }
-        if focus == .disk { snapshot.volume = SystemSampler.volumeInfo() }
+        if focus == .disk {
+            snapshot.volume = SystemSampler.volumeInfo()
+            snapshot.ssd = SystemSampler.ssdHealth()
+        }
         if focus == .sensors { readSensors(into: &snapshot, full: true) }
         if focus == .network {
             snapshot.interfaces = SystemSampler.interfaces()

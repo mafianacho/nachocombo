@@ -48,32 +48,20 @@ struct PanelContext {
     var lookupPublicIP: () -> Void
 }
 
-/// Content of one dropdown panel. Built once when the panel opens, refreshed on every sample.
-class PanelContent {
-    static let processFootnote = "macOS 권한상 내 계정의 프로세스만 집계됩니다"
-
-    let item: MonitorItem
+/// Element tree of a dropdown panel or a hover flyout. Built once when shown, refreshed on every sample.
+class MonitorContent {
     let context: PanelContext
     private(set) var root: PanelRootView!
     weak var engine: MonitorEngine?
     private var needsRelayout = false
 
-    init(item: MonitorItem, context: PanelContext) {
-        self.item = item
+    init(context: PanelContext) {
         self.context = context
     }
 
-    static func make(_ item: MonitorItem, context: PanelContext) -> PanelContent {
-        switch item {
-        case .cpu: return CPUPanelContent(context: context)
-        case .memory: return MemoryPanelContent(context: context)
-        case .disk: return DiskPanelContent(context: context)
-        case .network: return NetworkPanelContent(context: context)
-        case .sensors: return SensorsPanelContent(context: context)
-        }
+    func setCards(_ cards: [PanelElement], width: CGFloat = MonitorStyle.panelWidth) {
+        root = PanelRootView(cards: cards, width: width)
     }
-
-    func setCards(_ cards: [PanelElement]) { root = PanelRootView(cards: cards) }
 
     func update(_ engine: MonitorEngine) {
         self.engine = engine
@@ -106,13 +94,49 @@ class PanelContent {
         }
     }
 
-    func buckets(_ series: TimeSeries, chart: String) -> [[Double]?] {
-        series.buckets(span: context.settings().range(for: chart).seconds, count: ChartElement.barCount,
-                       now: Date().timeIntervalSince1970)
+    /// Fills `element` with the chart's selected range of `series` (`channels`: subset, default all).
+    func plot(_ element: ChartElement, _ series: TimeSeries, chart: String, channels: [Int]? = nil) {
+        element.buckets = series.buckets(span: context.settings().range(for: chart).seconds, count: element.barCount,
+                                         now: Date().timeIntervalSince1970, channels: channels)
     }
 
+    func since(_ chart: String) -> Double { Date().timeIntervalSince1970 - context.settings().range(for: chart).seconds }
+
     func peak(_ series: TimeSeries, channel: Int, chart: String) -> Double {
-        series.maximum(channel: channel, since: Date().timeIntervalSince1970 - context.settings().range(for: chart).seconds) ?? 0
+        series.maximum(channel: channel, since: since(chart)) ?? 0
+    }
+
+    static func percent(_ value: Double?) -> String { value.map { MonitorFormat.percent($0) } ?? "–" }
+    static func temperature(_ value: Double?) -> String { value.map { MonitorFormat.temperature($0) } ?? "–" }
+}
+
+/// Content of one dropdown panel.
+class PanelContent: MonitorContent {
+    static let processFootnote = "macOS 권한상 내 계정의 프로세스만 집계됩니다"
+
+    let item: MonitorItem
+    /// Cards that open a detail flyout while the pointer rests on them, top to bottom.
+    private(set) var hoverTargets: [HoverTarget] = []
+
+    init(item: MonitorItem, context: PanelContext) {
+        self.item = item
+        super.init(context: context)
+    }
+
+    static func make(_ item: MonitorItem, context: PanelContext) -> PanelContent {
+        switch item {
+        case .cpu: return CPUPanelContent(context: context)
+        case .memory: return MemoryPanelContent(context: context)
+        case .disk: return DiskPanelContent(context: context)
+        case .network: return NetworkPanelContent(context: context)
+        case .sensors: return SensorsPanelContent(context: context)
+        }
+    }
+
+    /// Registers `card` as a hover target and returns it (for use inside `setCards`).
+    func hover(_ card: StackElement, _ make: @escaping FlyoutFactory) -> StackElement {
+        hoverTargets.append(HoverTarget(card: card, make: make))
+        return card
     }
 
     func toolbar(_ actions: [PanelAction]) -> StackElement {
@@ -131,9 +155,6 @@ class PanelContent {
     }
 
     func processPlaceholder(_ sampled: Bool) -> String { sampled ? "활동 중인 프로세스가 없습니다" : "수집 중…" }
-
-    static func percent(_ value: Double?) -> String { value.map { MonitorFormat.percent($0) } ?? "–" }
-    static func temperature(_ value: Double?) -> String { value.map { MonitorFormat.temperature($0) } ?? "–" }
 }
 
 // MARK: - CPU
@@ -158,11 +179,13 @@ final class CPUPanelContent: PanelContent {
         header = rangeHeader("CPU", chart: "cpu")
         gpuCard = StackElement([gpuHeader, gpuRings, gpuMemory])
         setCards([
-            StackElement([header, chart, legend]),
-            StackElement([cores, efficiencyRow, performanceRow], spacing: 6),
+            hover(StackElement([header, chart, legend]), Flyouts.cpu),
+            hover(StackElement([cores, efficiencyRow, performanceRow], spacing: 6)) { [weak self] context in
+                Flyouts.cores(context, efficiency: self?.engine?.snapshot.efficiencyAverage != nil)
+            },
             StackElement([processes]),
-            gpuCard,
-            StackElement([load], insets: NSEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)),
+            hover(gpuCard, Flyouts.gpu),
+            hover(StackElement([load], insets: NSEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)), Flyouts.load),
             StackElement([uptime], insets: NSEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)),
             toolbar([.activityMonitor, .systemInformation, .terminal, .settings]),
         ])
@@ -172,7 +195,7 @@ final class CPUPanelContent: PanelContent {
         let s = engine.snapshot
         header.detail = [s.cpuMHz.map { MonitorFormat.gigahertz($0) }, s.cpuTemperature.map { MonitorFormat.temperature($0) }]
             .compactMap { $0 }.joined(separator: ", ")
-        chart.buckets = buckets(engine.cpuHistory, chart: "cpu")
+        plot(chart, engine.cpuHistory, chart: "cpu")
         legend.left = .init(color: MonitorStyle.blue, label: "사용자", value: PanelContent.percent(s.cpu?.user))
         legend.right = .init(color: MonitorStyle.pink, label: "시스템", value: PanelContent.percent(s.cpu?.system))
         cores.cores = s.cores
@@ -226,11 +249,11 @@ final class MemoryPanelContent: PanelContent {
     init(context: PanelContext) {
         super.init(item: .memory, context: context)
         setCards([
-            StackElement([rings], insets: NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)),
-            StackElement([appRow, wiredRow, compressedRow, freeRow], spacing: 2),
+            hover(StackElement([rings], insets: NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)), Flyouts.memoryPressure),
+            hover(StackElement([appRow, wiredRow, compressedRow, freeRow], spacing: 2), Flyouts.memory),
             StackElement([processes]),
-            StackElement([pageIn, pageOut], spacing: 2),
-            StackElement([swapHeader, swapBar], spacing: 6),
+            hover(StackElement([pageIn, pageOut], spacing: 2), Flyouts.paging),
+            hover(StackElement([swapHeader, swapBar], spacing: 6), Flyouts.swap),
             toolbar([.activityMonitor, .systemInformation, .terminal, .settings]),
         ])
     }
@@ -276,8 +299,8 @@ final class DiskPanelContent: PanelContent {
         super.init(item: .disk, context: context)
         header = rangeHeader("디스크 활성 상태", chart: "disk")
         setCards([
-            StackElement([volume], insets: NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)),
-            StackElement([header, big, chart, peaks, totals]),
+            hover(StackElement([volume], insets: NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10))) { VolumeFlyout(context: $0) },
+            hover(StackElement([header, big, chart, peaks, totals]), Flyouts.diskActivity),
             StackElement([processes]),
             toolbar([.activityMonitor, .systemInformation, .terminal, .diskUtility, .settings]),
         ])
@@ -293,7 +316,7 @@ final class DiskPanelContent: PanelContent {
         }
         big.left.value = s.diskRead.map { MonitorFormat.rate($0) } ?? "–"
         big.right.value = s.diskWrite.map { MonitorFormat.rate($0) } ?? "–"
-        chart.buckets = buckets(engine.diskHistory, chart: "disk")
+        plot(chart, engine.diskHistory, chart: "disk")
         peaks.left = .init(color: nil, label: "최고 읽기", value: MonitorFormat.rate(peak(engine.diskHistory, channel: 0, chart: "disk")))
         peaks.right = .init(color: nil, label: "최고 쓰기", value: MonitorFormat.rate(peak(engine.diskHistory, channel: 1, chart: "disk")))
         totals.left = .init(color: nil, label: "데이터 읽기", value: MonitorFormat.size(Double(s.diskReadTotal)))
@@ -325,7 +348,7 @@ final class NetworkPanelContent: PanelContent {
         header = rangeHeader("네트워크", chart: "network")
         publicRow.onPress = context.lookupPublicIP
         setCards([
-            StackElement([header, big, chart, peaks, totals]),
+            hover(StackElement([header, big, chart, peaks, totals]), Flyouts.network),
             interfacesCard,
             StackElement([publicHeader, publicRow], spacing: 3),
             addressCard,
@@ -338,7 +361,7 @@ final class NetworkPanelContent: PanelContent {
         let s = engine.snapshot
         big.left.value = s.netUp.map { MonitorFormat.rate($0) } ?? "–"
         big.right.value = s.netDown.map { MonitorFormat.rate($0) } ?? "–"
-        chart.buckets = buckets(engine.networkHistory, chart: "network")
+        plot(chart, engine.networkHistory, chart: "network")
         peaks.left = .init(color: nil, label: "최고 업로드", value: MonitorFormat.rate(peak(engine.networkHistory, channel: 0, chart: "network")))
         peaks.right = .init(color: nil, label: "최고 다운로드", value: MonitorFormat.rate(peak(engine.networkHistory, channel: 1, chart: "network")))
         totals.left = .init(color: nil, label: "부팅 후 ↑", value: MonitorFormat.size(Double(s.netUpTotal)))
@@ -426,10 +449,12 @@ final class SensorsPanelContent: PanelContent {
         note.isHidden = true
         temperatureCard.setItems([temperatureHeader])
         setCards([
-            StackElement([rings, note], insets: NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)),
+            hover(StackElement([rings, note], insets: NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10))) { [weak self] context in
+                Flyouts.temperatures(context, fans: !(self?.engine?.snapshot.fans.isEmpty ?? true))
+            },
             temperatureCard,
-            powerCard,
-            fanCard,
+            hover(powerCard, Flyouts.power),
+            hover(fanCard, Flyouts.fans),
             toolbar([.activityMonitor, .systemInformation, .terminal, .settings]),
         ])
     }
@@ -464,7 +489,7 @@ final class SensorsPanelContent: PanelContent {
         }
         setHidden(temperatureCard, s.sensors.isEmpty)
 
-        powerChart.buckets = buckets(engine.powerHistory, chart: "power")
+        plot(powerChart, engine.powerHistory, chart: "power")
         powerRow.value = s.power.map { MonitorFormat.watts($0) } ?? "–"
         setHidden(powerCard, s.power == nil && engine.powerHistory.latest(channel: 0) == nil)
 

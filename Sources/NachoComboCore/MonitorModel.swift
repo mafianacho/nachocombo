@@ -93,6 +93,28 @@ public struct MemoryBreakdown: Equatable {
     public func fraction(_ part: UInt64) -> Double { total == 0 ? 0 : min(1, Double(part) / Double(total)) }
 }
 
+/// Summary of an NVMe "SMART / Health Information" log page (log 02h, 512 bytes, little-endian).
+public struct SMARTHealth: Equatable {
+    public let criticalWarning: UInt8
+    /// Composite temperature in °C (nil when the drive reports 0 K).
+    public let temperature: Double?
+    public let availableSpare: Int
+    /// Vendor estimate of the rated endurance used, 0–255 (may exceed 100).
+    public let lifeUsedPercent: Int
+
+    public init?(log bytes: [UInt8]) {
+        guard bytes.count >= 6 else { return nil }
+        criticalWarning = bytes[0]
+        let kelvin = Int(bytes[1]) | Int(bytes[2]) << 8
+        temperature = kelvin > 0 ? Double(kelvin) - 273.15 : nil
+        availableSpare = Int(bytes[3])
+        lifeUsedPercent = Int(bytes[5])
+    }
+
+    /// 100% for a new drive, 0% once the rated endurance is used up.
+    public var healthPercent: Int { Swift.max(0, 100 - lifeUsedPercent) }
+}
+
 /// Converts performance-state residency into an average clock.
 public enum FrequencyMath {
     /// Decodes a pmgr "voltage-states" property: little-endian (frequency Hz: UInt32, voltage: UInt32) pairs.

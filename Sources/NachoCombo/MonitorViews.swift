@@ -9,7 +9,14 @@ enum MonitorStyle {
     static let cardInsets = NSEdgeInsets(top: 9, left: 10, bottom: 9, right: 10)
     static let cardSpacing: CGFloat = 8
     static let cardRadius: CGFloat = 9
-    static var contentWidth: CGFloat { panelWidth - 2 * outerInset - cardInsets.left - cardInsets.right }
+    static func contentWidth(_ width: CGFloat) -> CGFloat { width - 2 * outerInset - cardInsets.left - cardInsets.right }
+    static var contentWidth: CGFloat { contentWidth(panelWidth) }
+
+    /// Hover flyouts sit left of the panel; their main section has no card background.
+    static let flyoutWidth: CGFloat = 390
+    static let flyoutGap: CGFloat = 6
+    static let flyoutInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
+    static var flyoutContentWidth: CGFloat { flyoutWidth - 2 * outerInset - flyoutInsets.left - flyoutInsets.right }
 
     static var blue: NSColor { .systemBlue }
     static var pink: NSColor { .systemPink }
@@ -105,6 +112,9 @@ class PanelElement: NSView {
     override init(frame: NSRect) { super.init(frame: frame) }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    /// Panels never activate the app, so the first click must already work.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         needsDisplay = true
@@ -118,6 +128,8 @@ class StackElement: PanelElement {
     let spacing: CGFloat
     let insets: NSEdgeInsets
     let card: Bool
+    /// Blue outline while this card's flyout is open.
+    var highlighted = false { didSet { needsDisplay = true } }
 
     init(_ items: [PanelElement], spacing: CGFloat = 5, insets: NSEdgeInsets = MonitorStyle.cardInsets, card: Bool = true) {
         self.items = items
@@ -158,15 +170,24 @@ class StackElement: PanelElement {
 
     override func draw(_ dirtyRect: NSRect) {
         guard card else { return }
+        let radius = MonitorStyle.cardRadius
         MonitorStyle.cardFill.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: MonitorStyle.cardRadius, yRadius: MonitorStyle.cardRadius).fill()
+        NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
+        guard highlighted else { return }
+        let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: radius - 0.75, yRadius: radius - 0.75)
+        outline.lineWidth = 1.5
+        MonitorStyle.blue.setStroke()
+        outline.stroke()
     }
 }
 
-/// The whole panel: cards stacked with outer insets, fixed width.
+/// The whole panel (or flyout): cards stacked with outer insets, fixed width.
 final class PanelRootView: StackElement {
-    init(cards: [PanelElement]) {
+    let width: CGFloat
+
+    init(cards: [PanelElement], width: CGFloat = MonitorStyle.panelWidth) {
         let inset = MonitorStyle.outerInset
+        self.width = width
         super.init(cards, spacing: MonitorStyle.cardSpacing,
                    insets: NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset), card: false)
     }
@@ -175,14 +196,20 @@ final class PanelRootView: StackElement {
 
     @discardableResult
     func relayout() -> NSSize {
-        let size = NSSize(width: MonitorStyle.panelWidth, height: preferredHeight)
+        let size = NSSize(width: width, height: preferredHeight)
         setFrameSize(size)
         layoutContent()
         return size
     }
 }
 
+/// Pop-up that also works on the click that makes its (non-key) panel key.
+final class FirstMousePopUpButton: NSPopUpButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 /// Section title (accent colour) with optional detail text, right-aligned value or range menu.
+/// With options, clicking the title opens a menu of alternatives (GPU: 프로세서 / 메모리 / 온도 / 클럭).
 final class HeaderElement: PanelElement {
     var title: String { didSet { needsDisplay = true } }
     var detail = "" { didSet { needsDisplay = true } }
@@ -190,12 +217,15 @@ final class HeaderElement: PanelElement {
     var accent = true
     private var popup: NSPopUpButton?
     private var onRange: ((ChartRange) -> Void)?
+    private var options: [String] = []
+    private var onOption: ((Int) -> Void)?
+    private let titleFont = MonitorStyle.font(12, .semibold)
 
     init(_ title: String, range: ChartRange? = nil, onRange: ((ChartRange) -> Void)? = nil) {
         self.title = title
         super.init(frame: .zero)
         guard let range = range else { return }
-        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        let popup = FirstMousePopUpButton(frame: .zero, pullsDown: false)
         popup.isBordered = false
         popup.controlSize = .small
         popup.font = MonitorStyle.font(11, .semibold)
@@ -231,6 +261,13 @@ final class HeaderElement: PanelElement {
         fitPopup()
     }
 
+    /// Makes the title a menu of `options`; `onSelect` gets the chosen index.
+    func setOptions(_ options: [String], selected: Int, onSelect: @escaping (Int) -> Void) {
+        self.options = options
+        onOption = onSelect
+        if options.indices.contains(selected) { title = options[selected] }
+    }
+
     override func layoutContent() {
         guard let popup = popup else { return }
         let size = popup.frame.size
@@ -244,11 +281,34 @@ final class HeaderElement: PanelElement {
         if let range = ChartRange(rawValue: sender.selectedTag()) { onRange?(range) }
     }
 
+    private var hasMenu: Bool { options.count > 1 }
+    private var titleWidth: CGFloat { Draw.width(title, titleFont) + (hasMenu ? 14 : 0) }
+
+    override func mouseDown(with event: NSEvent) {
+        guard hasMenu, convert(event.locationInWindow, from: nil).x <= titleWidth + 4 else { return super.mouseDown(with: event) }
+        let menu = NSMenu()
+        for (index, option) in options.enumerated() {
+            let item = NSMenuItem(title: option, action: #selector(optionChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.state = option == title ? .on : .off
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: -4, y: bounds.height + 3), in: self)
+    }
+
+    @objc private func optionChosen(_ sender: NSMenuItem) {
+        title = options[sender.tag]
+        onOption?(sender.tag)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        let titleFont = MonitorStyle.font(12, .semibold)
-        let titleWidth = Draw.width(title, titleFont)
-        Draw.text(title, in: NSRect(x: 0, y: 0, width: titleWidth + 2, height: bounds.height), font: titleFont,
+        let textWidth = Draw.width(title, titleFont)
+        Draw.text(title, in: NSRect(x: 0, y: 0, width: textWidth + 2, height: bounds.height), font: titleFont,
                   color: accent ? MonitorStyle.blue : MonitorStyle.primary)
+        if hasMenu, let chevron = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: nil) {
+            Draw.image(chevron, in: NSRect(x: textWidth + 4, y: bounds.midY - 5, width: 7, height: 10), tint: MonitorStyle.blue)
+        }
         let right = popup.map { $0.frame.minX - 2 } ?? bounds.maxX
         let rest = NSRect(x: titleWidth + 6, y: 0, width: max(0, right - titleWidth - 6), height: bounds.height)
         if !detail.isEmpty { Draw.text(detail, in: rest, font: MonitorStyle.digits(11), color: MonitorStyle.secondary) }
@@ -263,18 +323,21 @@ final class ChartElement: PanelElement {
     enum Style { case stacked, mirrored }
     static let barWidth: CGFloat = 2
     static let gap: CGFloat = 1
-    static var barCount: Int { Int((MonitorStyle.contentWidth + gap) / (barWidth + gap)) }
 
     let style: Style
     let height: CGFloat
-    let colors: () -> [NSColor]
-    let fixedMax: Double?
-    let minimumScale: Double
+    /// Bars that fit the width the chart is laid out at.
+    let barCount: Int
+    var colors: () -> [NSColor]
+    var fixedMax: Double?
+    var minimumScale: Double
     var buckets: [[Double]?] = [] { didSet { needsDisplay = true } }
 
-    init(style: Style, height: CGFloat = 62, fixedMax: Double? = nil, minimumScale: Double = 1, colors: @escaping () -> [NSColor]) {
+    init(style: Style, height: CGFloat = 62, width: CGFloat = MonitorStyle.contentWidth, fixedMax: Double? = nil,
+         minimumScale: Double = 1, colors: @escaping () -> [NSColor]) {
         self.style = style
         self.height = height
+        self.barCount = Int((width + ChartElement.gap) / (ChartElement.barWidth + ChartElement.gap))
         self.fixedMax = fixedMax
         self.minimumScale = minimumScale
         self.colors = colors
@@ -620,6 +683,46 @@ final class VolumeElement: PanelElement {
                   color: MonitorStyle.primary)
         Draw.text(subtitle, in: NSRect(x: 44, y: 19, width: bounds.width - 44, height: 17), font: MonitorStyle.digits(11),
                   color: MonitorStyle.secondary)
+    }
+}
+
+/// Large usage ring with its legend inside (startup volume flyout).
+final class DonutElement: PanelElement {
+    struct Part {
+        var label: String
+        var value: String
+        var fraction: Double
+        var color: () -> NSColor
+        /// false: the remainder, shown by the ring's track.
+        var arc = true
+    }
+    var parts: [Part] = [] { didSet { needsDisplay = true } }
+    /// Drawn in the top-left corner.
+    var icon: NSImage? { didSet { needsDisplay = true } }
+    private let diameter: CGFloat = 170
+    private let lineWidth: CGFloat = 13
+
+    override var preferredHeight: CGFloat { diameter + 8 }
+
+    override func draw(_ dirtyRect: NSRect) {
+        if let icon = icon { Draw.image(icon, in: NSRect(x: 0, y: 0, width: 18, height: 18)) }
+        let center = NSPoint(x: bounds.midX, y: 4 + diameter / 2)
+        Draw.ring(center: center, radius: diameter / 2 - lineWidth / 2, lineWidth: lineWidth,
+                  segments: parts.filter { $0.arc }.map { ($0.fraction, $0.color()) }, roundCaps: false)
+        let line: CGFloat = 16
+        let labelFont = MonitorStyle.font(11)
+        let valueFont = MonitorStyle.digits(13, .semibold)
+        var y = center.y - CGFloat(parts.count) * line
+        for part in parts {
+            let labelWidth = Draw.width(part.label, labelFont)
+            let x = center.x - (labelWidth + 12) / 2
+            Draw.dot(part.color(), center: NSPoint(x: x + 4, y: y + line / 2), radius: 3.5)
+            Draw.text(part.label, in: NSRect(x: x + 12, y: y, width: labelWidth + 1, height: line), font: labelFont,
+                      color: MonitorStyle.secondary)
+            Draw.text(part.value, in: NSRect(x: center.x - 60, y: y + line, width: 120, height: line), font: valueFont,
+                      color: MonitorStyle.primary, align: .center)
+            y += 2 * line
+        }
     }
 }
 

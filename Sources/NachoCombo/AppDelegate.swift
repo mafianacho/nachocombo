@@ -124,7 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Debug-only control channel (`--debug-ctl`): set <module> on|off, collapse on|off, snap left|right|maximize,
-    /// monitor show <item>|hide|items <a,b>|range <chart> <seconds>|snapshot <item> <png> [light]|menubar <png> [light]|publicip,
+    /// monitor show <item>|hide|hover <index>|items <a,b>|range <chart> <seconds>|snapshot <item> <png> [light]|
+    /// flyout <item> <index> <png> [light]|menubar <png> [light]|publicip,
     /// settings snapshot <png>, dump, quit.
     private func handle(command: String) {
         let parts = command.split(separator: " ").map(String.init)
@@ -154,6 +155,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let item = MonitorItem(rawValue: args[1]) { monitor.showPanel(item) }
         case "hide":
             monitor.hidePanel()
+        case "hover" where args.count == 2:
+            if let index = Int(args[1]) { monitor.showFlyout(index) }
         case "items" where args.count == 2:
             let wanted = Set(args[1].split(separator: ",").map(String.init))
             var value = manager.settings.monitorSettings
@@ -168,6 +171,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "snapshot" where args.count >= 3:
             if let item = MonitorItem(rawValue: args[1]) {
                 _ = monitor.writeSnapshot(item, to: URL(fileURLWithPath: args[2]), dark: dark)
+            }
+        case "flyout" where args.count >= 4:
+            if let item = MonitorItem(rawValue: args[1]), let index = Int(args[2]) {
+                _ = monitor.writeFlyoutSnapshot(item, index: index, to: URL(fileURLWithPath: args[3]), dark: dark)
             }
         case "menubar" where args.count >= 2:
             _ = monitor.writeMenuBarSnapshot(to: URL(fileURLWithPath: args[1]), dark: dark)

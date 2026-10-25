@@ -7,8 +7,13 @@ import NachoComboCore
 struct VolumeInfo: Equatable {
     var name: String
     var total: Int64
+    /// Free space including purgeable files (what Finder calls "available").
     var available: Int64
+    /// Free space without purgeable files.
+    var free: Int64
     var usedPercent: Double { total > 0 ? Double(total - available) / Double(total) * 100 : 0 }
+    var used: Int64 { max(0, total - available) }
+    var purgeable: Int64 { max(0, available - free) }
 }
 
 struct InterfaceInfo: Equatable {
@@ -167,8 +172,20 @@ enum SystemSampler {
                                          .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey]
         guard let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: keys),
               let total = values.volumeTotalCapacity else { return nil }
-        let available = values.volumeAvailableCapacityForImportantUsage ?? Int64(values.volumeAvailableCapacity ?? 0)
-        return VolumeInfo(name: values.volumeName ?? "Macintosh HD", total: Int64(total), available: available)
+        let free = Int64(values.volumeAvailableCapacity ?? 0)
+        let available = max(free, values.volumeAvailableCapacityForImportantUsage ?? free)
+        return VolumeInfo(name: values.volumeName ?? "Macintosh HD", total: Int64(total), available: available, free: free)
+    }
+
+    /// SMART log of the first SMART-capable NVMe drive, read through the public IONVMeSMARTInterface
+    /// (IOKit/storage/nvme/NVMeSMARTLibExternal.h; no privileges needed).
+    static func ssdHealth() -> SMARTHealth? {
+        var health: SMARTHealth?
+        forEachService("IOBlockStorageDevice") { entry in
+            guard health == nil, (property(entry, "NVMe SMART Capable") as? Bool) == true else { return }
+            health = NVMeSMART.read(entry)
+        }
+        return health
     }
 
     /// Product name of the internal solid-state drive, e.g. "APPLE SSD AP1024R".
@@ -302,5 +319,48 @@ enum SystemSampler {
         var buffer = [CChar](repeating: 0, count: size)
         guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return nil }
         return String(cString: buffer)
+    }
+}
+
+/// Mirrors the head of IONVMeSMARTInterface (IUNKNOWN_C_GUTS, version, revision, SMARTReadData…).
+private struct NVMeSMARTInterface {
+    var reserved: UnsafeMutableRawPointer?
+    var queryInterface: UnsafeMutableRawPointer?
+    var addRef: UnsafeMutableRawPointer?
+    var release: (@convention(c) (UnsafeMutableRawPointer?) -> UInt32)?
+    var version: UInt16
+    var revision: UInt16
+    var smartReadData: (@convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> kern_return_t)?
+}
+
+private enum NVMeSMART {
+    // kIONVMeSMARTUserClientTypeID, kIONVMeSMARTInterfaceID and kIOCFPlugInInterfaceID are C macros,
+    // which Swift does not import.
+    static let userClientType = uuid(0xAA, 0x0F, 0xA6, 0xF9, 0xC2, 0xD6, 0x45, 0x7F, 0xB1, 0x0B, 0x59, 0xA1, 0x32, 0x53, 0x29, 0x2F)
+    static let smartInterface = uuid(0xCC, 0xD1, 0xDB, 0x19, 0xFD, 0x9A, 0x4D, 0xAF, 0xBF, 0x95, 0x12, 0x45, 0x4B, 0x23, 0x0A, 0xB6)
+    static let plugInInterface = uuid(0xC2, 0x44, 0xE8, 0x58, 0x10, 0x9C, 0x11, 0xD4, 0x91, 0xD4, 0x00, 0x50, 0xE4, 0xC6, 0x42, 0x6F)
+
+    private static func uuid(_ b0: UInt8, _ b1: UInt8, _ b2: UInt8, _ b3: UInt8, _ b4: UInt8, _ b5: UInt8, _ b6: UInt8, _ b7: UInt8,
+                             _ b8: UInt8, _ b9: UInt8, _ b10: UInt8, _ b11: UInt8, _ b12: UInt8, _ b13: UInt8, _ b14: UInt8,
+                             _ b15: UInt8) -> CFUUID {
+        CFUUIDGetConstantUUIDWithBytes(nil, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15)
+    }
+
+    static func read(_ device: io_registry_entry_t) -> SMARTHealth? {
+        var plugIn: UnsafeMutablePointer<UnsafeMutablePointer<IOCFPlugInInterface>?>?
+        var score: Int32 = 0
+        guard IOCreatePlugInInterfaceForService(device, userClientType, plugInInterface, &plugIn, &score) == KERN_SUCCESS,
+              let plugIn = plugIn, let plugInTable = plugIn.pointee else { return nil }
+        // Release() alone keeps the (single-open) user client alive, and every later open fails with
+        // kIOReturnNoResources; IODestroyPlugInInterface closes it.
+        defer { IODestroyPlugInInterface(plugIn) }
+        var raw: LPVOID?
+        guard plugInTable.pointee.QueryInterface(plugIn, CFUUIDGetUUIDBytes(smartInterface), &raw) == S_OK,
+              let interface = raw else { return nil }
+        let table = interface.assumingMemoryBound(to: UnsafeMutablePointer<NVMeSMARTInterface>.self).pointee.pointee
+        defer { _ = table.release?(interface) }
+        var log = [UInt8](repeating: 0, count: 512)
+        let result = log.withUnsafeMutableBytes { table.smartReadData?(interface, $0.baseAddress) ?? kIOReturnUnsupported }
+        return result == kIOReturnSuccess ? SMARTHealth(log: log) : nil
     }
 }

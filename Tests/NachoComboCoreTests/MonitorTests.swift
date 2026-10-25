@@ -21,6 +21,37 @@ final class MonitorTests: XCTestCase {
         XCTAssertEqual(series.maximum(channel: 0, since: 105) ?? -1, 50, accuracy: 1e-6)
     }
 
+    func testTimeSeriesPicksChannelsAndAverages() {
+        let series = TimeSeries(channels: 3, capacity: 100)
+        series.append(time: 100, values: [1, 10, nil])
+        series.append(time: 102, values: [3, 20, nil])
+        series.append(time: 112, values: [5, nil, 7])
+        let picked = series.buckets(span: 20, count: 2, now: 112, channels: [2, 0])  // [100,110), [110,120)
+        XCTAssertEqual(picked[0] ?? [], [0, 2])        // asked order; channel 2 missing there → 0
+        XCTAssertEqual(picked[1] ?? [], [7, 5])
+        let only = series.buckets(span: 20, count: 2, now: 112, channels: [2])
+        XCTAssertNil(only[0])                          // a gap of the picked channel stays a gap
+        XCTAssertEqual(only[1] ?? [], [7])
+        XCTAssertEqual(series.mean(channel: 1, since: 0) ?? -1, 15, accuracy: 1e-6)  // gap at t=112 ignored
+        XCTAssertEqual(series.mean(channel: 0, since: 101) ?? -1, 4, accuracy: 1e-6)
+        XCTAssertNil(series.mean(channel: 2, since: 113))
+    }
+
+    func testSMARTHealthLog() {
+        var log = [UInt8](repeating: 0, count: 512)
+        log[1] = 0x34; log[2] = 0x01   // 308 K
+        log[3] = 100                   // available spare
+        log[5] = 6                     // 6% of the rated endurance used
+        let health = SMARTHealth(log: log)
+        XCTAssertEqual(health?.healthPercent, 94)
+        XCTAssertEqual(health?.availableSpare, 100)
+        XCTAssertEqual(health?.temperature ?? 0, 34.85, accuracy: 1e-6)
+        log[5] = 120; log[1] = 0; log[2] = 0
+        XCTAssertEqual(SMARTHealth(log: log)?.healthPercent, 0)
+        XCTAssertNil(SMARTHealth(log: log)?.temperature)
+        XCTAssertNil(SMARTHealth(log: [1, 2, 3]))
+    }
+
     func testTimeSeriesRingWrapsAndRecent() {
         let series = TimeSeries(channels: 1, capacity: 3)
         for i in 1...5 { series.append(time: Double(i), values: [Double(i)]) }
