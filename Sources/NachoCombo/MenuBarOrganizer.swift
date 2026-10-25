@@ -29,9 +29,9 @@ final class MenuBarOrganizerModule: NSObject, FeatureModule {
         let toggle = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         toggle.button?.target = self
         toggle.button?.action = #selector(toggleClicked)
-        toggle.button?.toolTip = "Nacho Combo: 숨김 아이콘 접기/펼치기"
+        toggle.button?.toolTip = "Nacho Combo: collapse / expand hidden icons"
         let divider = NSStatusBar.system.statusItem(withLength: expandedDividerLength)
-        divider.button?.toolTip = "Nacho Combo 구분선: 이 선 왼쪽 아이콘이 접힘 대상 (⌘ 드래그로 이동)"
+        divider.button?.toolTip = "Nacho Combo divider: icons left of it are collapsed (⌘-drag to move)"
         toggleItem = toggle
         dividerItem = divider
         render()

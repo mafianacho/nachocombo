@@ -165,9 +165,9 @@ final class MonitorTests: XCTestCase {
     func testSensorCatalogM1ProAndGenericFallback() {
         let keys: Set<String> = ["Tp01", "Tp05", "Tp09", "Tp0T", "Tg05", "Tg0D", "TH0x", "TB0T", "TB1T", "Ts0P", "TaLP", "TaRF"]
         let defs = SensorCatalog.definitions(chip: "Apple M1 Pro", keys: keys, storageName: "APPLE SSD AP1024R")
-        XCTAssertEqual(defs.map { $0.label }, ["CPU 성능 코어 1", "CPU 성능 코어 2", "CPU 효율 코어 1", "CPU 효율 코어 2",
-                                                "그래픽 1", "그래픽 2", "APPLE SSD AP1024R", "배터리",
-                                                "손목 받침대 1", "왼쪽 공기 흐름 1", "오른쪽 공기 흐름 1"])
+        XCTAssertEqual(defs.map { $0.label }, ["CPU Performance Core 1", "CPU Performance Core 2", "CPU Efficiency Core 1", "CPU Efficiency Core 2",
+                                                "GPU 1", "GPU 2", "APPLE SSD AP1024R", "Battery",
+                                                "Palm Rest 1", "Left Airflow 1", "Right Airflow 1"])
         let readings = ["Tp01": 50.0, "Tp05": 60, "Tp09": 40, "Tp0T": 0, "Tg05": 45, "Tg0D": 55, "TB0T": 30, "TB1T": 32]
         XCTAssertNil(SensorCatalog.value(of: defs[3], readings: readings))   // 0 °C is not a reading
         XCTAssertEqual(SensorCatalog.value(of: defs[7], readings: readings), 32)
@@ -175,7 +175,7 @@ final class MonitorTests: XCTestCase {
         XCTAssertEqual(SensorCatalog.summary(defs, readings: readings) { $0 == .gpu } ?? 0, 50, accuracy: 1e-6)
 
         let generic = SensorCatalog.definitions(chip: "Apple M3", keys: ["Tp01", "Te05", "Tg0f"], storageName: nil)
-        XCTAssertEqual(generic.map { $0.label }, ["CPU 평균", "CPU 최고", "그래픽 평균"])
+        XCTAssertEqual(generic.map { $0.label }, ["CPU Average", "CPU Max", "GPU Average"])
         let g = ["Tp01": 40.0, "Te05": 60]
         XCTAssertEqual(SensorCatalog.summary(generic, readings: g) { $0.isCPU } ?? 0, 50, accuracy: 1e-6)
         XCTAssertEqual(SensorCatalog.value(of: generic[1], readings: g), 60)
@@ -186,13 +186,15 @@ final class MonitorTests: XCTestCase {
         XCTAssertEqual(MonitorFormat.size(16.2 * 1_073_741_824), "16.2GB")
         XCTAssertEqual(MonitorFormat.size(2.74 * 1_099_511_627_776), "2.74TB")
         XCTAssertEqual(MonitorFormat.size(422.6e9, decimal: true), "422.6GB")
-        XCTAssertEqual(MonitorFormat.rate(48 * 1024), "48 KB/초")
-        XCTAssertEqual(MonitorFormat.rate(24.6 * 1_048_576), "24.6 MB/초")
+        XCTAssertEqual(MonitorFormat.rate(48 * 1024), "48 KB/s")
+        XCTAssertEqual(MonitorFormat.rate(24.6 * 1_048_576), "24.6 MB/s")
         XCTAssertEqual(MonitorFormat.compact(0), "-")
         XCTAssertEqual(MonitorFormat.compact(300 * 1024), "300K")
         XCTAssertEqual(MonitorFormat.compact(2.2 * 1_048_576), "2.2M")
-        XCTAssertEqual(MonitorFormat.uptime(11 * 86_400 + 5 * 3600 + 59), "11일 5시간")
-        XCTAssertEqual(MonitorFormat.uptime(3 * 3600 + 12 * 60), "3시간 12분")
+        XCTAssertEqual(MonitorFormat.uptime(11 * 86_400 + 5 * 3600 + 59), "11 days, 5 hours")
+        XCTAssertEqual(MonitorFormat.uptime(3 * 3600 + 12 * 60), "3 hours, 12 min")
+        XCTAssertEqual(MonitorFormat.uptime(86_400 + 3600 + 7 * 60), "1 day, 1 hour")
+        XCTAssertEqual(MonitorFormat.uptime(7 * 60 + 30), "7 min")
         XCTAssertEqual(MonitorFormat.grouped(1009), "1,009")
         XCTAssertEqual(MonitorFormat.grouped(1_234_567), "1,234,567")
         XCTAssertEqual(MonitorFormat.rpm(1011.4), "1,011 rpm")

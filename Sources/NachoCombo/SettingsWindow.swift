@@ -9,9 +9,9 @@ final class SettingsWindowController: NSObject {
     private var statusLabels: [ModuleID: NSTextField] = [:]
     private let permissionBox = NSStackView()
     private let permissionLabel = NSTextField(wrappingLabelWithString: "")
-    private let collapseButton = NSButton(title: "숨김 아이콘 접기", target: nil, action: nil)
+    private let collapseButton = NSButton(title: "Collapse Hidden Icons", target: nil, action: nil)
     private var monitorItemBoxes: [MonitorItem: NSButton] = [:]
-    private let publicIPBox = NSButton(checkboxWithTitle: "네트워크 패널을 열 때 공용 IP 자동 조회 (cloudflare.com에 요청)", target: nil, action: nil)
+    private let publicIPBox = NSButton(checkboxWithTitle: "Look up the public IP when the network panel opens (asks cloudflare.com)", target: nil, action: nil)
     var openAccessibilitySettings: (() -> Void)?
     var recheckPermission: (() -> Void)?
     var onMonitorSettingsChanged: ((MonitorSettings) -> Void)?
@@ -46,14 +46,14 @@ final class SettingsWindowController: NSObject {
         let title = NSTextField(labelWithString: "Nacho Combo")
         title.font = NSFont.boldSystemFont(ofSize: 18)
         root.addArrangedSubview(title)
-        let subtitle = NSTextField(wrappingLabelWithString: "기능을 각각 켜고 끌 수 있습니다. 끄면 해당 기능의 감시·이벤트·단축키가 모두 중지됩니다.")
+        let subtitle = NSTextField(wrappingLabelWithString: "Turn each feature on or off. Turning one off stops all of its monitoring, events and hotkeys.")
         subtitle.textColor = .secondaryLabelColor
         root.addArrangedSubview(subtitle)
 
         let hints: [ModuleID: String] = [
-            .menuBar: "구분선(┊) 왼쪽의 아이콘을 접습니다. 숨길 아이콘은 ⌘ 키를 누른 채 구분선 왼쪽으로 끌어 놓습니다. 권한 불필요.",
-            .systemMonitor: "메뉴 막대에 CPU·메모리·디스크·네트워크·센서를 표시하고, 클릭하면 그래프·프로세스·온도·팬·전력 패널을 엽니다(2초 간격). 권한 불필요.",
-            .windowSnap: "⌃⌥← 왼쪽 절반 · ⌃⌥→ 오른쪽 절반 · ⌃⌥↩ 최대화. 손쉬운 사용 권한 필요.",
+            .menuBar: "Collapses the icons left of the divider (┊). To hide an icon, ⌘-drag it left of the divider. No permission needed.",
+            .systemMonitor: "Shows CPU, memory, disk, network and sensors in the menu bar; click one for charts, processes, temperatures, fans and power (every 2 s). No permission needed.",
+            .windowSnap: "⌃⌥← left half · ⌃⌥→ right half · ⌃⌥↩ maximize. Needs Accessibility permission.",
         ]
         for id in ModuleID.allCases {
             let box = NSStackView()
@@ -84,7 +84,7 @@ final class SettingsWindowController: NSObject {
                 let itemsRow = NSStackView()
                 itemsRow.orientation = .horizontal
                 itemsRow.spacing = 10
-                let label = NSTextField(labelWithString: "메뉴 막대 항목:")
+                let label = NSTextField(labelWithString: "Menu bar items:")
                 label.font = NSFont.systemFont(ofSize: 11)
                 label.textColor = .secondaryLabelColor
                 itemsRow.addArrangedSubview(label)
@@ -112,8 +112,8 @@ final class SettingsWindowController: NSObject {
         let buttons = NSStackView()
         buttons.orientation = .horizontal
         buttons.spacing = 8
-        buttons.addArrangedSubview(NSButton(title: "손쉬운 사용 설정 열기", target: self, action: #selector(openSettings)))
-        buttons.addArrangedSubview(NSButton(title: "권한 다시 확인", target: self, action: #selector(recheck)))
+        buttons.addArrangedSubview(NSButton(title: "Open Accessibility Settings", target: self, action: #selector(openSettings)))
+        buttons.addArrangedSubview(NSButton(title: "Check Again", target: self, action: #selector(recheck)))
         permissionBox.addArrangedSubview(permissionLabel)
         permissionBox.addArrangedSubview(buttons)
         root.addArrangedSubview(permissionBox)
@@ -134,7 +134,7 @@ final class SettingsWindowController: NSObject {
         for id in ModuleID.allCases {
             let state = manager.states[id] ?? .off
             checkboxes[id]?.state = manager.settings.isEnabled(id) ? .on : .off
-            var text = "상태: \(state.label)"
+            var text = "Status: \(state.label)"
             var color = NSColor.secondaryLabelColor
             switch state {
             case .running: color = .systemGreen
@@ -149,9 +149,9 @@ final class SettingsWindowController: NSObject {
         for (item, check) in monitorItemBoxes { check.state = monitorSettings.isShown(item) ? .on : .off }
         publicIPBox.state = monitorSettings.publicIPLookup ? .on : .off
         collapseButton.isEnabled = organizer.isRunning
-        collapseButton.title = organizer.collapsed ? "숨김 아이콘 펼치기" : "숨김 아이콘 접기"
+        collapseButton.title = organizer.collapsed ? "Expand Hidden Icons" : "Collapse Hidden Icons"
         if case .needsPermission(let message) = manager.states[.windowSnap] ?? .off {
-            permissionLabel.stringValue = "⚠︎ " + message + "\n허용하기 전까지 창 배치 단축키는 동작하지 않습니다."
+            permissionLabel.stringValue = "⚠︎ " + message + "\nWindow snap hotkeys stay off until it is allowed."
             permissionBox.isHidden = false
         } else {
             permissionBox.isHidden = true

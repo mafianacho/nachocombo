@@ -1,74 +1,74 @@
 # Nacho Combo (MVP)
 
-하나의 macOS 앱에서 세 모듈을 각각 ON/OFF 한다. 타사 앱·코드·브랜드를 사용하지 않는다.
+One macOS app with three modules, each switched on or off on its own. No third-party apps, code or brands are used.
 
-| 모듈 | 내용 | 권한 |
+| Module | What it does | Permission |
 |---|---|---|
-| 메뉴 막대 정리 | 구분선 왼쪽 아이콘 접기/펼치기 ([제약](docs/MENUBAR-CONSTRAINTS.md)) | 없음 |
-| 시스템 모니터 | CPU·메모리·디스크·네트워크·센서 메뉴 막대 항목과 상세 패널 (2초 간격, [아래](#시스템-모니터)) | 없음 |
-| 창 배치 | ⌃⌥← / ⌃⌥→ / ⌃⌥↩ 왼쪽·오른쪽·최대화 | 손쉬운 사용 |
+| Menu Bar Organizer | Collapses / expands the icons left of a divider ([constraints](docs/MENUBAR-CONSTRAINTS.md)) | None |
+| System Monitor | CPU, memory, disk, network and sensor menu bar items with detail panels (every 2 s, [below](#system-monitor)) | None |
+| Window Snap | ⌃⌥← / ⌃⌥→ / ⌃⌥↩ for left half, right half, maximize | Accessibility |
 
-- 대상: macOS 12 (Monterey) 이상, Swift 5.5+ (Package.swift `platforms: .macOS(.v12)`).
-- 설정: `~/Library/Application Support/NachoCombo/settings.json` (기본값은 전부 OFF).
-- OFF 계약: 모듈 `stop()`이 타이머·핫키·상태 아이템을 모두 해제한다. `state.json`(같은 폴더)에 확인용 카운터가 기록된다.
-- 권한 거부: 창 배치를 켰는데 권한이 없으면 아무것도 등록하지 않고 안내(설정 열기 버튼, 재확인)를 표시한다. 우회하지 않는다.
+- Target: macOS 12 (Monterey) or later, Swift 5.5+ (Package.swift `platforms: .macOS(.v12)`).
+- Settings: `~/Library/Application Support/NachoCombo/settings.json` (everything is OFF by default).
+- OFF contract: a module's `stop()` releases all of its timers, hotkeys and status items. Counters for checking this are written to `state.json` in the same folder.
+- Permission denied: when Window Snap is on without permission, nothing is registered and a notice (open settings button, check again) is shown. It is never worked around.
 
-## 시스템 모니터
-메뉴 막대에 항목별 아이템(CPU, 메모리, 디스크, 네트워크, 센서)을 따로 띄우고, 클릭하면 상세 패널을 연다.
-표시할 항목은 설정 창에서 고른다. 패널은 바깥 클릭·Esc·Space 전환으로 닫힌다.
-패널의 카드에 마우스를 올려 두면 카드가 파랗게 강조되고, 패널 왼쪽(공간이 없으면 오른쪽)에 큰 그래프 플라이아웃이 열린다.
-플라이아웃 안으로 마우스를 옮겨 기간이나 지표(제목 옆 ⌃⌄)를 바꿀 수 있고, 카드와 플라이아웃을 모두 벗어나면 닫힌다.
+## System Monitor
+Each metric group (CPU, memory, disk, network, sensors) gets its own menu bar item; clicking one opens a detail panel.
+Pick the items to show in the settings window. A panel closes on an outside click, Esc or a Space change.
+Resting the pointer on a panel card outlines the card in blue and opens a flyout with a larger chart left of the panel (right of it when the screen has no room).
+Move the pointer into the flyout to change its range or metric (⌃⌄ next to the title); it closes once the pointer leaves both the card and the flyout.
 
-| 패널 | 내용 |
+| Panel | Contents |
 |---|---|
-| CPU | 사용자/시스템 히스토리, 코어별 게이지(효율 코어 분홍·성능 코어 파랑), 상위 프로세스, GPU(사용률·메모리·온도·클럭), 평균 부하, 가동시간 |
-| 메모리 | 압력·사용량 링(앱·와이어드·압축됨), 상위 프로세스, 페이지 입출력, 스왑 사용량 |
-| 디스크 | 시동 볼륨 사용량, 읽기/쓰기 속도와 히스토리, 기간 내 최고치, 부팅 후 누적, 프로세스별 R/W |
-| 네트워크 | 업로드/다운로드 속도와 히스토리, 인터페이스, 공용 IP(옵트인), 로컬 IP, 프로세스별 ↑/↓ |
-| 센서 | CPU/GPU 온도·클럭, 팬, 온도 센서 목록, 총 전력 히스토리 |
+| CPU | User / system history, per-core gauges (efficiency cores pink, performance cores blue), top processes, GPU (utilization, memory, temperature, clock), load average, uptime |
+| Memory | Pressure and usage rings (app, wired, compressed), top processes, page ins / outs, swap used |
+| Disk | Startup volume usage, read / write rates and history, peaks in the period, totals since boot, per-process R / W |
+| Network | Upload / download rates and history, interfaces, public IP (opt-in), local IPs, per-process ↑ / ↓ |
+| Sensors | CPU / GPU temperature and clock, fans, temperature sensor list, total power history |
 
-| 카드 | 플라이아웃 |
+| Card | Flyout |
 |---|---|
-| CPU 그래프 | 사용자/시스템 히스토리와 기간 평균 |
-| 코어 | 성능 코어 / 효율 코어 평균 히스토리 |
-| GPU | 프로세서 / 메모리 / 온도 / 클럭 히스토리 |
-| 평균 부하 | 1분 / 5분 / 15분 히스토리 |
-| 메모리 링 | 메모리 압력 / 사용량 히스토리 |
-| 앱·와이어드·압축됨 | 구성별 누적 히스토리 |
-| 페이지 입출력 · 스왑 | 입력/출력 속도, 사용된 스왑 공간 히스토리 |
-| 시동 볼륨 | 사용됨·제거 가능·여유 링, SSD 건강(NVMe SMART 수명)과 온도 |
-| 디스크 활성 상태 | 읽기/쓰기 히스토리, 기간 내 최고치, 부팅 후 누적 |
-| 네트워크 | 업로드/다운로드 히스토리, 기간 내 최고치 |
-| 센서 링 · 전원 · 팬 | CPU/GPU 온도·팬 속도, 총 전력, 팬 속도 히스토리 |
+| CPU chart | User / system history with period averages |
+| Cores | Performance / efficiency core average history |
+| GPU | Processor / memory / temperature / clock history |
+| Load average | 1 / 5 / 15 min history |
+| Memory rings | Memory pressure / usage history |
+| App, wired, compressed | Stacked history by category |
+| Page ins / outs, swap | Paging rates, swap used history |
+| Startup volume | Used / purgeable / free ring, SSD health (NVMe SMART endurance) and temperature |
+| Disk activity | Read / write history, peaks in the period, totals since boot |
+| Network | Upload / download history, peaks in the period |
+| Sensor rings, power, fans | CPU / GPU temperature and fan speed, total power, fan speed history |
 
-- 히스토리 그래프 기간: 10분 / 1시간 / 3시간 / 24시간(그래프마다 선택, 설정에 저장. 플라이아웃은 패널 그래프와 따로 저장). 히스토리는 메모리에만 24시간 보관하고 재시작하면 비워진다.
-- 데이터 출처와 한계:
-  - 공개 API: Mach 호스트 통계(CPU·메모리), sysctl(압력·스왑·부하), IOKit 레지스트리(디스크 누적량, GPU 사용률), getifaddrs·SystemConfiguration(네트워크).
-  - 프로세스 통계는 `proc_pid_rusage`로 **내 계정 소유 프로세스만** 집계한다(root 소유 프로세스는 macOS가 거부). 도우미 프로세스는 앱 번들 단위로 합산한다.
-  - 프로세스별 네트워크는 `/usr/bin/nettop` 단발 스냅샷을 네트워크 패널이 열려 있을 때만 2초마다 실행해 차이를 계산한다.
-  - 온도·팬·전력은 SMC 키(비문서화)를, CPU/GPU 클럭은 비공개 라이브러리 IOReport(dlopen)를 읽는다. 없거나 실패하면 "–"로 표시하고 다른 기능에는 영향이 없다.
-  - SSD 건강·온도는 공개 헤더 `IOKit/storage/nvme/NVMeSMARTLibExternal.h`의 NVMe SMART 인터페이스로 읽는다(권한 불필요). 건강 = 100 − 수명 사용률. 디스크 패널이 열려 있을 때만 1분마다 읽는다.
-    코어별 온도 이름은 키 배치를 확인한 M1 Pro/M1 Max에서만 붙이고, 다른 Apple 실리콘은 CPU 평균·최고로 표시한다. 클럭 표는 M1 Pro에서 검증했다.
-  - 공용 IP는 외부 요청(`https://www.cloudflare.com/cdn-cgi/trace`)이므로 기본 OFF다. 패널의 "확인" 버튼 또는 설정의 자동 조회를 켰을 때만 요청한다.
+- Chart ranges: 10 min / 1 hour / 3 hours / 24 hours (chosen per chart and saved in the settings; flyouts are saved separately from the panel charts). History is kept in memory only, for 24 hours, and is cleared on restart.
+- Data sources and limits:
+  - Public APIs: Mach host statistics (CPU, memory), sysctl (pressure, swap, load), the IOKit registry (disk totals, GPU utilization), getifaddrs and SystemConfiguration (network).
+  - Process statistics use `proc_pid_rusage` and count **only processes owned by your account** (macOS refuses root-owned ones). Helper processes are summed per app bundle.
+  - Per-process network traffic runs a single `/usr/bin/nettop` snapshot every 2 s, only while the network panel is open, and diffs the results.
+  - Temperatures, fans and power come from (undocumented) SMC keys; CPU / GPU clocks from the private IOReport library (dlopen). Anything missing or failing shows "–" and does not affect the rest.
+    Per-core temperature names are used only on M1 Pro / M1 Max, where the key layout was checked; other Apple silicon shows the CPU average and maximum. The clock table was verified on M1 Pro.
+  - SSD health and temperature come from the NVMe SMART interface in the public header `IOKit/storage/nvme/NVMeSMARTLibExternal.h` (no permission needed). Health = 100 − endurance used. It is read only while the disk panel is open, once a minute.
+  - The public IP is an external request (`https://www.cloudflare.com/cdn-cgi/trace`), so it is OFF by default. It is requested only from the panel's "Look Up" button or when auto lookup is turned on in the settings.
 
-## 설치 (릴리즈)
-- [Releases](../../releases)에서 `NachoCombo-<버전>-macos.zip` 또는 `.dmg`와 `SHA256SUMS.txt`를 받는다. 유니버설 바이너리(Apple Silicon + Intel), macOS 12 이상.
-- 검증: `shasum -a 256 -c SHA256SUMS.txt`
-- **서명 한계: ad-hoc 서명이며 Apple Developer ID 서명·공증(notarization)이 없다.** 처음 실행하면 Gatekeeper가 막는다.
-  앱을 우클릭 → 열기 → 열기, 또는 시스템 설정 ▸ 개인정보 보호 및 보안에서 허용한다. 업데이트·재빌드하면 코드 서명이 바뀌므로
-  창 배치의 손쉬운 사용 권한을 다시 허용해야 한다.
-- 릴리즈는 `v0.1.0` 형식 태그를 푸시하면 GitHub Actions(`.github/workflows/release.yml`)가 macOS 러너에서 빌드·패키징해 자동 생성한다.
+## Install (release)
+- Download `NachoCombo-<version>-macos.zip` or `.dmg` and `SHA256SUMS.txt` from [Releases](../../releases). Universal binary (Apple Silicon + Intel), macOS 12 or later.
+- Verify: `shasum -a 256 -c SHA256SUMS.txt`
+- **Signing limits: the app is ad-hoc signed, without an Apple Developer ID signature or notarization.** Gatekeeper blocks the first launch.
+  Right-click the app → Open → Open, or allow it in System Settings ▸ Privacy & Security. Updating or rebuilding changes the code signature,
+  so Window Snap's Accessibility permission has to be granted again.
+- Releases are created automatically: pushing a tag like `v0.1.0` makes GitHub Actions (`.github/workflows/release.yml`) build and package the app on a macOS runner.
 
-## 빌드 / 시험
-- macOS: `scripts/build-app.sh` → `build/NachoCombo.app` (ad-hoc 서명). 실행 `open build/NachoCombo.app`.
-  유니버설 빌드 `UNIVERSAL=1`, 버전 지정 `VERSION=x.y.z`, 패키징 `VERSION=x.y.z scripts/package.sh` (zip·dmg·SHA256SUMS → `dist/`).
-- Core 단위시험(Linux/macOS 공통): `swift test` (Linux에서는 AppKit 타깃이 매니페스트에서 제외됨).
-- 디버그 제어 채널: `NachoCombo --debug-ctl`로 실행 후 `NachoCombo ctl set systemMonitor off|on`, `ctl collapse on|off`,
-  `ctl snap left|right|maximize`, `ctl dump`, `ctl quit`. 상태 JSON을 출력한다. 릴리스 사용 대상 아님.
-  - 시스템 모니터: `ctl monitor show cpu|memory|disk|network|sensors`, `ctl monitor hide`, `ctl monitor items cpu,network`,
+## Build / test
+- macOS: `scripts/build-app.sh` → `build/NachoCombo.app` (ad-hoc signed). Run it with `open build/NachoCombo.app`.
+  Universal build `UNIVERSAL=1`, version `VERSION=x.y.z`, packaging `VERSION=x.y.z scripts/package.sh` (zip, dmg, SHA256SUMS → `dist/`).
+- Core unit tests (Linux and macOS): `swift test` (on Linux the manifest leaves out the AppKit target).
+- Debug control channel: start with `NachoCombo --debug-ctl`, then `NachoCombo ctl set systemMonitor off|on`, `ctl collapse on|off`,
+  `ctl snap left|right|maximize`, `ctl dump`, `ctl quit`. Prints the state JSON. Not meant for release use.
+  - System Monitor: `ctl monitor show cpu|memory|disk|network|sensors`, `ctl monitor hide`, `ctl monitor items cpu,network`,
     `ctl monitor range <cpu|disk|network|power|flyout.*> <600|3600|10800|86400>`, `ctl monitor publicip`,
-    `ctl monitor snapshot <항목> <파일.png> [light]`(패널을 PNG로 렌더), `ctl monitor menubar <파일.png> [light]`, `ctl settings snapshot <파일.png>`.
-  - 플라이아웃: `ctl monitor hover <n>`(열린 패널의 n번째 호버 카드 플라이아웃을 연다), `ctl monitor flyout <항목> <n> <파일.png> [light]`(패널과 플라이아웃을 나란히 PNG로 렌더).
+    `ctl monitor snapshot <item> <file.png> [light]` (renders a panel as PNG), `ctl monitor menubar <file.png> [light]`, `ctl settings snapshot <file.png>`.
+  - Flyouts: `ctl monitor hover <n>` (opens the flyout of the open panel's n-th hover card), `ctl monitor flyout <item> <n> <file.png> [light]` (renders the panel and the flyout side by side as PNG).
 
-## 라이선스
-[MIT](LICENSE) © 2026 Mafianacho (마피아나초). "Nacho Combo" 이름과 로고는 이 라이선스의 허락 대상이 아니다.
+## License
+[MIT](LICENSE) © 2026 Mafianacho. The "Nacho Combo" name and logo are not covered by this license.

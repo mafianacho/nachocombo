@@ -316,7 +316,7 @@ final class MonitorEngine {
         }
         s.fans = fanLimits.enumerated().compactMap { i, limits in
             guard let rpm = smc.read("F\(i)Ac") else { return nil }
-            return FanReading(label: "팬 \(i + 1)", rpm: max(0, rpm),
+            return FanReading(label: "Fan \(i + 1)", rpm: max(0, rpm),
                               percent: SystemMath.fanPercent(rpm: rpm, minimum: limits.min, maximum: limits.max))
         }
         s.power = smc.read("PSTR").flatMap { $0 > 0 && $0 < 2000 ? $0 : nil }
@@ -438,7 +438,7 @@ final class MonitorEngine {
                 if let parsed = parsed {
                     self.snapshot.publicIP = .value(ip: parsed.ip, country: parsed.country)
                 } else {
-                    self.snapshot.publicIP = .failed(error?.localizedDescription ?? "응답을 해석하지 못했습니다")
+                    self.snapshot.publicIP = .failed(error?.localizedDescription ?? "Could not read the response")
                 }
                 self.onSample?()
             }

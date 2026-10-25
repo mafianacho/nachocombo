@@ -89,20 +89,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.addItem(.separator())
         if organizer.isRunning {
-            let title = organizer.collapsed ? "숨김 아이콘 펼치기" : "숨김 아이콘 접기"
+            let title = organizer.collapsed ? "Expand Hidden Icons" : "Collapse Hidden Icons"
             let item = NSMenuItem(title: title, action: #selector(menuCollapse), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
         }
         if case .needsPermission = manager.states[.windowSnap] ?? .off {
-            let item = NSMenuItem(title: "손쉬운 사용 권한 안내 열기…", action: #selector(menuOpenAccessibility), keyEquivalent: "")
+            let item = NSMenuItem(title: "Accessibility Permission Help…", action: #selector(menuOpenAccessibility), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
         }
-        let settings = NSMenuItem(title: "설정…", action: #selector(menuSettings), keyEquivalent: ",")
+        let settings = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
-        let quit = NSMenuItem(title: "Nacho Combo 종료", action: #selector(menuQuit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit Nacho Combo", action: #selector(menuQuit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
         mainItem.menu = menu

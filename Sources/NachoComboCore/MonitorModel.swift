@@ -7,10 +7,10 @@ public enum MonitorItem: String, Codable, CaseIterable {
     public var displayName: String {
         switch self {
         case .cpu: return "CPU"
-        case .memory: return "메모리"
-        case .disk: return "디스크"
-        case .network: return "네트워크"
-        case .sensors: return "센서"
+        case .memory: return "Memory"
+        case .disk: return "Disk"
+        case .network: return "Network"
+        case .sensors: return "Sensors"
         }
     }
 }
@@ -26,10 +26,10 @@ public enum ChartRange: Int, CaseIterable {
     public var seconds: Double { Double(rawValue) }
     public var label: String {
         switch self {
-        case .tenMinutes: return "10분"
-        case .oneHour: return "1시간"
-        case .threeHours: return "3시간"
-        case .oneDay: return "24시간"
+        case .tenMinutes: return "10 min"
+        case .oneHour: return "1 hour"
+        case .threeHours: return "3 hours"
+        case .oneDay: return "24 hours"
         }
     }
 }

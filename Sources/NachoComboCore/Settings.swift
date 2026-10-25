@@ -55,7 +55,7 @@ public final class SettingsStore {
             return settings
         } catch {
             // A corrupt file must not block the app. Keep a copy for inspection and start from defaults.
-            lastLoadProblem = "설정 파일을 읽지 못해 기본값을 사용합니다: \(error)"
+            lastLoadProblem = "Could not read the settings file, using defaults: \(error)"
             let backup = url.appendingPathExtension("corrupt")
             try? FileManager.default.removeItem(at: backup)
             try? FileManager.default.moveItem(at: url, to: backup)

@@ -15,12 +15,12 @@ public enum MonitorFormat {
     }
 
 
-    /// "48 KB/초", "24.6 MB/초".
+    /// "48 KB/s", "24.6 MB/s".
     public static func rate(_ bytesPerSecond: Double) -> String {
         let v = Swift.max(0, bytesPerSecond)
-        if v < 1_048_576 { return String(format: "%.0f KB/초", v / 1024) }
-        if v < 1_073_741_824 { return String(format: "%.1f MB/초", v / 1_048_576) }
-        return String(format: "%.2f GB/초", v / 1_073_741_824)
+        if v < 1_048_576 { return String(format: "%.0f KB/s", v / 1024) }
+        if v < 1_073_741_824 { return String(format: "%.1f MB/s", v / 1_048_576) }
+        return String(format: "%.2f GB/s", v / 1_073_741_824)
     }
 
     /// Narrow process column: "9K", "293K", "2.2M"; values below one byte show `zero`.
@@ -33,13 +33,14 @@ public enum MonitorFormat {
 
     public static func percent(_ value: Double) -> String { String(format: "%.0f%%", Swift.max(0, value)) }
 
-    /// "11일 5시간", "3시간 12분", "7분".
+    /// "11 days, 5 hours", "1 hour, 12 min", "7 min".
     public static func uptime(_ seconds: Double) -> String {
         let minutesTotal = Int(Swift.max(0, seconds)) / 60
         let days = minutesTotal / 1440, hours = (minutesTotal % 1440) / 60, minutes = minutesTotal % 60
-        if days > 0 { return "\(days)일 \(hours)시간" }
-        if hours > 0 { return "\(hours)시간 \(minutes)분" }
-        return "\(minutes)분"
+        func count(_ n: Int, _ unit: String) -> String { "\(n) \(unit)" + (n == 1 ? "" : "s") }
+        if days > 0 { return count(days, "day") + ", " + count(hours, "hour") }
+        if hours > 0 { return count(hours, "hour") + ", \(minutes) min" }
+        return "\(minutes) min"
     }
 
     public static func gigahertz(_ mhz: Double) -> String { String(format: "%.2f GHz", mhz / 1000) }

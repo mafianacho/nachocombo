@@ -6,10 +6,10 @@ enum WindowSnapError: Error, CustomStringConvertible {
     case notTrusted, noTargetApp, noFocusedWindow, attribute(String)
     var description: String {
         switch self {
-        case .notTrusted: return "손쉬운 사용 권한이 없습니다"
-        case .noTargetApp: return "대상 앱이 없습니다"
-        case .noFocusedWindow: return "대상 창이 없습니다"
-        case .attribute(let name): return "창 속성을 바꾸지 못했습니다: \(name)"
+        case .notTrusted: return "Accessibility permission is missing"
+        case .noTargetApp: return "No target app"
+        case .noFocusedWindow: return "No target window"
+        case .attribute(let name): return "Could not change the window attribute: \(name)"
         }
     }
 }
@@ -18,7 +18,7 @@ enum WindowSnapError: Error, CustomStringConvertible {
 final class WindowSnapModule: NSObject, FeatureModule {
     let id = ModuleID.windowSnap
     static let permissionMessage =
-        "창을 움직이려면 시스템 설정(Monterey: 시스템 환경설정) ▸ 보안 및 개인 정보 보호 ▸ 손쉬운 사용에서 Nacho Combo를 허용해야 합니다."
+        "To move windows, allow Nacho Combo in System Settings ▸ Privacy & Security ▸ Accessibility (Monterey: System Preferences ▸ Security & Privacy ▸ Privacy ▸ Accessibility)."
 
     private let hotKeys = HotKeyCenter()
     private(set) var snapCount = 0
@@ -50,7 +50,7 @@ final class WindowSnapModule: NSObject, FeatureModule {
         }
         if !failures.isEmpty {
             hotKeys.unregisterAll()
-            return .failed("단축키 등록 실패(다른 앱과 충돌 가능): " + failures.joined(separator: ", "))
+            return .failed("Could not register hotkeys (another app may use them): " + failures.joined(separator: ", "))
         }
         return .running
     }

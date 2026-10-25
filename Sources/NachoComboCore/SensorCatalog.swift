@@ -76,34 +76,34 @@ public enum SensorCatalog {
             }
         }
         if chip.contains("M1 Pro") || chip.contains("M1 Max") {
-            numbered(m1ProPerformance, "CPU 성능 코어", .cpuPerformance)
-            numbered(m1ProEfficiency, "CPU 효율 코어", .cpuEfficiency)
-            numbered(m1ProGPU, "그래픽", .gpu)
+            numbered(m1ProPerformance, "CPU Performance Core", .cpuPerformance)
+            numbered(m1ProEfficiency, "CPU Efficiency Core", .cpuEfficiency)
+            numbered(m1ProGPU, "GPU", .gpu)
         } else if chip.hasPrefix("Apple") {
             let cpu = keys.filter { $0.hasPrefix("Tp") || $0.hasPrefix("Te") }.sorted()
             if !cpu.isEmpty {
-                defs.append(SensorDefinition(label: "CPU 평균", group: .cpu, keys: cpu, combine: .mean))
-                defs.append(SensorDefinition(label: "CPU 최고", group: .cpu, keys: cpu, combine: .max, summarized: false))
+                defs.append(SensorDefinition(label: "CPU Average", group: .cpu, keys: cpu, combine: .mean))
+                defs.append(SensorDefinition(label: "CPU Max", group: .cpu, keys: cpu, combine: .max, summarized: false))
             }
             let gpu = keys.filter { $0.hasPrefix("Tg") }.sorted()
-            if !gpu.isEmpty { defs.append(SensorDefinition(label: "그래픽 평균", group: .gpu, keys: gpu, combine: .mean)) }
+            if !gpu.isEmpty { defs.append(SensorDefinition(label: "GPU Average", group: .gpu, keys: gpu, combine: .mean)) }
         } else {
-            if keys.contains("TC0P") { defs.append(SensorDefinition(label: "CPU 근접", group: .cpu, keys: ["TC0P"])) }
+            if keys.contains("TC0P") { defs.append(SensorDefinition(label: "CPU Proximity", group: .cpu, keys: ["TC0P"])) }
             let die = ["TC0D", "TC0E", "TC0F"].filter { keys.contains($0) }
-            if !die.isEmpty { defs.append(SensorDefinition(label: "CPU 다이", group: .cpu, keys: die, combine: .max)) }
-            numbered((1...9).map { "TC\($0)C" }, "CPU 코어", .cpuPerformance)
+            if !die.isEmpty { defs.append(SensorDefinition(label: "CPU Die", group: .cpu, keys: die, combine: .max)) }
+            numbered((1...9).map { "TC\($0)C" }, "CPU Core", .cpuPerformance)
             let gpu = ["TG0D", "TG0P"].filter { keys.contains($0) }
-            if !gpu.isEmpty { defs.append(SensorDefinition(label: "그래픽", group: .gpu, keys: gpu, combine: .max)) }
-            if keys.contains("TM0P") { defs.append(SensorDefinition(label: "메모리", group: .memory, keys: ["TM0P"])) }
+            if !gpu.isEmpty { defs.append(SensorDefinition(label: "GPU", group: .gpu, keys: gpu, combine: .max)) }
+            if keys.contains("TM0P") { defs.append(SensorDefinition(label: "Memory", group: .memory, keys: ["TM0P"])) }
         }
         let ssd = ["TH0x", "TH0a", "TH0b"].filter { keys.contains($0) }
         if !ssd.isEmpty { defs.append(SensorDefinition(label: storageName ?? "SSD", group: .storage, keys: ssd, combine: .max)) }
         let battery = ["TB0T", "TB1T", "TB2T"].filter { keys.contains($0) }
-        if !battery.isEmpty { defs.append(SensorDefinition(label: "배터리", group: .battery, keys: battery, combine: .max)) }
-        if keys.contains("TW0P") { defs.append(SensorDefinition(label: "무선 모듈", group: .wireless, keys: ["TW0P"])) }
-        numbered(["Ts0P", "Ts1P"], "손목 받침대", .palmRest)
-        numbered(["TaLP", "TaLT", "TaLW"], "왼쪽 공기 흐름", .airflow)
-        numbered(["TaRF", "TaRT", "TaRW"], "오른쪽 공기 흐름", .airflow)
+        if !battery.isEmpty { defs.append(SensorDefinition(label: "Battery", group: .battery, keys: battery, combine: .max)) }
+        if keys.contains("TW0P") { defs.append(SensorDefinition(label: "Wireless Module", group: .wireless, keys: ["TW0P"])) }
+        numbered(["Ts0P", "Ts1P"], "Palm Rest", .palmRest)
+        numbered(["TaLP", "TaLT", "TaLW"], "Left Airflow", .airflow)
+        numbered(["TaRF", "TaRT", "TaRW"], "Right Airflow", .airflow)
         return defs
     }
 

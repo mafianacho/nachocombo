@@ -6,12 +6,12 @@ enum PanelAction {
 
     var tooltip: String {
         switch self {
-        case .activityMonitor: return "활성 상태 보기 열기"
-        case .systemInformation: return "시스템 정보 열기"
-        case .terminal: return "터미널 열기"
-        case .diskUtility: return "디스크 유틸리티 열기"
-        case .networkSettings: return "네트워크 설정 열기"
-        case .settings: return "Nacho Combo 설정"
+        case .activityMonitor: return "Open Activity Monitor"
+        case .systemInformation: return "Open System Information"
+        case .terminal: return "Open Terminal"
+        case .diskUtility: return "Open Disk Utility"
+        case .networkSettings: return "Open Network Settings"
+        case .settings: return "Nacho Combo Settings"
         }
     }
 
@@ -112,7 +112,7 @@ class MonitorContent {
 
 /// Content of one dropdown panel.
 class PanelContent: MonitorContent {
-    static let processFootnote = "macOS 권한상 내 계정의 프로세스만 집계됩니다"
+    static let processFootnote = "macOS limits this list to your own processes"
 
     let item: MonitorItem
     /// Cards that open a detail flyout while the pointer rests on them, top to bottom.
@@ -154,7 +154,7 @@ class PanelContent: MonitorContent {
         }
     }
 
-    func processPlaceholder(_ sampled: Bool) -> String { sampled ? "활동 중인 프로세스가 없습니다" : "수집 중…" }
+    func processPlaceholder(_ sampled: Bool) -> String { sampled ? "No active processes" : "Collecting…" }
 }
 
 // MARK: - CPU
@@ -164,15 +164,15 @@ final class CPUPanelContent: PanelContent {
     private let chart = ChartElement(style: .stacked, fixedMax: 100) { [MonitorStyle.blue, MonitorStyle.pink] }
     private let legend = PairElement()
     private let cores = CoreGridElement()
-    private let efficiencyRow = RowElement("효율 코어", dot: { MonitorStyle.pink })
-    private let performanceRow = RowElement("성능 코어", dot: { MonitorStyle.blue })
+    private let efficiencyRow = RowElement("Efficiency Cores", dot: { MonitorStyle.pink })
+    private let performanceRow = RowElement("Performance Cores", dot: { MonitorStyle.blue })
     private let processes = ProcessListElement(columns: [], footnote: PanelContent.processFootnote)
     private let gpuHeader = HeaderElement("GPU")
     private let gpuRings = RingsElement(diameter: 56, lineWidth: 5, centerSize: 12)
-    private let gpuMemory = RowElement("GPU 메모리 사용")
+    private let gpuMemory = RowElement("GPU Memory Used")
     private var gpuCard: StackElement!
-    private let load = HeaderElement("평균 부하")
-    private let uptime = HeaderElement("컴퓨터 가동시간")
+    private let load = HeaderElement("Load Average")
+    private let uptime = HeaderElement("Uptime")
 
     init(context: PanelContext) {
         super.init(item: .cpu, context: context)
@@ -196,12 +196,12 @@ final class CPUPanelContent: PanelContent {
         header.detail = [s.cpuMHz.map { MonitorFormat.gigahertz($0) }, s.cpuTemperature.map { MonitorFormat.temperature($0) }]
             .compactMap { $0 }.joined(separator: ", ")
         plot(chart, engine.cpuHistory, chart: "cpu")
-        legend.left = .init(color: MonitorStyle.blue, label: "사용자", value: PanelContent.percent(s.cpu?.user))
-        legend.right = .init(color: MonitorStyle.pink, label: "시스템", value: PanelContent.percent(s.cpu?.system))
+        legend.left = .init(color: MonitorStyle.blue, label: "User", value: PanelContent.percent(s.cpu?.user))
+        legend.right = .init(color: MonitorStyle.pink, label: "System", value: PanelContent.percent(s.cpu?.system))
         cores.cores = s.cores
         efficiencyRow.value = PanelContent.percent(s.efficiencyAverage)
         setHidden(efficiencyRow, s.efficiencyAverage == nil)
-        performanceRow.label = s.efficiencyAverage == nil ? "코어 평균" : "성능 코어"
+        performanceRow.label = s.efficiencyAverage == nil ? "Core Average" : "Performance Cores"
         performanceRow.value = PanelContent.percent(s.performanceAverage)
 
         let top = ProcessGrouping.top(s.processes, count: processes.maxRows) { $0.cpuPercent }
@@ -217,8 +217,8 @@ final class CPUPanelContent: PanelContent {
             let mhz = s.gpuMHz
             gpuRings.rings = [
                 .init(segments: [(utilization / 100, MonitorStyle.blue)], center: MonitorFormat.percent(utilization), bottom: "GPU"),
-                .init(segments: [(memoryFraction ?? 0, MonitorStyle.blue)], center: PanelContent.percent(memoryFraction.map { $0 * 100 }), bottom: "메모리"),
-                .init(segments: [((s.gpuTemperature ?? 0) / 100, MonitorStyle.blue)], center: PanelContent.temperature(s.gpuTemperature), bottom: "온도"),
+                .init(segments: [(memoryFraction ?? 0, MonitorStyle.blue)], center: PanelContent.percent(memoryFraction.map { $0 * 100 }), bottom: "Memory"),
+                .init(segments: [((s.gpuTemperature ?? 0) / 100, MonitorStyle.blue)], center: PanelContent.temperature(s.gpuTemperature), bottom: "Temp"),
                 .init(segments: [((mhz ?? 0) / max(1, engine.gpuMaxMHz ?? 1300), MonitorStyle.blue)],
                       center: mhz.map { String(format: "%.2f", $0 / 1000) } ?? "–", bottom: "GHz"),
             ]
@@ -236,14 +236,14 @@ final class CPUPanelContent: PanelContent {
 
 final class MemoryPanelContent: PanelContent {
     private let rings = RingsElement(diameter: 96, lineWidth: 9, centerSize: 21)
-    private let appRow = RowElement("앱", dot: { MonitorStyle.blue })
-    private let wiredRow = RowElement("와이어드", dot: { MonitorStyle.pink })
-    private let compressedRow = RowElement("압축됨", dot: { MonitorStyle.yellow })
-    private let freeRow = RowElement("여유", dot: { MonitorStyle.gray })
+    private let appRow = RowElement("App", dot: { MonitorStyle.blue })
+    private let wiredRow = RowElement("Wired", dot: { MonitorStyle.pink })
+    private let compressedRow = RowElement("Compressed", dot: { MonitorStyle.yellow })
+    private let freeRow = RowElement("Free", dot: { MonitorStyle.gray })
     private let processes = ProcessListElement(columns: [], footnote: PanelContent.processFootnote)
-    private let pageIn = RowElement("페이지 입력")
-    private let pageOut = RowElement("페이지 출력")
-    private let swapHeader = HeaderElement("사용된 스왑 공간")
+    private let pageIn = RowElement("Page Ins")
+    private let pageOut = RowElement("Page Outs")
+    private let swapHeader = HeaderElement("Swap Used")
     private let swapBar = ProgressElement()
 
     init(context: PanelContext) {
@@ -263,10 +263,10 @@ final class MemoryPanelContent: PanelContent {
         if let m = s.memory {
             rings.rings = [
                 .init(segments: [((s.pressure ?? 0) / 100, MonitorStyle.pressureColor(level: s.pressureLevel))],
-                      center: PanelContent.percent(s.pressure), bottom: "압력"),
+                      center: PanelContent.percent(s.pressure), bottom: "Pressure"),
                 .init(segments: [(m.fraction(m.app), MonitorStyle.blue), (m.fraction(m.wired), MonitorStyle.pink),
                                  (m.fraction(m.compressed), MonitorStyle.yellow)],
-                      center: MonitorFormat.percent(m.usedPercent), bottom: "메모리", roundCaps: false),
+                      center: MonitorFormat.percent(m.usedPercent), bottom: "Memory", roundCaps: false),
             ]
             appRow.value = MonitorFormat.size(Double(m.app))
             wiredRow.value = MonitorFormat.size(Double(m.wired))
@@ -288,8 +288,8 @@ final class MemoryPanelContent: PanelContent {
 final class DiskPanelContent: PanelContent {
     private let volume = VolumeElement()
     private var header: HeaderElement!
-    private let big = BigValuesElement(left: .init(value: "–", label: "읽기", color: { MonitorStyle.pink }),
-                                       right: .init(value: "–", label: "쓰기", color: { MonitorStyle.blue }))
+    private let big = BigValuesElement(left: .init(value: "–", label: "Read", color: { MonitorStyle.pink }),
+                                       right: .init(value: "–", label: "Write", color: { MonitorStyle.blue }))
     private let chart = ChartElement(style: .mirrored, minimumScale: 256 * 1024) { [MonitorStyle.pink, MonitorStyle.blue] }
     private let peaks = PairElement()
     private let totals = PairElement()
@@ -297,7 +297,7 @@ final class DiskPanelContent: PanelContent {
 
     init(context: PanelContext) {
         super.init(item: .disk, context: context)
-        header = rangeHeader("디스크 활성 상태", chart: "disk")
+        header = rangeHeader("Disk Activity", chart: "disk")
         setCards([
             hover(StackElement([volume], insets: NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10))) { VolumeFlyout(context: $0) },
             hover(StackElement([header, big, chart, peaks, totals]), Flyouts.diskActivity),
@@ -311,16 +311,16 @@ final class DiskPanelContent: PanelContent {
         if let v = s.volume {
             volume.name = v.name
             volume.percent = v.usedPercent
-            volume.subtitle = MonitorFormat.size(Double(v.available), decimal: true) + " 사용 가능 / "
+            volume.subtitle = MonitorFormat.size(Double(v.available), decimal: true) + " available of "
                 + MonitorFormat.size(Double(v.total), decimal: true)
         }
         big.left.value = s.diskRead.map { MonitorFormat.rate($0) } ?? "–"
         big.right.value = s.diskWrite.map { MonitorFormat.rate($0) } ?? "–"
         plot(chart, engine.diskHistory, chart: "disk")
-        peaks.left = .init(color: nil, label: "최고 읽기", value: MonitorFormat.rate(peak(engine.diskHistory, channel: 0, chart: "disk")))
-        peaks.right = .init(color: nil, label: "최고 쓰기", value: MonitorFormat.rate(peak(engine.diskHistory, channel: 1, chart: "disk")))
-        totals.left = .init(color: nil, label: "데이터 읽기", value: MonitorFormat.size(Double(s.diskReadTotal)))
-        totals.right = .init(color: nil, label: "데이터 쓰기", value: MonitorFormat.size(Double(s.diskWriteTotal)))
+        peaks.left = .init(color: nil, label: "Peak Read", value: MonitorFormat.rate(peak(engine.diskHistory, channel: 0, chart: "disk")))
+        peaks.right = .init(color: nil, label: "Peak Write", value: MonitorFormat.rate(peak(engine.diskHistory, channel: 1, chart: "disk")))
+        totals.left = .init(color: nil, label: "Data Read", value: MonitorFormat.size(Double(s.diskReadTotal)))
+        totals.right = .init(color: nil, label: "Data Written", value: MonitorFormat.size(Double(s.diskWriteTotal)))
         let top = ProcessGrouping.top(s.processes, count: processes.maxRows) { $0.diskRead + $0.diskWrite }
         processes.rows = processRows(top) { [MonitorFormat.compact($0.diskRead), MonitorFormat.compact($0.diskWrite)] }
         processes.placeholder = processPlaceholder(s.processesSampled)
@@ -331,13 +331,13 @@ final class DiskPanelContent: PanelContent {
 
 final class NetworkPanelContent: PanelContent {
     private var header: HeaderElement!
-    private let big = BigValuesElement(left: .init(value: "–", label: "업로드", color: { MonitorStyle.pink }),
-                                       right: .init(value: "–", label: "다운로드", color: { MonitorStyle.blue }))
+    private let big = BigValuesElement(left: .init(value: "–", label: "Upload", color: { MonitorStyle.pink }),
+                                       right: .init(value: "–", label: "Download", color: { MonitorStyle.blue }))
     private let chart = ChartElement(style: .mirrored, minimumScale: 16 * 1024) { [MonitorStyle.pink, MonitorStyle.blue] }
     private let peaks = PairElement()
     private let totals = PairElement()
     private let interfacesCard = StackElement([], spacing: 2)
-    private let publicHeader = HeaderElement("공용 IP 주소")
+    private let publicHeader = HeaderElement("Public IP Address")
     private let publicRow = ActionRowElement()
     private let addressCard = StackElement([], spacing: 2)
     private let processes = ProcessListElement(columns: ["↑", "↓"])
@@ -345,7 +345,7 @@ final class NetworkPanelContent: PanelContent {
 
     init(context: PanelContext) {
         super.init(item: .network, context: context)
-        header = rangeHeader("네트워크", chart: "network")
+        header = rangeHeader("Network", chart: "network")
         publicRow.onPress = context.lookupPublicIP
         setCards([
             hover(StackElement([header, big, chart, peaks, totals]), Flyouts.network),
@@ -362,10 +362,10 @@ final class NetworkPanelContent: PanelContent {
         big.left.value = s.netUp.map { MonitorFormat.rate($0) } ?? "–"
         big.right.value = s.netDown.map { MonitorFormat.rate($0) } ?? "–"
         plot(chart, engine.networkHistory, chart: "network")
-        peaks.left = .init(color: nil, label: "최고 업로드", value: MonitorFormat.rate(peak(engine.networkHistory, channel: 0, chart: "network")))
-        peaks.right = .init(color: nil, label: "최고 다운로드", value: MonitorFormat.rate(peak(engine.networkHistory, channel: 1, chart: "network")))
-        totals.left = .init(color: nil, label: "부팅 후 ↑", value: MonitorFormat.size(Double(s.netUpTotal)))
-        totals.right = .init(color: nil, label: "부팅 후 ↓", value: MonitorFormat.size(Double(s.netDownTotal)))
+        peaks.left = .init(color: nil, label: "Peak Up", value: MonitorFormat.rate(peak(engine.networkHistory, channel: 0, chart: "network")))
+        peaks.right = .init(color: nil, label: "Peak Down", value: MonitorFormat.rate(peak(engine.networkHistory, channel: 1, chart: "network")))
+        totals.left = .init(color: nil, label: "Uploaded", value: MonitorFormat.size(Double(s.netUpTotal)))
+        totals.right = .init(color: nil, label: "Downloaded", value: MonitorFormat.size(Double(s.netDownTotal)))
 
         let signature = s.interfaces.map { "\($0.bsdName)|\($0.isActive)|\($0.displayName)|\($0.addresses.joined(separator: ","))" }
         if signature != interfaceSignature {
@@ -375,23 +375,23 @@ final class NetworkPanelContent: PanelContent {
 
         switch s.publicIP {
         case .idle:
-            publicRow.text = context.settings().publicIPLookup ? "확인 대기 중" : "자동 조회 꺼짐 (cloudflare.com에 요청)"
+            publicRow.text = context.settings().publicIPLookup ? "Waiting to look up" : "Auto lookup off (cloudflare.com)"
             publicRow.bold = false
-            setButton("확인")
+            setButton("Look Up")
             publicHeader.trailing = ""
         case .loading:
-            publicRow.text = "확인 중…"
+            publicRow.text = "Looking up…"
             publicRow.bold = false
             setButton(nil)
         case let .value(ip, country):
             publicRow.text = ip
             publicRow.bold = true
-            setButton("다시 확인")
+            setButton("Refresh")
             publicHeader.trailing = country.map { PublicIPParser.flag(forCountryCode: $0) } ?? ""
         case .failed:
-            publicRow.text = "확인하지 못했습니다"
+            publicRow.text = "Lookup failed"
             publicRow.bold = false
-            setButton("다시 시도")
+            setButton("Retry")
         }
 
         let top = ProcessGrouping.top(s.networkProcesses, count: processes.maxRows) { $0.netIn + $0.netOut }
@@ -405,16 +405,16 @@ final class NetworkPanelContent: PanelContent {
 
     private func rebuildInterfaces(_ interfaces: [InterfaceInfo]) {
         var rows: [PanelElement] = interfaces.map { interface in
-            let row = RowElement(interface.displayName, value: interface.isActive ? "연결됨" : "연결 안 됨")
+            let row = RowElement(interface.displayName, value: interface.isActive ? "Connected" : "Not connected")
             row.icon = NSImage(systemSymbolName: interface.kind == .wifi ? "wifi" : "network", accessibilityDescription: nil)
             row.tintIcon = true
             row.dimmed = !interface.isActive
             return row
         }
-        if rows.isEmpty { rows = [NoteElement("연결된 네트워크 인터페이스가 없습니다")] }
+        if rows.isEmpty { rows = [NoteElement("No network interfaces")] }
         setItems(interfacesCard, rows)
 
-        var addressRows: [PanelElement] = [HeaderElement("IP 주소")]
+        var addressRows: [PanelElement] = [HeaderElement("IP Addresses")]
         for interface in interfaces where interface.isActive {
             for address in interface.addresses {
                 let row = RowElement(address, value: interface.bsdName)
@@ -422,7 +422,7 @@ final class NetworkPanelContent: PanelContent {
                 addressRows.append(row)
             }
         }
-        if addressRows.count == 1 { addressRows.append(NoteElement("IPv4 주소 없음")) }
+        if addressRows.count == 1 { addressRows.append(NoteElement("No IPv4 address")) }
         setItems(addressCard, addressRows)
     }
 }
@@ -432,19 +432,19 @@ final class NetworkPanelContent: PanelContent {
 final class SensorsPanelContent: PanelContent {
     private let rings = RingsElement(diameter: 80, lineWidth: 7, centerSize: 17)
     private let note = NoteElement("")
-    private let temperatureHeader = HeaderElement("온도")
+    private let temperatureHeader = HeaderElement("Temperatures")
     private let temperatureCard = StackElement([], spacing: 1)
     private var temperatureRows: [RowElement] = []
     private var powerHeader: HeaderElement!
     private let powerChart = ChartElement(style: .stacked, height: 54, minimumScale: 5) { [MonitorStyle.blue] }
-    private let powerRow = RowElement("총 전력")
+    private let powerRow = RowElement("Total Power")
     private var powerCard: StackElement!
     private let fanCard = StackElement([], spacing: 1)
     private var fanRows: [RowElement] = []
 
     init(context: PanelContext) {
         super.init(item: .sensors, context: context)
-        powerHeader = rangeHeader("전원", chart: "power")
+        powerHeader = rangeHeader("Power", chart: "power")
         powerCard = StackElement([powerHeader, powerChart, powerRow])
         note.isHidden = true
         temperatureCard.setItems([temperatureHeader])
@@ -469,12 +469,12 @@ final class SensorsPanelContent: PanelContent {
             .init(segments: [((s.gpuTemperature ?? 0) / 100, MonitorStyle.blue)], center: PanelContent.temperature(s.gpuTemperature),
                   top: "GPU", bottom: s.gpuMHz.map { String(format: "%.2fGHz", $0 / 1000) } ?? " "),
             .init(segments: [((fanAverage ?? 0) / 100, MonitorStyle.blue)], center: PanelContent.percent(fanAverage),
-                  top: "팬", bottom: rpmAverage.map { MonitorFormat.grouped(Int($0.rounded())) } ?? "없음"),
+                  top: "Fans", bottom: rpmAverage.map { MonitorFormat.grouped(Int($0.rounded())) } ?? "None"),
         ]
         if !s.smcAvailable {
-            note.text = "SMC에 접근할 수 없어 센서를 표시하지 못합니다"
+            note.text = "Sensors unavailable: no access to the SMC"
         } else if !s.sensorsReady {
-            note.text = "센서를 찾는 중…"
+            note.text = "Finding sensors…"
         }
         setHidden(note, s.smcAvailable && s.sensorsReady)
 
@@ -495,7 +495,7 @@ final class SensorsPanelContent: PanelContent {
 
         if fanRows.count != s.fans.count {
             fanRows = s.fans.map { RowElement($0.label) }
-            setItems(fanCard, [HeaderElement("팬")] + fanRows)
+            setItems(fanCard, [HeaderElement("Fans")] + fanRows)
         }
         for (row, fan) in zip(fanRows, s.fans) {
             row.value = MonitorFormat.rpm(fan.rpm)

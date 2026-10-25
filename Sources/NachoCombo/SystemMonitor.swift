@@ -91,7 +91,7 @@ final class SystemMonitorModule: NSObject, FeatureModule {
             button.sendAction(on: [.leftMouseDown, .rightMouseDown])
             button.identifier = NSUserInterfaceItemIdentifier(item.rawValue)
             button.toolTip = "Nacho Combo · \(item.displayName)"
-            button.setAccessibilityTitle("\(item.displayName) 모니터")
+            button.setAccessibilityTitle("\(item.displayName) monitor")
             statusItems[item] = statusItem
             statusViews[item] = view
         }

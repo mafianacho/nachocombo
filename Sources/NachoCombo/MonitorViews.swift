@@ -209,7 +209,7 @@ final class FirstMousePopUpButton: NSPopUpButton {
 }
 
 /// Section title (accent colour) with optional detail text, right-aligned value or range menu.
-/// With options, clicking the title opens a menu of alternatives (GPU: 프로세서 / 메모리 / 온도 / 클럭).
+/// With options, clicking the title opens a menu of alternatives (GPU: Processor / Memory / Temperature / Clock).
 final class HeaderElement: PanelElement {
     var title: String { didSet { needsDisplay = true } }
     var detail = "" { didSet { needsDisplay = true } }
@@ -236,7 +236,7 @@ final class HeaderElement: PanelElement {
         popup.selectItem(withTag: range.rawValue)
         popup.target = self
         popup.action = #selector(rangeChanged(_:))
-        popup.toolTip = "그래프 기간"
+        popup.toolTip = "Chart range"
         popup.sizeToFit()
         addSubview(popup)
         self.popup = popup
@@ -244,7 +244,7 @@ final class HeaderElement: PanelElement {
         fitPopup()
     }
 
-    /// Width of the selected title plus the arrows, so "1시간 ⌃⌄" stays together.
+    /// Width of the selected title plus the arrows, so "1 hour ⌃⌄" stays together.
     private func fitPopup() {
         guard let popup = popup else { return }
         let width = Draw.width(popup.titleOfSelectedItem ?? "", popup.font ?? MonitorStyle.font(11, .semibold)) + 26
@@ -508,7 +508,7 @@ final class RowElement: PanelElement {
     }
 }
 
-/// "프로세스" table with up to `maxRows` rows and right-aligned value columns.
+/// "Processes" table with up to `maxRows` rows and right-aligned value columns.
 final class ProcessListElement: PanelElement {
     struct Row {
         var icon: NSImage?
@@ -539,7 +539,7 @@ final class ProcessListElement: PanelElement {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        Draw.text("프로세스", in: NSRect(x: 0, y: 0, width: 100, height: 18), font: MonitorStyle.font(12, .semibold),
+        Draw.text("Processes", in: NSRect(x: 0, y: 0, width: 100, height: 18), font: MonitorStyle.font(12, .semibold),
                   color: MonitorStyle.blue)
         for (i, title) in columns.enumerated() {
             Draw.text(title, in: columnRect(i, count: columns.count, y: 0, height: 18), font: MonitorStyle.font(11, .semibold),

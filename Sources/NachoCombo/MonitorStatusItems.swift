@@ -75,7 +75,7 @@ enum StatusRenderer {
         case .network:
             twoLines(bounds, top: ("↑", .systemPink, s?.netUp), bottom: ("↓", .systemBlue, s?.netDown))
         case .sensors:
-            if let symbol = NSImage(systemSymbolName: "thermometer", accessibilityDescription: "온도") {
+            if let symbol = NSImage(systemSymbolName: "thermometer", accessibilityDescription: "Temperature") {
                 Draw.image(symbol, in: NSRect(x: padding, y: midY - 7, width: 9, height: 14), tint: text)
             }
             Draw.text(s?.cpuTemperature.map { MonitorFormat.temperature($0) } ?? "–°",

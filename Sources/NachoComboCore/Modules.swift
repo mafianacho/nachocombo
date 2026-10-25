@@ -7,9 +7,9 @@ public enum ModuleID: String, Codable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .menuBar: return "메뉴 막대 정리"
-        case .systemMonitor: return "시스템 모니터"
-        case .windowSnap: return "창 배치"
+        case .menuBar: return "Menu Bar Organizer"
+        case .systemMonitor: return "System Monitor"
+        case .windowSnap: return "Window Snap"
         }
     }
 }
@@ -23,10 +23,10 @@ public enum ModuleState: Equatable {
 
     public var label: String {
         switch self {
-        case .off: return "꺼짐"
-        case .running: return "동작 중"
-        case .needsPermission: return "권한 필요"
-        case .failed: return "오류"
+        case .off: return "Off"
+        case .running: return "Running"
+        case .needsPermission: return "Needs Permission"
+        case .failed: return "Error"
         }
     }
 }
@@ -111,7 +111,7 @@ public final class ModuleManager {
     }
 
     private func startModule(_ id: ModuleID) {
-        guard let module = modules[id] else { states[id] = .failed("모듈 없음"); return }
+        guard let module = modules[id] else { states[id] = .failed("Module missing"); return }
         if case .running = states[id] ?? .off { return }
         let result = module.start()
         states[id] = result

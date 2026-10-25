@@ -8,9 +8,9 @@ public enum SnapAction: String, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .left: return "왼쪽 절반"
-        case .right: return "오른쪽 절반"
-        case .maximize: return "최대화"
+        case .left: return "Left Half"
+        case .right: return "Right Half"
+        case .maximize: return "Maximize"
         }
     }
 }

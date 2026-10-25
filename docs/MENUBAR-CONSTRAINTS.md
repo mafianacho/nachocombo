@@ -1,19 +1,19 @@
-# 메뉴 막대 정리 — macOS 실제 제약과 MVP 구현 범위
+# Menu Bar Organizer — real macOS constraints and the MVP scope
 
-## OS 제약 (macOS 12 Monterey 기준)
-- 다른 앱의 메뉴 막대 아이콘(NSStatusItem)을 **열거·숨김·재배치하는 공개 API는 없다.**
-  각 앱이 자기 아이템만 소유한다. 아이콘 순서는 사용자의 ⌘-드래그와 생성 순서로 정해진다.
-- Bartender류 앱은 Accessibility(손쉬운 사용)·화면 기록 권한과 비공개 동작에 의존한다. 이 MVP는 비공개 API와
-  권한 우회를 쓰지 않는다.
+## OS constraints (as of macOS 12 Monterey)
+- There is **no public API to enumerate, hide or reorder other apps' menu bar icons (NSStatusItem).**
+  Each app owns only its own items. Icon order comes from the user's ⌘-drag and from creation order.
+- Bartender-like apps rely on Accessibility and Screen Recording permissions and on private behavior. This MVP uses no private
+  APIs and does not work around permissions.
 
-## MVP 방식: 구분선(divider) 접기
-- 앱이 `NSStatusItem` 두 개(토글 `‹ ›`, 구분선 `┊`)를 만든다. 토글이 가장 오른쪽, 구분선이 그 왼쪽이다.
-- 접힘: 구분선 `length`를 10,000pt로 늘려 그 **왼쪽에 있는 아이콘을 화면 밖으로 밀어낸다.** 펼침: `variableLength`로 복원.
-- 사용자가 숨길 아이콘을 ⌘ 키를 누른 채 구분선 왼쪽으로 끌어 놓는다. 앱이 직접 다른 앱의 아이콘을 옮기지 못한다.
-- 권한 불필요. OFF 시 두 아이템을 `removeStatusItem`으로 제거해 밀어내기가 즉시 해제된다.
-- 다른 모듈(예: 시스템 모니터)이 나중에 아이템을 만들면 구분선 왼쪽(숨김 쪽)에 놓이므로, 앱은 그때 구분선 쌍을 재생성해
-  자기 아이템이 항상 보이는 쪽에 남게 한다.
+## MVP approach: collapsing with a divider
+- The app creates two `NSStatusItem`s (a toggle `‹ ›` and a divider `┊`). The toggle is rightmost, the divider just left of it.
+- Collapsed: the divider's `length` grows to 10,000 pt, which **pushes the icons left of it off the screen.** Expanded: back to `variableLength`.
+- The user ⌘-drags the icons to hide to the left of the divider. The app cannot move other apps' icons itself.
+- No permission needed. When the module is turned OFF, both items are removed with `removeStatusItem`, so the push is undone at once.
+- An item created later by another module (for example the System Monitor) lands left of the divider (the hidden side), so the app
+  then recreates the divider pair to keep its own items on the visible side.
 
-## 한계 (MVP에서 하지 않음)
-- 숨길 아이콘 자동 선택/목록 UI, 마우스 호버·단축키로 임시 펼침, 접힘 상태에서의 개별 아이콘 클릭 노출.
-- 구분선 왼쪽 아이콘이 많아 화면 폭을 넘는 경우의 동작은 OS 배치에 따른다(검증 필요).
+## Limits (not done in the MVP)
+- Automatic selection of icons to hide or a list UI, temporary expansion on hover or by hotkey, revealing a single icon while collapsed.
+- What happens when the icons left of the divider are wider than the screen depends on how the OS lays them out (needs checking).
