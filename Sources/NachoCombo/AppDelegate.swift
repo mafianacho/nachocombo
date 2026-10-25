@@ -29,6 +29,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindowController(manager: manager, organizer: organizer)
         settingsWindow.openAccessibilitySettings = { [weak self] in self?.openAccessibilityPane() }
         settingsWindow.recheckPermission = { [weak self] in self?.manager.retry(.windowSnap) }
+        settingsWindow.onMonitorSettingsChanged = { [weak self] value in self?.updateMonitorSettings(value) }
+
+        monitor.settingsProvider = { [weak self] in self?.manager.settings.monitorSettings ?? .defaults }
+        monitor.settingsChanged = { [weak self] value in self?.updateMonitorSettings(value) }
+        monitor.onStatusItemsRebuilt = { [weak self] in self?.organizer.rebuild() }
+        monitor.openSettings = { [weak self] in self?.settingsWindow.show() }
 
         organizer.onCollapsedChange = { [weak self] value in self?.manager.setMenuBarCollapsed(value) }
         snap.onPermissionLost = { [weak self] in
@@ -59,6 +65,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) { manager.shutdown() }
+
+    private func updateMonitorSettings(_ value: MonitorSettings) {
+        manager.setMonitorSettings(value)
+        monitor.applySettings()
+    }
 
     private func stateChanged() {
         rebuildMenu()
@@ -112,7 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Debug-only control channel (`--debug-ctl`): set <module> on|off, collapse on|off, snap left|right|maximize, dump, quit.
+    /// Debug-only control channel (`--debug-ctl`): set <module> on|off, collapse on|off, snap left|right|maximize,
+    /// monitor show <item>|hide|items <a,b>|range <chart> <seconds>|snapshot <item> <png> [light]|menubar <png> [light]|publicip,
+    /// settings snapshot <png>, dump, quit.
     private func handle(command: String) {
         let parts = command.split(separator: " ").map(String.init)
         switch parts.first {
@@ -122,10 +135,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             organizer.setCollapsed(parts[1] == "on")
         case "snap" where parts.count == 2:
             if let action = SnapAction(rawValue: parts[1]) { snap.perform(action) }
+        case "settings" where parts.count == 3 && parts[1] == "snapshot":
+            settingsWindow.show()
+            _ = settingsWindow.writeSnapshot(to: URL(fileURLWithPath: parts[2]))
+        case "monitor" where parts.count >= 2:
+            handleMonitor(Array(parts.dropFirst()))
         case "quit":
             NSApp.terminate(nil)
         default: break
         }
         Diagnostics.write(manager: manager)
+    }
+
+    private func handleMonitor(_ args: [String]) {
+        let dark = args.last != "light"
+        switch args[0] {
+        case "show" where args.count == 2:
+            if let item = MonitorItem(rawValue: args[1]) { monitor.showPanel(item) }
+        case "hide":
+            monitor.hidePanel()
+        case "items" where args.count == 2:
+            let wanted = Set(args[1].split(separator: ",").map(String.init))
+            var value = manager.settings.monitorSettings
+            for item in MonitorItem.allCases { value.setShown(item, wanted.contains(item.rawValue)) }
+            updateMonitorSettings(value)
+        case "range" where args.count == 3:
+            if let range = Int(args[2]).flatMap(ChartRange.init(rawValue:)) {
+                var value = manager.settings.monitorSettings
+                value.setRange(range, for: args[1])
+                updateMonitorSettings(value)
+            }
+        case "snapshot" where args.count >= 3:
+            if let item = MonitorItem(rawValue: args[1]) {
+                _ = monitor.writeSnapshot(item, to: URL(fileURLWithPath: args[2]), dark: dark)
+            }
+        case "menubar" where args.count >= 2:
+            _ = monitor.writeMenuBarSnapshot(to: URL(fileURLWithPath: args[1]), dark: dark)
+        case "publicip":
+            monitor.lookupPublicIP()
+        default:
+            break
+        }
     }
 }

@@ -10,8 +10,11 @@ final class SettingsWindowController: NSObject {
     private let permissionBox = NSStackView()
     private let permissionLabel = NSTextField(wrappingLabelWithString: "")
     private let collapseButton = NSButton(title: "숨김 아이콘 접기", target: nil, action: nil)
+    private var monitorItemBoxes: [MonitorItem: NSButton] = [:]
+    private let publicIPBox = NSButton(checkboxWithTitle: "네트워크 패널을 열 때 공용 IP 자동 조회 (cloudflare.com에 요청)", target: nil, action: nil)
     var openAccessibilitySettings: (() -> Void)?
     var recheckPermission: (() -> Void)?
+    var onMonitorSettingsChanged: ((MonitorSettings) -> Void)?
 
     init(manager: ModuleManager, organizer: MenuBarOrganizerModule) {
         self.manager = manager
@@ -49,7 +52,7 @@ final class SettingsWindowController: NSObject {
 
         let hints: [ModuleID: String] = [
             .menuBar: "구분선(┊) 왼쪽의 아이콘을 접습니다. 숨길 아이콘은 ⌘ 키를 누른 채 구분선 왼쪽으로 끌어 놓습니다. 권한 불필요.",
-            .systemMonitor: "메뉴 막대에 CPU·메모리·네트워크 속도를 표시합니다(2초 간격). 권한 불필요.",
+            .systemMonitor: "메뉴 막대에 CPU·메모리·디스크·네트워크·센서를 표시하고, 클릭하면 그래프·프로세스·온도·팬·전력 패널을 엽니다(2초 간격). 권한 불필요.",
             .windowSnap: "⌃⌥← 왼쪽 절반 · ⌃⌥→ 오른쪽 절반 · ⌃⌥↩ 최대화. 손쉬운 사용 권한 필요.",
         ]
         for id in ModuleID.allCases {
@@ -77,6 +80,27 @@ final class SettingsWindowController: NSObject {
                 collapseButton.action = #selector(collapseClicked)
                 box.addArrangedSubview(collapseButton)
             }
+            if id == .systemMonitor {
+                let itemsRow = NSStackView()
+                itemsRow.orientation = .horizontal
+                itemsRow.spacing = 10
+                let label = NSTextField(labelWithString: "메뉴 막대 항목:")
+                label.font = NSFont.systemFont(ofSize: 11)
+                label.textColor = .secondaryLabelColor
+                itemsRow.addArrangedSubview(label)
+                for item in MonitorItem.allCases {
+                    let check = NSButton(checkboxWithTitle: item.displayName, target: self, action: #selector(monitorItemToggled(_:)))
+                    check.font = NSFont.systemFont(ofSize: 11)
+                    check.identifier = NSUserInterfaceItemIdentifier(item.rawValue)
+                    monitorItemBoxes[item] = check
+                    itemsRow.addArrangedSubview(check)
+                }
+                box.addArrangedSubview(itemsRow)
+                publicIPBox.font = NSFont.systemFont(ofSize: 11)
+                publicIPBox.target = self
+                publicIPBox.action = #selector(publicIPToggled(_:))
+                box.addArrangedSubview(publicIPBox)
+            }
             root.addArrangedSubview(box)
         }
 
@@ -102,6 +126,8 @@ final class SettingsWindowController: NSObject {
             root.topAnchor.constraint(equalTo: window.contentView!.topAnchor),
             root.bottomAnchor.constraint(lessThanOrEqualTo: window.contentView!.bottomAnchor),
         ])
+        root.layoutSubtreeIfNeeded()
+        window.setContentSize(NSSize(width: 520, height: max(420, root.fittingSize.height)))
     }
 
     func refresh() {
@@ -119,6 +145,9 @@ final class SettingsWindowController: NSObject {
             statusLabels[id]?.stringValue = text
             statusLabels[id]?.textColor = color
         }
+        let monitorSettings = manager.settings.monitorSettings
+        for (item, check) in monitorItemBoxes { check.state = monitorSettings.isShown(item) ? .on : .off }
+        publicIPBox.state = monitorSettings.publicIPLookup ? .on : .off
         collapseButton.isEnabled = organizer.isRunning
         collapseButton.title = organizer.collapsed ? "숨김 아이콘 펼치기" : "숨김 아이콘 접기"
         if case .needsPermission(let message) = manager.states[.windowSnap] ?? .off {
@@ -129,9 +158,29 @@ final class SettingsWindowController: NSObject {
         }
     }
 
+    /// Debug aid (`ctl settings snapshot <png>`).
+    func writeSnapshot(to url: URL) -> Bool {
+        guard let frameView = window.contentView?.superview,
+              let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else { return false }
+        frameView.cacheDisplay(in: frameView.bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return false }
+        return (try? data.write(to: url)) != nil
+    }
+
     @objc private func toggled(_ sender: NSButton) {
         guard let raw = sender.identifier?.rawValue, let id = ModuleID(rawValue: raw) else { return }
         manager.setEnabled(id, sender.state == .on)
+    }
+    @objc private func monitorItemToggled(_ sender: NSButton) {
+        guard let raw = sender.identifier?.rawValue, let item = MonitorItem(rawValue: raw) else { return }
+        var value = manager.settings.monitorSettings
+        value.setShown(item, sender.state == .on)
+        onMonitorSettingsChanged?(value)
+    }
+    @objc private func publicIPToggled(_ sender: NSButton) {
+        var value = manager.settings.monitorSettings
+        value.publicIPLookup = sender.state == .on
+        onMonitorSettingsChanged?(value)
     }
     @objc private func collapseClicked() { organizer.setCollapsed(!organizer.collapsed) }
     @objc private func openSettings() { openAccessibilitySettings?() }

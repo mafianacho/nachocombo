@@ -7,15 +7,23 @@ public struct AppSettings: Codable, Equatable {
     /// Keyed by ModuleID.rawValue so that unknown future modules do not break decoding.
     public var enabledModules: [String: Bool]
     public var menuBarCollapsed: Bool
+    /// System monitor choices. Optional so settings files written before it existed still decode.
+    public var monitor: MonitorSettings?
 
     /// First launch: every module is OFF, so no permission prompt or monitoring starts before opt-in.
     public static let defaults = AppSettings(
         version: currentVersion, enabledModules: [:], menuBarCollapsed: false)
 
-    public init(version: Int, enabledModules: [String: Bool], menuBarCollapsed: Bool) {
+    public init(version: Int, enabledModules: [String: Bool], menuBarCollapsed: Bool, monitor: MonitorSettings? = nil) {
         self.version = version
         self.enabledModules = enabledModules
         self.menuBarCollapsed = menuBarCollapsed
+        self.monitor = monitor
+    }
+
+    public var monitorSettings: MonitorSettings {
+        get { monitor ?? .defaults }
+        set { monitor = newValue }
     }
 
     public func isEnabled(_ id: ModuleID) -> Bool { enabledModules[id.rawValue] ?? false }

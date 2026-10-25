@@ -1,0 +1,205 @@
+import XCTest
+@testable import NachoComboCore
+
+final class MonitorTests: XCTestCase {
+    func testTimeSeriesBucketsAlignAndSkipGaps() {
+        let series = TimeSeries(channels: 2, capacity: 100)
+        // Samples every 2 s from t=100 to t=118, then a gap, then t=140.
+        for i in 0..<10 { series.append(time: 100 + Double(i) * 2, values: [Double(i), 10]) }
+        series.append(time: 140, values: [50, nil])
+        let buckets = series.buckets(span: 60, count: 6, now: 141)  // width 10: [90,100)...[140,150)
+        XCTAssertEqual(buckets.count, 6)
+        XCTAssertNil(buckets[0])                                     // 90..100: nothing
+        XCTAssertEqual(buckets[1]?[0] ?? -1, 2, accuracy: 1e-6)      // 100..108 → 0,1,2,3,4
+        XCTAssertEqual(buckets[2]?[0] ?? -1, 7, accuracy: 1e-6)      // 110..118 → 5...9
+        XCTAssertNil(buckets[3])                                     // 120..130 gap
+        XCTAssertNil(buckets[4])
+        XCTAssertEqual(buckets[5]?[0] ?? -1, 50, accuracy: 1e-6)
+        XCTAssertEqual(buckets[5]?[1] ?? -1, 0, accuracy: 1e-6)      // NaN channel → 0 in a non-empty bucket
+        let maxes = series.buckets(span: 60, count: 6, now: 141, reduction: .max)
+        XCTAssertEqual(maxes[2]?[0] ?? -1, 9, accuracy: 1e-6)
+        XCTAssertEqual(series.maximum(channel: 0, since: 105) ?? -1, 50, accuracy: 1e-6)
+    }
+
+    func testTimeSeriesRingWrapsAndRecent() {
+        let series = TimeSeries(channels: 1, capacity: 3)
+        for i in 1...5 { series.append(time: Double(i), values: [Double(i)]) }
+        XCTAssertEqual(series.count, 3)
+        XCTAssertEqual(series.recent(5, channel: 0).compactMap { $0 }, [3, 4, 5])
+        XCTAssertEqual(series.latest(channel: 0), 5)
+        series.append(time: 1, values: [9])  // clock went backwards → history restarts
+        XCTAssertEqual(series.count, 1)
+    }
+
+    func testMemoryBreakdownMatchesActivityMonitorCategories() {
+        let m = MemoryBreakdown(total: 1000 * 16, pageSize: 16, internalPages: 400, purgeablePages: 50,
+                                externalPages: 100, wiredPages: 150, compressorPages: 200)
+        XCTAssertEqual(m.app, 350 * 16)
+        XCTAssertEqual(m.wired, 150 * 16)
+        XCTAssertEqual(m.compressed, 200 * 16)
+        XCTAssertEqual(m.cached, 150 * 16)
+        XCTAssertEqual(m.used, 700 * 16)
+        XCTAssertEqual(m.free, 300 * 16)
+        XCTAssertEqual(m.usedPercent, 70, accuracy: 1e-6)
+    }
+
+    func testVoltageStatesAndWeightedFrequency() {
+        // (0 Hz, 400 mV), (600 MHz, 565 mV), (2064 MHz, 721 mV)
+        let bytes: [UInt8] = [0, 0, 0, 0, 0x90, 1, 0, 0,
+                              0x00, 0x46, 0xc3, 0x23, 0x35, 2, 0, 0,
+                              0x00, 0x24, 0x06, 0x7b, 0xd1, 2, 0, 0]
+        let table = FrequencyMath.decodeVoltageStates(bytes)
+        XCTAssertEqual(table, [600, 2064])
+        XCTAssertEqual(FrequencyMath.weightedFrequency(residencies: [1, 3, 99], table: table) ?? 0, 1698, accuracy: 1e-6)
+        XCTAssertNil(FrequencyMath.weightedFrequency(residencies: [0, 0], table: table))
+        XCTAssertFalse(FrequencyMath.isActiveState("IDLE"))
+        XCTAssertTrue(FrequencyMath.isActiveState("V4P0"))
+    }
+
+    func testCounterRateTracker() {
+        let tracker = CounterRateTracker<String>()
+        XCTAssertNil(tracker.update(["a": [100, 10]], at: 1))
+        let rates = tracker.update(["a": [300, 5], "b": [1, 1]], at: 3)!
+        XCTAssertEqual(rates["a"], [100, 0])   // second counter went backwards → 0
+        XCTAssertNil(rates["b"])               // new key: no delta yet
+    }
+
+    func testProcessGroupingSumsHelpersIntoApp() {
+        let chrome = "/Applications/Google Chrome.app"
+        let usages = [
+            ProcessUsage(pid: 1, name: "Google Chrome", path: chrome + "/Contents/MacOS/Google Chrome", cpuPercent: 5, memory: 100),
+            ProcessUsage(pid: 2, name: "Google Chrome H", path: chrome + "/Contents/Frameworks/X.framework/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper", cpuPercent: 7, memory: 50),
+            ProcessUsage(pid: 3, name: "zsh", path: "/bin/zsh", cpuPercent: 1, memory: 5),
+            ProcessUsage(pid: 4, name: "zsh", path: "/bin/zsh", cpuPercent: 0, memory: 5),
+        ]
+        let groups = ProcessGrouping.group(usages)
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups[0].name, "Google Chrome")
+        XCTAssertEqual(groups[0].bundlePath, chrome)
+        XCTAssertEqual(groups[0].processCount, 2)
+        XCTAssertEqual(groups[0].cpuPercent, 12, accuracy: 1e-6)
+        XCTAssertEqual(groups[0].memory, 150)
+        XCTAssertEqual(groups[1].name, "zsh")
+        XCTAssertEqual(groups[1].memory, 10)
+        let top = ProcessGrouping.top(groups, count: 1) { $0.cpuPercent }
+        XCTAssertEqual(top.map { $0.name }, ["Google Chrome"])
+        XCTAssertNil(ProcessGrouping.appBundlePath(forExecutable: "/usr/sbin/cfprefsd"))
+    }
+
+    func testProcessGroupingMergesCodeSignCloneByBundleIdentifier() {
+        let clone = "/private/var/folders/x/X/com.google.Chrome.code_sign_clone/c.1/Google Chrome.app.bundle"
+        let app = "/Applications/Google Chrome.app"
+        XCTAssertEqual(ProcessGrouping.appBundlePath(forExecutable: clone + "/Contents/MacOS/Google Chrome"), clone)
+        XCTAssertEqual(ProcessGrouping.bundleDisplayName(clone), "Google Chrome")
+        let usages = [
+            ProcessUsage(pid: 1, name: "Google Chrome", path: clone + "/Contents/MacOS/Google Chrome", cpuPercent: 5),
+            ProcessUsage(pid: 2, name: "Helper", path: app + "/Contents/Frameworks/F.framework/Helpers/H.app/Contents/MacOS/H", cpuPercent: 7),
+        ]
+        let ids = [clone: "com.google.Chrome", app: "com.google.Chrome"]
+        let groups = ProcessGrouping.group(usages) { ids[$0] }
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups[0].bundlePath, app)
+        XCTAssertEqual(groups[0].cpuPercent, 12, accuracy: 1e-6)
+        XCTAssertEqual(ProcessGrouping.group(usages).count, 2)  // without identities they stay apart
+    }
+
+    func testNetTopParser() {
+        let text = ",bytes_in,bytes_out,\nlaunchd.1,5904,0,\nGoogle Chrome H.984,1248,496,\nbad line\n"
+        let rows = NetTopParser.parse(text)
+        XCTAssertEqual(rows, [NetTopRow(pid: 1, name: "launchd", bytesIn: 5904, bytesOut: 0),
+                              NetTopRow(pid: 984, name: "Google Chrome H", bytesIn: 1248, bytesOut: 496)])
+    }
+
+    func testPublicIPTraceAndFlag() {
+        let parsed = PublicIPParser.parseTrace("fl=1\nh=www.cloudflare.com\nip=183.109.105.126\nloc=KR\n")
+        XCTAssertEqual(parsed?.ip, "183.109.105.126")
+        XCTAssertEqual(parsed?.country, "KR")
+        XCTAssertNil(PublicIPParser.parseTrace("nothing here"))
+        XCTAssertEqual(PublicIPParser.flag(forCountryCode: "kr"), "🇰🇷")
+        XCTAssertEqual(PublicIPParser.flag(forCountryCode: "T1"), "")
+    }
+
+    func testSMCDecoding() {
+        XCTAssertEqual(SMCDecoder.fourCC("TC0P"), 0x5443_3050)
+        XCTAssertEqual(SMCDecoder.string(fromFourCC: 0x5443_3050), "TC0P")
+        let f: Float = 47.25
+        let b = withUnsafeBytes(of: f.bitPattern.littleEndian) { Array($0) }
+        XCTAssertEqual(SMCDecoder.decode(type: "flt ", bytes: b) ?? 0, 47.25, accuracy: 1e-6)
+        XCTAssertEqual(SMCDecoder.decode(type: "sp78", bytes: [0x2f, 0x80]) ?? 0, 47.5, accuracy: 1e-6)
+        XCTAssertEqual(SMCDecoder.decode(type: "fpe2", bytes: [0x0f, 0xa0]) ?? 0, 1000, accuracy: 1e-6)
+        XCTAssertEqual(SMCDecoder.decode(type: "ui8 ", bytes: [2]), 2)
+        XCTAssertNil(SMCDecoder.decode(type: "ioft", bytes: [1, 2, 3]))
+    }
+
+    func testSensorCatalogM1ProAndGenericFallback() {
+        let keys: Set<String> = ["Tp01", "Tp05", "Tp09", "Tp0T", "Tg05", "Tg0D", "TH0x", "TB0T", "TB1T", "Ts0P", "TaLP", "TaRF"]
+        let defs = SensorCatalog.definitions(chip: "Apple M1 Pro", keys: keys, storageName: "APPLE SSD AP1024R")
+        XCTAssertEqual(defs.map { $0.label }, ["CPU 성능 코어 1", "CPU 성능 코어 2", "CPU 효율 코어 1", "CPU 효율 코어 2",
+                                                "그래픽 1", "그래픽 2", "APPLE SSD AP1024R", "배터리",
+                                                "손목 받침대 1", "왼쪽 공기 흐름 1", "오른쪽 공기 흐름 1"])
+        let readings = ["Tp01": 50.0, "Tp05": 60, "Tp09": 40, "Tp0T": 0, "Tg05": 45, "Tg0D": 55, "TB0T": 30, "TB1T": 32]
+        XCTAssertNil(SensorCatalog.value(of: defs[3], readings: readings))   // 0 °C is not a reading
+        XCTAssertEqual(SensorCatalog.value(of: defs[7], readings: readings), 32)
+        XCTAssertEqual(SensorCatalog.summary(defs, readings: readings) { $0.isCPU } ?? 0, 50, accuracy: 1e-6)
+        XCTAssertEqual(SensorCatalog.summary(defs, readings: readings) { $0 == .gpu } ?? 0, 50, accuracy: 1e-6)
+
+        let generic = SensorCatalog.definitions(chip: "Apple M3", keys: ["Tp01", "Te05", "Tg0f"], storageName: nil)
+        XCTAssertEqual(generic.map { $0.label }, ["CPU 평균", "CPU 최고", "그래픽 평균"])
+        let g = ["Tp01": 40.0, "Te05": 60]
+        XCTAssertEqual(SensorCatalog.summary(generic, readings: g) { $0.isCPU } ?? 0, 50, accuracy: 1e-6)
+        XCTAssertEqual(SensorCatalog.value(of: generic[1], readings: g), 60)
+    }
+
+    func testFormatting() {
+        XCTAssertEqual(MonitorFormat.size(0), "0KB")
+        XCTAssertEqual(MonitorFormat.size(16.2 * 1_073_741_824), "16.2GB")
+        XCTAssertEqual(MonitorFormat.size(2.74 * 1_099_511_627_776), "2.74TB")
+        XCTAssertEqual(MonitorFormat.size(422.6e9, decimal: true), "422.6GB")
+        XCTAssertEqual(MonitorFormat.rate(48 * 1024), "48 KB/초")
+        XCTAssertEqual(MonitorFormat.rate(24.6 * 1_048_576), "24.6 MB/초")
+        XCTAssertEqual(MonitorFormat.compact(0), "-")
+        XCTAssertEqual(MonitorFormat.compact(300 * 1024), "300K")
+        XCTAssertEqual(MonitorFormat.compact(2.2 * 1_048_576), "2.2M")
+        XCTAssertEqual(MonitorFormat.uptime(11 * 86_400 + 5 * 3600 + 59), "11일 5시간")
+        XCTAssertEqual(MonitorFormat.uptime(3 * 3600 + 12 * 60), "3시간 12분")
+        XCTAssertEqual(MonitorFormat.grouped(1009), "1,009")
+        XCTAssertEqual(MonitorFormat.grouped(1_234_567), "1,234,567")
+        XCTAssertEqual(MonitorFormat.rpm(1011.4), "1,011 rpm")
+        XCTAssertEqual(MonitorFormat.gigahertz(3228), "3.23 GHz")
+        XCTAssertEqual(MonitorFormat.watts(6.44), "6.4 W")
+        XCTAssertEqual(MonitorFormat.watts(21.2), "21 W")
+        XCTAssertEqual(SystemMath.fanPercent(rpm: 1200, minimum: 1200, maximum: 5800), 0)
+        XCTAssertEqual(SystemMath.fanPercent(rpm: 3500, minimum: 1200, maximum: 5800), 50, accuracy: 1e-6)
+    }
+
+    func testMonitorSettingsDefaultsAndOldFiles() throws {
+        let s = MonitorSettings.defaults
+        XCTAssertEqual(s.shownItems, MonitorItem.allCases)
+        XCTAssertFalse(s.publicIPLookup)
+        XCTAssertEqual(s.range(for: "cpu"), .oneHour)
+        // Old settings file without the monitor block, and a partial monitor block.
+        let old = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"version":1,"enabledModules":{},"menuBarCollapsed":false}"#.utf8))
+        XCTAssertEqual(old.monitorSettings, .defaults)
+        let partial = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"version":1,"enabledModules":{},"menuBarCollapsed":false,"monitor":{"items":{"disk":false}}}"#.utf8))
+        XCTAssertFalse(partial.monitorSettings.isShown(.disk))
+        XCTAssertEqual(partial.monitorSettings.shownItems, [.cpu, .memory, .network, .sensors])
+    }
+
+    func testMonitorSettingsPersistThroughManager() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nacho-combo-test-\(UUID().uuidString)").appendingPathComponent("settings.json")
+        let store = SettingsStore(url: url)
+        let manager = ModuleManager(store: store, modules: [])
+        var changes = 0
+        manager.onChange = { changes += 1 }
+        var m = manager.settings.monitorSettings
+        m.setShown(.sensors, false)
+        m.setRange(.tenMinutes, for: "network")
+        manager.setMonitorSettings(m)
+        manager.setMonitorSettings(m)  // unchanged → no save, no notification
+        XCTAssertEqual(changes, 1)
+        let loaded = SettingsStore(url: url).load().monitorSettings
+        XCTAssertFalse(loaded.isShown(.sensors))
+        XCTAssertEqual(loaded.range(for: "network"), .tenMinutes)
+    }
+}

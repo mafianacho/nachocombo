@@ -99,6 +99,13 @@ public final class ModuleManager {
         onChange?()
     }
 
+    public func setMonitorSettings(_ value: MonitorSettings) {
+        guard settings.monitorSettings != value else { return }
+        settings.monitorSettings = value
+        try? store.save(settings)
+        onChange?()
+    }
+
     public func shutdown() {
         for id in ModuleID.allCases { modules[id]?.stop(); states[id] = .off }
     }
