@@ -10,12 +10,12 @@ public enum ModuleID: String, Codable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .menuBar: return "메뉴 막대 정리"
-        case .systemMonitor: return "시스템 모니터"
-        case .windowSnap: return "창 배치"
-        case .fileShelf: return "파일 선반"
-        case .captureFloat: return "캡처 고정"
-        case .focusDim: return "집중 디밍"
+        case .menuBar: return "Menu Bar Organizer"
+        case .systemMonitor: return "System Monitor"
+        case .windowSnap: return "Window Snap"
+        case .fileShelf: return "File Shelf"
+        case .captureFloat: return "Capture Float"
+        case .focusDim: return "Focus Dim"
         }
     }
 
@@ -38,10 +38,10 @@ public enum ModuleState: Equatable {
 
     public var label: String {
         switch self {
-        case .off: return "꺼짐"
-        case .running: return "동작 중"
-        case .needsPermission: return "권한 필요"
-        case .failed: return "오류"
+        case .off: return "Off"
+        case .running: return "Running"
+        case .needsPermission: return "Needs Permission"
+        case .failed: return "Error"
         }
     }
 }
@@ -131,10 +131,33 @@ public final class ModuleManager {
     @discardableResult
     public func setShortcut(_ id: ModuleID, _ shortcut: ToolShortcut?) -> ShortcutIssue? {
         if let shortcut = shortcut {
-            if let issue = ShortcutPolicy.validate(shortcut, for: id, existing: settings.toolShortcuts) { return issue }
+            let actions = settings.effectiveActionShortcuts.map { ($0.name, $0.keyCode, $0.modifiers) }
+            if let issue = ShortcutPolicy.validate(shortcut, for: id, existing: settings.toolShortcuts, actions: actions) {
+                return issue
+            }
             settings.toolShortcuts[id.rawValue] = shortcut
         } else {
             settings.toolShortcuts.removeValue(forKey: id.rawValue)
+        }
+        try? store.save(settings)
+        onChange?()
+        return nil
+    }
+
+    /// Gives an action a new shortcut, removes it (`nil`), or with `reset` goes back to the default.
+    /// Returns the policy issue and stores nothing when the shortcut is not allowed.
+    @discardableResult
+    public func setActionShortcut(_ id: String, _ shortcut: ToolShortcut?, reset: Bool = false) -> ShortcutIssue? {
+        if reset {
+            settings.actionShortcuts.removeValue(forKey: id)
+        } else {
+            if let shortcut = shortcut,
+               let issue = ShortcutPolicy.validateAction(shortcut, actionID: id, settings: settings) { return issue }
+            if shortcut == GadgetActions.action(id)?.defaultShortcut {
+                settings.actionShortcuts.removeValue(forKey: id)
+            } else {
+                settings.actionShortcuts[id] = ActionBinding(shortcut: shortcut)
+            }
         }
         try? store.save(settings)
         onChange?()
@@ -151,12 +174,26 @@ public final class ModuleManager {
         onChange?()
     }
 
+    public func setOptions(_ value: GadgetOptions) {
+        guard settings.options != value else { return }
+        settings.options = value
+        try? store.save(settings)
+        onChange?()
+    }
+
+    public func setMonitorSettings(_ value: MonitorSettings) {
+        guard settings.monitorSettings != value else { return }
+        settings.monitorSettings = value
+        try? store.save(settings)
+        onChange?()
+    }
+
     public func shutdown() {
         for id in ModuleID.allCases { modules[id]?.stop(); states[id] = .off }
     }
 
     private func startModule(_ id: ModuleID, userInitiated: Bool) {
-        guard let module = modules[id] else { states[id] = .failed("모듈 없음"); return }
+        guard let module = modules[id] else { states[id] = .failed("Module missing"); return }
         if case .running = states[id] ?? .off { return }
         (module as? PermissionPrompting)?.allowPermissionPrompt = userInitiated
         let result = module.start()

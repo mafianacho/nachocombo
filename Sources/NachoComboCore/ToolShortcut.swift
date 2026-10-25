@@ -48,7 +48,7 @@ public enum KeyNames {
     }
 
     public static func label(keyCode: UInt32, modifiers: UInt32) -> String {
-        modifierGlyphs(modifiers) + (names[keyCode] ?? "키\(keyCode)")
+        modifierGlyphs(modifiers) + (names[keyCode] ?? "Key \(keyCode)")
     }
 }
 
@@ -62,42 +62,42 @@ public enum ShortcutIssue: Equatable {
     public var message: String {
         switch self {
         case .unsupportedKey:
-            return "이 키는 단축키로 쓸 수 없습니다."
+            return "This key cannot be used in a shortcut."
         case .needsMoreModifiers:
-            return "⌃ 또는 ⌥를 포함해 수정 키를 두 개 이상 눌러야 합니다(일반 입력·앱 단축키와의 충돌 방지)."
+            return "Use at least two modifier keys (open shortcuts also need ⌃ or ⌥), so it never clashes with typing."
         case .reservedBySystem(let name):
-            return "macOS가 쓰는 조합입니다(\(name))."
+            return "macOS uses this combination (\(name))."
         case .conflictsWithAction(let name):
-            return "이미 기능 실행 단축키로 쓰입니다(\(name))."
+            return "Already used as an action shortcut (\(name))."
         case .conflictsWithTool(let id):
-            return "‘\(id.displayName)’ 열기 단축키와 같습니다."
+            return "Same as the open shortcut of ‘\(id.displayName)’."
         }
     }
 }
 
 public enum ShortcutPolicy {
-    /// Fixed action shortcuts owned by the gadgets. A tool-open shortcut must never shadow them.
-    public static let actionShortcuts: [(name: String, keyCode: UInt32, modifiers: UInt32)] = {
-        let co = ToolShortcut.control | ToolShortcut.option
-        return [
-            ("창 배치 왼쪽 ⌃⌥←", 123, co), ("창 배치 오른쪽 ⌃⌥→", 124, co), ("창 배치 최대화 ⌃⌥↩", 36, co),
-            ("파일 선반 ⌃⌥S", 1, co), ("캡처 고정 ⌃⌥C", 8, co), ("집중 디밍 해제 ⌃⌥D", 2, co),
-        ]
-    }()
+    /// Default action shortcuts owned by the gadgets (what a fresh install registers).
+    public static var actionShortcuts: [(name: String, keyCode: UInt32, modifiers: UInt32)] {
+        AppSettings.defaults.effectiveActionShortcuts.map { ($0.name, $0.keyCode, $0.modifiers) }
+    }
 
     private static let reserved: [(name: String, keyCode: UInt32, modifiers: UInt32)] = {
         let c = ToolShortcut.command, o = ToolShortcut.option, ct = ToolShortcut.control, s = ToolShortcut.shift
         return [
-            ("화면 잠금 ⌃⌘Q", 12, ct | c), ("전체 화면 ⌃⌘F", 3, ct | c), ("이모지 ⌃⌘Space", 49, ct | c),
-            ("강제 종료 ⌘⌥⎋", 53, c | o), ("Dock 숨김 ⌘⌥D", 2, c | o), ("Finder 검색 ⌘⌥Space", 49, c | o),
-            ("다른 앱 숨기기 ⌘⌥H", 4, c | o), ("모두 최소화 ⌘⌥M", 46, c | o),
-            ("화면 캡처 ⌃⇧⌘3", 20, ct | s | c), ("화면 캡처 ⌃⇧⌘4", 21, ct | s | c), ("화면 캡처 ⌃⇧⌘5", 23, ct | s | c),
-            ("스페이스 이동 ⌃⌥Space", 49, ct | o),
+            ("Lock Screen ⌃⌘Q", 12, ct | c), ("Full Screen ⌃⌘F", 3, ct | c), ("Emoji ⌃⌘Space", 49, ct | c),
+            ("Force Quit ⌘⌥⎋", 53, c | o), ("Hide Dock ⌘⌥D", 2, c | o), ("Finder Search ⌘⌥Space", 49, c | o),
+            ("Hide Others ⌘⌥H", 4, c | o), ("Minimize All ⌘⌥M", 46, c | o),
+            ("Screenshot ⇧⌘3", 20, s | c), ("Screenshot ⇧⌘4", 21, s | c), ("Screenshot ⇧⌘5", 23, s | c),
+            ("Screenshot ⇧⌘6", 22, s | c),
+            ("Screenshot ⌃⇧⌘3", 20, ct | s | c), ("Screenshot ⌃⇧⌘4", 21, ct | s | c), ("Screenshot ⌃⇧⌘5", 23, ct | s | c),
+            ("Switch Space ⌃⌥Space", 49, ct | o), ("Spotlight ⌘Space", 49, c), ("Input Source ⌃Space", 49, ct),
+            ("Mission Control ⌃↑", 126, ct), ("App Windows ⌃↓", 125, ct),
         ]
     }()
 
-    public static func validate(_ shortcut: ToolShortcut, for id: ModuleID,
-                                existing: [String: ToolShortcut]) -> ShortcutIssue? {
+    /// Tool-open shortcut check. `actions` are the action shortcuts in use (defaults unless given).
+    public static func validate(_ shortcut: ToolShortcut, for id: ModuleID, existing: [String: ToolShortcut],
+                                actions: [(name: String, keyCode: UInt32, modifiers: UInt32)]? = nil) -> ShortcutIssue? {
         let mods = shortcut.modifiers & ToolShortcut.allModifiers
         guard KeyNames.name(forKeyCode: shortcut.keyCode) != nil, shortcut.keyCode != 51, shortcut.keyCode != 53 else {
             return .unsupportedKey
@@ -112,13 +112,39 @@ public enum ShortcutPolicy {
         if let hit = reserved.first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
             return .reservedBySystem(hit.name)
         }
-        if let hit = actionShortcuts.first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
+        if let hit = (actions ?? actionShortcuts).first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
             return .conflictsWithAction(hit.name)
         }
         for other in ModuleID.allCases where other != id {
             if let s = existing[other.rawValue], s.keyCode == shortcut.keyCode,
                s.modifiers & ToolShortcut.allModifiers == mods {
                 return .conflictsWithTool(other)
+            }
+        }
+        return nil
+    }
+
+    /// Action shortcut check: any two modifiers (or one with a function key), not a macOS combination, not used by
+    /// another action or a tool-open shortcut. Delete is allowed (Restore uses ⌃⌥⌫); Escape is not.
+    public static func validateAction(_ shortcut: ToolShortcut, actionID: String, settings: AppSettings) -> ShortcutIssue? {
+        let mods = shortcut.modifiers & ToolShortcut.allModifiers
+        guard KeyNames.name(forKeyCode: shortcut.keyCode) != nil, shortcut.keyCode != 53 else { return .unsupportedKey }
+        let count = [ToolShortcut.command, ToolShortcut.shift, ToolShortcut.option, ToolShortcut.control]
+            .filter { mods & $0 != 0 }.count
+        let enough = KeyNames.isFunctionKey(shortcut.keyCode) ? count >= 1 : count >= 2
+        guard enough else { return .needsMoreModifiers }
+        if let hit = reserved.first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
+            return .reservedBySystem(hit.name)
+        }
+        if let hit = settings.effectiveActionShortcuts.first(where: {
+            $0.id != actionID && $0.keyCode == shortcut.keyCode && $0.modifiers == mods
+        }) {
+            return .conflictsWithAction(hit.name)
+        }
+        for id in ModuleID.allCases {
+            if let s = settings.toolShortcuts[id.rawValue], s.keyCode == shortcut.keyCode,
+               s.modifiers & ToolShortcut.allModifiers == mods {
+                return .conflictsWithTool(id)
             }
         }
         return nil

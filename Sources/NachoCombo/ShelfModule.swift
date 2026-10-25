@@ -1,25 +1,30 @@
 import AppKit
+import Quartz
+import UniformTypeIdentifiers
 import NachoComboCore
 
-/// Dropover-style temporary file shelf. Dragged files, images and text are collected on a small
-/// floating panel and can be dragged out again (copy only). Originals are never moved or deleted.
+/// Temporary drag-and-drop shelf. Dragged files, images, links and text are collected on a small floating panel and
+/// can be dragged out again (copy only). Originals are never moved or deleted. The shelf shows itself when the user
+/// shakes the pointer during a drag (or on any drag, or only from its shortcut), at the pointer.
 final class ShelfModule: NSObject, FeatureModule {
     let id = ModuleID.fileShelf
-    static let hotKeyLabel = "⌃⌥S"
+    var optionsProvider: () -> GadgetOptions = { .defaults }
 
     let store: ShelfStore
     private var panel: ShelfPanel?
-    private let hotKeys = HotKeyCenter(signature: 0x4E43_5348)   // 'NCSH'
     private var globalMonitor: Any?
     private var dragChangeAtMouseDown = 0
     private var shownForThisDrag = false
+    private var shake = ShakeDetector()
     private(set) var lastDropResult = "-"
     private(set) var autoShowCount = 0
     private(set) var running = false
+    private let promiseQueue = OperationQueue()
     var onVisibilityChange: (() -> Void)?
 
     init(store: ShelfStore = ShelfStore(ownedDirectory: ShelfStore.defaultOwnedDirectory())) {
         self.store = store
+        promiseQueue.qualityOfService = .userInitiated
     }
 
     var isPanelVisible: Bool { panel?.isVisible ?? false }
@@ -27,10 +32,6 @@ final class ShelfModule: NSObject, FeatureModule {
     func start() -> ModuleState {
         guard !running else { return .running }
         running = true
-        // A hotkey conflict does not block the shelf; the menu and the settings window still open it.
-        _ = hotKeys.register(id: 1, keyCode: 1, modifiers: HotKeySpec.controlKey | HotKeySpec.optionKey) { [weak self] in
-            DispatchQueue.main.async { self?.toggle() }
-        }
         installDragMonitor()
         ensurePanel().showAtDefaultPosition()
         refreshPanel()
@@ -41,7 +42,6 @@ final class ShelfModule: NSObject, FeatureModule {
         running = false
         if let monitor = globalMonitor { NSEvent.removeMonitor(monitor) }
         globalMonitor = nil
-        hotKeys.unregisterAll()
         panel?.onModelChange = nil
         panel?.orderOut(nil)
         panel?.closeForReal()
@@ -58,12 +58,32 @@ final class ShelfModule: NSObject, FeatureModule {
         onVisibilityChange?()
     }
 
+    /// Opens the shelf under the pointer (after a shake), fully on screen.
+    func show(near point: NSPoint) {
+        guard running else { return }
+        ensurePanel().show(near: point)
+        refreshPanel()
+        onVisibilityChange?()
+    }
+
     func hide() {
         panel?.orderOut(nil)
         onVisibilityChange?()
     }
 
     func toggle() { isPanelVisible ? hide() : show() }
+
+    /// Adds what is on the clipboard (explicit action only; the clipboard is never read otherwise).
+    func pasteClipboard() {
+        guard running else { return }
+        ingest(NSPasteboard.general)
+        show()
+    }
+
+    func clear() {
+        store.clear()
+        refreshPanel()
+    }
 
     private func ensurePanel() -> ShelfPanel {
         if let panel = panel { return panel }
@@ -73,34 +93,68 @@ final class ShelfModule: NSObject, FeatureModule {
             self?.store.remove(id: id)
             self?.refreshPanel()
         }
-        created.onClear = { [weak self] in
-            self?.store.clear()
-            self?.refreshPanel()
+        created.onClear = { [weak self] in self?.clear() }
+        created.onUndo = { [weak self] in
+            guard let self = self else { return }
+            self.store.undo()
+            self.refreshPanel()
         }
+        created.onPaste = { [weak self] in self?.pasteClipboard() }
         created.onClosed = { [weak self] in self?.onVisibilityChange?() }
         panel = created
         return created
     }
 
-    private func refreshPanel() { panel?.setItems(store.items) }
+    private func refreshPanel() {
+        panel?.setItems(store.items, canUndo: !store.undoable.isEmpty)
+        onVisibilityChange?()
+    }
 
     // MARK: ingest
 
-    /// Adds whatever the pasteboard offers: file URLs first, then image data, then plain text.
+    /// Adds whatever the pasteboard offers: file URLs, then promised files (browsers, Photos, Mail), then image data,
+    /// then web links, then plain text.
     @discardableResult
     func ingest(_ pasteboard: NSPasteboard) -> Bool {
         var added = 0
-        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL], !urls.isEmpty {
+        let fileOptions: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: fileOptions) as? [URL], !urls.isEmpty {
             for url in urls where store.addFile(url) != nil { added += 1 }
+        } else if let promises = pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil)
+                    as? [NSFilePromiseReceiver], !promises.isEmpty {
+            receive(promises)
+            lastDropResult = "promised:\(promises.count)"
+            return true
         } else if let png = ShelfModule.pngData(from: pasteboard) {
             if (try? store.addImagePNG(png)) != nil { added += 1 }
-        } else if let text = pasteboard.string(forType: .string), store.addText(text) != nil {
-            added += 1
+        } else if let links = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !links.isEmpty {
+            for url in links where store.addLink(url) != nil { added += 1 }
+        } else if let text = pasteboard.string(forType: .string) {
+            if let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)), url.scheme?.hasPrefix("http") == true,
+               store.addLink(url) != nil {
+                added += 1
+            } else if store.addText(text) != nil {
+                added += 1
+            }
         }
         lastDropResult = added > 0 ? "ok:\(added)" : "none"
         refreshPanel()
         return added > 0
+    }
+
+    /// Promised files are written by the source app into a fresh folder inside the shelf's own directory.
+    private func receive(_ promises: [NSFilePromiseReceiver]) {
+        let destination = store.ownedDirectory.appendingPathComponent("promised-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        try? FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        for promise in promises {
+            promise.receivePromisedFiles(atDestination: destination, options: [:], operationQueue: promiseQueue) { url, error in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, error == nil, self.running else { return }
+                    if self.store.addOwnedFile(url) != nil { self.lastDropResult = "ok:promise" }
+                    self.refreshPanel()
+                }
+            }
+        }
     }
 
     static func pngData(from pasteboard: NSPasteboard) -> Data? {
@@ -109,8 +163,10 @@ final class ShelfModule: NSObject, FeatureModule {
         return rep.representation(using: .png, properties: [:])
     }
 
-    // MARK: drag detection (shows the shelf when a drag begins anywhere)
+    // MARK: drag detection
 
+    /// A passive mouse monitor (no permission needed) notices drags; a change of the drag pasteboard since the mouse
+    /// went down tells a real drag (files, text, images) from a plain pointer move.
     private func installDragMonitor() {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged]) { [weak self] event in
             guard let self = self else { return }
@@ -118,10 +174,25 @@ final class ShelfModule: NSObject, FeatureModule {
             if event.type == .leftMouseDown {
                 self.dragChangeAtMouseDown = drag.changeCount
                 self.shownForThisDrag = false
-            } else if !self.shownForThisDrag, drag.changeCount != self.dragChangeAtMouseDown, !self.isPanelVisible {
+                self.shake.reset()
+                return
+            }
+            guard !self.shownForThisDrag, drag.changeCount != self.dragChangeAtMouseDown else { return }
+            switch self.optionsProvider().shelfTrigger {
+            case .shortcutOnly:
+                return
+            case .anyDrag:
+                guard !self.isPanelVisible else { return }
                 self.shownForThisDrag = true
                 self.autoShowCount += 1
                 self.show()
+            case .shake:
+                let point = NSEvent.mouseLocation
+                if self.shake.add(x: point.x, time: event.timestamp) {
+                    self.shownForThisDrag = true
+                    self.autoShowCount += 1
+                    self.show(near: point)
+                }
             }
         }
     }
@@ -132,9 +203,10 @@ final class ShelfModule: NSObject, FeatureModule {
             "itemCount": "\(store.items.count)",
             "items": store.items.map { "\($0.kind.rawValue):\($0.title)" }.joined(separator: " | "),
             "ownedFiles": "\(store.items.filter { $0.ownsFile }.count)",
+            "undoable": "\(store.undoable.count)",
+            "trigger": optionsProvider().shelfTrigger.rawValue,
             "dropTargetRegistered": "\(panel != nil)",
             "dragMonitorActive": "\(globalMonitor != nil)",
-            "hotkeysRegistered": "\(hotKeys.registeredCount)",
             "autoShowCount": "\(autoShowCount)",
             "lastDropResult": lastDropResult,
         ]
@@ -143,25 +215,31 @@ final class ShelfModule: NSObject, FeatureModule {
 
 // MARK: - Panel
 
-final class ShelfPanel: NSPanel {
+final class ShelfPanel: NSPanel, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
     var onDrop: ((NSPasteboard) -> Bool)?
     var onRemove: ((UUID) -> Void)?
     var onClear: (() -> Void)?
+    var onUndo: (() -> Void)?
+    var onPaste: (() -> Void)?
     var onClosed: (() -> Void)?
     var onModelChange: (() -> Void)?
 
     private let dropView = ShelfDropView()
     private let stack = NSStackView()
     private let scroll = NSScrollView()
-    private let hint = NSTextField(wrappingLabelWithString: "여기에 파일·이미지·텍스트를 끌어다 놓으세요.\n항목을 다른 앱으로 끌어내면 복사됩니다(원본은 그대로).")
-    private let countLabel = NSTextField(labelWithString: "")
+    private let hint = NSTextField(wrappingLabelWithString: "Drop files, images, links or text here.\nDragging an item out to another app copies it (the original stays put).")
+    private let stackHandle = ShelfStackHandle()
+    private let undoButton = NSButton(title: "Undo", target: nil, action: nil)
+    private var rows: [ShelfRowView] = []
+    private(set) var items: [ShelfItem] = []
+    private var selectedID: UUID? { didSet { rows.forEach { $0.selected = $0.item.id == selectedID } } }
     private var positioned = false
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 280, height: 360),
                    styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
                    backing: .buffered, defer: false)
-        title = "파일 선반"
+        title = "File Shelf"
         isFloatingPanel = true
         level = .floating
         hidesOnDeactivate = false
@@ -192,23 +270,49 @@ final class ShelfPanel: NSPanel {
         orderFrontRegardless()
     }
 
+    /// Centred on the pointer, so the drag in progress can drop straight onto it.
+    func show(near point: NSPoint) {
+        let screen = NSScreen.screens.first { NSMouseInRect(point, $0.frame, false) } ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? .zero
+        let size = frame.size
+        var origin = NSPoint(x: point.x - size.width / 2, y: point.y - size.height / 2)
+        origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - size.width - 8)
+        origin.y = min(max(origin.y, visible.minY + 8), visible.maxY - size.height - 8)
+        setFrameOrigin(origin)
+        positioned = true
+        orderFrontRegardless()
+    }
+
     private func buildContent() {
         dropView.frame = NSRect(x: 0, y: 0, width: 280, height: 360)
         dropView.autoresizingMask = [.width, .height]
         dropView.onDrop = { [weak self] pb in self?.onDrop?(pb) ?? false }
         contentView = dropView
 
-        let header = NSStackView()
+        stackHandle.toolTip = "Drag to take every item at once"
+        stackHandle.setAccessibilityIdentifier("shelf-stack")
+        stackHandle.translatesAutoresizingMaskIntoConstraints = false
+        func small(_ title: String, _ id: String, _ action: Selector) -> NSButton {
+            let b = NSButton(title: title, target: self, action: action)
+            b.controlSize = .small
+            b.bezelStyle = .rounded
+            b.font = NSFont.systemFont(ofSize: 11)
+            b.setAccessibilityIdentifier(id)
+            return b
+        }
+        let paste = small("Paste", "shelf-paste", #selector(pasteTapped))
+        paste.toolTip = "Add what is on the clipboard (⌘V)"
+        undoButton.target = self
+        undoButton.action = #selector(undoTapped)
+        undoButton.controlSize = .small
+        undoButton.bezelStyle = .rounded
+        undoButton.font = NSFont.systemFont(ofSize: 11)
+        undoButton.toolTip = "Bring back what you removed (⌘Z)"
+        undoButton.setAccessibilityIdentifier("shelf-undo")
+        let clear = small("Clear All", "shelf-clear", #selector(clearTapped))
+        let header = NSStackView(views: [stackHandle, NSView(), paste, undoButton, clear])
         header.orientation = .horizontal
-        header.spacing = 8
-        countLabel.font = NSFont.systemFont(ofSize: 11)
-        countLabel.textColor = .secondaryLabelColor
-        let clear = NSButton(title: "모두 비우기", target: self, action: #selector(clearTapped))
-        clear.controlSize = .small
-        clear.bezelStyle = .rounded
-        clear.setAccessibilityIdentifier("shelf-clear")
-        header.addArrangedSubview(countLabel)
-        header.addArrangedSubview(clear)
+        header.spacing = 6
         header.translatesAutoresizingMaskIntoConstraints = false
 
         stack.orientation = .vertical
@@ -235,7 +339,7 @@ final class ShelfPanel: NSPanel {
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: dropView.topAnchor, constant: 8),
             header.leadingAnchor.constraint(equalTo: dropView.leadingAnchor, constant: 10),
-            header.trailingAnchor.constraint(lessThanOrEqualTo: dropView.trailingAnchor, constant: -10),
+            header.trailingAnchor.constraint(equalTo: dropView.trailingAnchor, constant: -10),
             scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
             scroll.leadingAnchor.constraint(equalTo: dropView.leadingAnchor, constant: 6),
             scroll.trailingAnchor.constraint(equalTo: dropView.trailingAnchor, constant: -6),
@@ -253,21 +357,77 @@ final class ShelfPanel: NSPanel {
         ])
     }
 
-    func setItems(_ items: [ShelfItem]) {
+    func setItems(_ items: [ShelfItem], canUndo: Bool = false) {
+        self.items = items
         for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
+        rows = []
         for item in items {
             let row = ShelfRowView(item: item)
             row.onRemove = { [weak self] id in self?.onRemove?(id) }
+            row.onSelect = { [weak self] id in self?.selectedID = id; self?.makeKey() }
+            row.onQuickLook = { [weak self] id in self?.selectedID = id; self?.toggleQuickLook() }
             row.translatesAutoresizingMaskIntoConstraints = false
             stack.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            rows.append(row)
         }
+        if let selected = selectedID, !items.contains(where: { $0.id == selected }) { selectedID = nil }
+        rows.forEach { $0.selected = $0.item.id == selectedID }
         hint.isHidden = !items.isEmpty
-        countLabel.stringValue = items.isEmpty ? "비어 있음" : "\(items.count)개 항목"
+        stackHandle.items = items
+        undoButton.isHidden = !canUndo
+        if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().reloadData() }
         onModelChange?()
     }
 
     @objc private func clearTapped() { onClear?() }
+    @objc private func undoTapped() { onUndo?() }
+    @objc private func pasteTapped() { onPaste?() }
+
+    // Keyboard: Space Quick Look, ⌫ remove, ⌘Z undo, ⌘V paste, ⌘C copy, arrows move the selection.
+    override func keyDown(with event: NSEvent) {
+        let command = event.modifierFlags.contains(.command)
+        switch (event.charactersIgnoringModifiers ?? "", command) {
+        case ("z", true): onUndo?()
+        case ("v", true): onPaste?()
+        case ("c", true): if let item = selectedItem { ShelfRowView.copy(item) }
+        default:
+            switch event.keyCode {
+            case 49: toggleQuickLook()
+            case 51, 117: if let id = selectedID { onRemove?(id) }
+            case 125, 126:
+                guard !items.isEmpty else { return }
+                let index = items.firstIndex { $0.id == selectedID } ?? -1
+                let next = event.keyCode == 125 ? min(items.count - 1, index + 1) : max(0, index - 1)
+                selectedID = items[next].id
+                if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
+                    QLPreviewPanel.shared().reloadData()
+                }
+            default: super.keyDown(with: event)
+            }
+        }
+    }
+
+    private var selectedItem: ShelfItem? { items.first { $0.id == selectedID } }
+    private var previewURL: URL? { selectedItem?.fileURL }
+
+    func toggleQuickLook() {
+        guard previewURL != nil else { return }
+        let panel = QLPreviewPanel.shared()!
+        if panel.isVisible { panel.orderOut(nil) } else { makeKey(); panel.makeKeyAndOrderFront(nil) }
+    }
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = self
+        panel.delegate = self
+    }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil
+        panel.delegate = nil
+    }
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { previewURL == nil ? 0 : 1 }
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! { previewURL as NSURL? }
 }
 
 final class FlippedView: NSView {
@@ -280,7 +440,8 @@ final class ShelfDropView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        registerForDraggedTypes([.fileURL, .png, .tiff, .string])
+        let promised = NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) }
+        registerForDraggedTypes([.fileURL, .URL, .png, .tiff, .string] + promised)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
@@ -293,6 +454,8 @@ final class ShelfDropView: NSView {
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         highlighted = false
+        // Our own rows dropped back on the shelf are not added again.
+        if (sender.draggingSource as? NSView)?.window === window { return false }
         return onDrop?(sender.draggingPasteboard) ?? false
     }
     override func concludeDragOperation(_ sender: NSDraggingInfo?) { highlighted = false }
@@ -309,9 +472,61 @@ final class ShelfDropView: NSView {
     }
 }
 
+/// Item count with a stack icon; dragging it takes every item at once.
+final class ShelfStackHandle: NSView, NSDraggingSource {
+    var items: [ShelfItem] = [] { didSet { needsDisplay = true; invalidateIntrinsicContentSize(); updateAccessibility() } }
+    private var downPoint: NSPoint?
+
+    override var intrinsicContentSize: NSSize { NSSize(width: 26 + ceil(label.size(withAttributes: attributes).width), height: 22) }
+    private var label: NSString { (items.isEmpty ? "Empty" : (items.count == 1 ? "1 item" : "\(items.count) items")) as NSString }
+    private var attributes: [NSAttributedString.Key: Any] {
+        [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor]
+    }
+
+    private func updateAccessibility() {
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Drag every item: \(label)")
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        if let symbol = UI.symbol(items.count > 1 ? "square.stack.3d.up.fill" : "square.stack.3d.up", size: 13) {
+            let tinted = symbol.withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [
+                items.isEmpty ? NSColor.tertiaryLabelColor : NSColor.controlAccentColor])) ?? symbol
+            let s = tinted.size
+            tinted.draw(in: NSRect(x: 2, y: (bounds.height - s.height) / 2, width: s.width, height: s.height))
+        }
+        let size = label.size(withAttributes: attributes)
+        label.draw(at: NSPoint(x: 22, y: (bounds.height - size.height) / 2), withAttributes: attributes)
+    }
+
+    override func mouseDown(with event: NSEvent) { downPoint = event.locationInWindow }
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = downPoint, !items.isEmpty else { return }
+        let now = event.locationInWindow
+        guard hypot(now.x - start.x, now.y - start.y) > 4 else { return }
+        downPoint = nil
+        let draggingItems = items.compactMap { item -> NSDraggingItem? in
+            guard let writer = ShelfRowView.writer(for: item) else { return nil }
+            let dragging = NSDraggingItem(pasteboardWriter: writer)
+            dragging.setDraggingFrame(bounds, contents: ShelfRowView.icon(for: item))
+            return dragging
+        }
+        guard !draggingItems.isEmpty else { return }
+        beginDraggingSession(with: draggingItems, event: event, source: self)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .copy      // never .move: originals stay where they are
+    }
+}
+
 final class ShelfRowView: NSView, NSDraggingSource {
     let item: ShelfItem
     var onRemove: ((UUID) -> Void)?
+    var onSelect: ((UUID) -> Void)?
+    var onQuickLook: ((UUID) -> Void)?
+    var selected = false { didSet { updateBackground() } }
     private let iconView = NSImageView()
     private var mouseDownPoint: NSPoint?
 
@@ -320,8 +535,11 @@ final class ShelfRowView: NSView, NSDraggingSource {
         super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 44))
         wantsLayer = true
         layer?.cornerRadius = 6
-        layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.6).cgColor
+        updateBackground()
         setAccessibilityIdentifier("shelf-row-\(item.kind.rawValue)")
+        setAccessibilityElement(true)
+        setAccessibilityRole(.row)
+        setAccessibilityLabel(item.title)
 
         iconView.image = ShelfRowView.icon(for: item)
         iconView.imageScaling = .scaleProportionallyUpOrDown
@@ -343,7 +561,7 @@ final class ShelfRowView: NSView, NSDraggingSource {
         let remove = NSButton(title: "✕", target: self, action: #selector(removeTapped))
         remove.isBordered = false
         remove.font = NSFont.systemFont(ofSize: 12, weight: .bold)
-        remove.setAccessibilityLabel("항목 제거")
+        remove.setAccessibilityLabel("Remove item")
         remove.setAccessibilityIdentifier("shelf-remove")
         remove.translatesAutoresizingMaskIntoConstraints = false
 
@@ -366,47 +584,114 @@ final class ShelfRowView: NSView, NSDraggingSource {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    private func updateBackground() {
+        let color = selected ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.35)
+                             : NSColor.controlBackgroundColor.withAlphaComponent(0.6)
+        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.backgroundColor = color.cgColor }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBackground()
+    }
+
     static func icon(for item: ShelfItem) -> NSImage {
         switch item.kind {
         case .image:
             if let url = item.fileURL, let image = NSImage(contentsOf: url) { return image }
-            return NSWorkspace.shared.icon(forFile: item.fileURL?.path ?? "")
+            return fileIcon(item.fileURL)
         case .file:
-            return NSWorkspace.shared.icon(forFile: item.fileURL?.path ?? "")
+            return fileIcon(item.fileURL)
         case .text:
-            return NSWorkspace.shared.icon(forFileType: "txt")
+            return NSWorkspace.shared.icon(for: .plainText)
+        case .link:
+            return UI.symbol("link", size: 22, weight: .medium) ?? NSWorkspace.shared.icon(for: .url)
         }
+    }
+
+    /// The file's own icon, or its type's icon when it is not on disk (sample items in the gallery picture).
+    private static func fileIcon(_ url: URL?) -> NSImage {
+        guard let url = url else { return NSWorkspace.shared.icon(for: .data) }
+        if FileManager.default.fileExists(atPath: url.path) { return NSWorkspace.shared.icon(forFile: url.path) }
+        return NSWorkspace.shared.icon(for: UTType(filenameExtension: url.pathExtension) ?? .data)
     }
 
     static func detail(for item: ShelfItem) -> String {
         switch item.kind {
-        case .text: return "텍스트 \(item.text?.count ?? 0)자"
+        case .text: return "Text, \(item.text?.count ?? 0) characters"
+        case .link: return item.text ?? "Link"
         case .image, .file:
             let path = item.fileURL?.deletingLastPathComponent().path ?? ""
-            return item.ownsFile ? "선반이 보관한 이미지 사본" : path
+            return item.ownsFile ? "Copy kept by the shelf" : path
         }
+    }
+
+    static func writer(for item: ShelfItem) -> NSPasteboardWriting? {
+        switch item.kind {
+        case .text: return item.text.map { $0 as NSString }
+        case .link: return item.linkURL.map { $0 as NSURL }
+        case .file, .image: return item.fileURL.map { $0 as NSURL }
+        }
+    }
+
+    static func copy(_ item: ShelfItem) {
+        guard let writer = writer(for: item) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([writer])
     }
 
     @objc private func removeTapped() { onRemove?(item.id) }
 
-    // MARK: dragging out (copy only)
+    // MARK: mouse
 
-    override func mouseDown(with event: NSEvent) { mouseDownPoint = event.locationInWindow }
+    override func mouseDown(with event: NSEvent) {
+        mouseDownPoint = event.locationInWindow
+        onSelect?(item.id)
+        if event.clickCount == 2 { open() }
+    }
+
+    private func open() {
+        switch item.kind {
+        case .file, .image: if let url = item.fileURL { NSWorkspace.shared.open(url) }
+        case .link: if let url = item.linkURL { NSWorkspace.shared.open(url) }
+        case .text: ShelfRowView.copy(item)
+        }
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        onSelect?(item.id)
+        let menu = NSMenu()
+        let entries: [(String, () -> Void)] = {
+            var list: [(String, () -> Void)] = []
+            switch item.kind {
+            case .file, .image:
+                list.append(("Open", { [weak self] in self?.open() }))
+                list.append(("Quick Look", { [weak self] in guard let self = self else { return }; self.onQuickLook?(self.item.id) }))
+                if !item.ownsFile, let url = item.fileURL {
+                    list.append(("Show in Finder", { NSWorkspace.shared.activateFileViewerSelecting([url]) }))
+                }
+            case .link:
+                list.append(("Open Link", { [weak self] in self?.open() }))
+            case .text:
+                break
+            }
+            list.append(("Copy", { [weak self] in if let item = self?.item { ShelfRowView.copy(item) } }))
+            list.append(("Remove", { [weak self] in guard let self = self else { return }; self.onRemove?(self.item.id) }))
+            return list
+        }()
+        for (title, action) in entries { menu.addItem(ClosureMenuItem(title: title, handler: action)) }
+        return menu
+    }
+
+    // MARK: dragging out (copy only)
 
     override func mouseDragged(with event: NSEvent) {
         guard let start = mouseDownPoint else { return }
         let now = event.locationInWindow
         guard hypot(now.x - start.x, now.y - start.y) > 4 else { return }
         mouseDownPoint = nil
-        let writer: NSPasteboardWriting
-        switch item.kind {
-        case .text:
-            guard let text = item.text else { return }
-            writer = text as NSString
-        case .file, .image:
-            guard let url = item.fileURL else { return }
-            writer = url as NSURL
-        }
+        guard let writer = ShelfRowView.writer(for: item) else { return }
         let draggingItem = NSDraggingItem(pasteboardWriter: writer)
         draggingItem.setDraggingFrame(bounds, contents: snapshotImage())
         beginDraggingSession(with: [draggingItem], event: event, source: self)

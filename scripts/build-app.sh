@@ -29,6 +29,17 @@ fi
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN" "$APP/Contents/MacOS/NachoCombo"
+# App icon: every size macOS asks for, made from the 1024 px master.
+if [ -f Resources/AppIcon.png ]; then
+  ICONSET="build/AppIcon.iconset"
+  rm -rf "$ICONSET"; mkdir -p "$ICONSET" "$APP/Contents/Resources"
+  for size in 16 32 128 256 512; do
+    sips -z $size $size Resources/AppIcon.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+    sips -z $((size * 2)) $((size * 2)) Resources/AppIcon.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+  rm -rf "$ICONSET"
+fi
 # Drop debug-map entries so build-machine paths are not embedded in the release binary.
 strip -S -x "$APP/Contents/MacOS/NachoCombo"
 cat > "$APP/Contents/Info.plist" <<PLIST
@@ -38,6 +49,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>CFBundleIdentifier</key><string>com.mafianacho.nachocombo</string>
 <key>CFBundleName</key><string>Nacho Combo</string>
 <key>CFBundleExecutable</key><string>NachoCombo</string>
+<key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$VERSION</string>
 <key>CFBundleVersion</key><string>1</string>

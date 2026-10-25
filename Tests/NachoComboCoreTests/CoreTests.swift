@@ -92,9 +92,9 @@ final class CoreTests: XCTestCase {
     func testPermissionDeniedKeepsIntentAndRetryStarts() {
         let store = SettingsStore(url: tempURL())
         let snap = FakeModule(.windowSnap)
-        snap.result = .needsPermission("손쉬운 사용")
+        snap.result = .needsPermission("Accessibility")
         let manager = ModuleManager(store: store, modules: [snap])
-        XCTAssertEqual(manager.setEnabled(.windowSnap, true), .needsPermission("손쉬운 사용"))
+        XCTAssertEqual(manager.setEnabled(.windowSnap, true), .needsPermission("Accessibility"))
         XCTAssertTrue(manager.settings.isEnabled(.windowSnap))
         XCTAssertFalse(snap.active)
         snap.result = .running

@@ -1,19 +1,30 @@
-# 메뉴 막대 정리 — macOS 실제 제약과 MVP 구현 범위
+# Menu Bar Organizer — real macOS constraints and scope
 
-## OS 제약 (macOS 12 Monterey 기준)
-- 다른 앱의 메뉴 막대 아이콘(NSStatusItem)을 **열거·숨김·재배치하는 공개 API는 없다.**
-  각 앱이 자기 아이템만 소유한다. 아이콘 순서는 사용자의 ⌘-드래그와 생성 순서로 정해진다.
-- Bartender류 앱은 Accessibility(손쉬운 사용)·화면 기록 권한과 비공개 동작에 의존한다. 이 MVP는 비공개 API와
-  권한 우회를 쓰지 않는다.
+## OS constraints (macOS 12 Monterey to macOS 15 Sequoia)
+- There is **no public API to enumerate, hide or reorder other apps' menu bar icons (NSStatusItem).**
+  Each app owns only its own items. Icon order comes from the user's ⌘-drag and from creation order.
+- Full menu bar managers read and move other apps' items with Accessibility, read their pictures with Screen Recording and
+  use private window server calls. This gadget uses no private APIs, needs no permission and never works around one.
 
-## MVP 방식: 구분선(divider) 접기
-- 앱이 `NSStatusItem` 두 개(토글 `‹ ›`, 구분선 `┊`)를 만든다. 토글이 가장 오른쪽, 구분선이 그 왼쪽이다.
-- 접힘: 구분선 `length`를 10,000pt로 늘려 그 **왼쪽에 있는 아이콘을 화면 밖으로 밀어낸다.** 펼침: `variableLength`로 복원.
-- 사용자가 숨길 아이콘을 ⌘ 키를 누른 채 구분선 왼쪽으로 끌어 놓는다. 앱이 직접 다른 앱의 아이콘을 옮기지 못한다.
-- 권한 불필요. OFF 시 두 아이템을 `removeStatusItem`으로 제거해 밀어내기가 즉시 해제된다.
-- 다른 모듈(예: 시스템 모니터)이 나중에 아이템을 만들면 구분선 왼쪽(숨김 쪽)에 놓이므로, 앱은 그때 구분선 쌍을 재생성해
-  자기 아이템이 항상 보이는 쪽에 남게 한다.
+## Approach: collapsing with a divider
+- The gadget creates its own `NSStatusItem`s: a toggle `‹ ›` (right-most), a divider `┊` just left of it and, with the
+  always-hidden option, a second divider further left.
+- Collapsed: the divider's `length` grows to `max(500, min(widest screen × 2, 10,000))` pt (10,000 pt is the cap macOS puts
+  on a status item), which **pushes the icons left of it off the screen.** Expanded: back to `variableLength`.
+- Always-hidden section: while expanded, the second divider takes the long length instead, so only the icons between the
+  two dividers come back. ⌥-click (or right-click) on the toggle, or the optional shortcut, shows them too until the next
+  collapse.
+- The user ⌘-drags the icons to hide to the left of a divider. The app cannot move other apps' icons itself.
+- Auto-collapse: after 5–60 s (10 s by default) the icons fold away again; the countdown waits while the pointer is in the
+  menu bar. With "expand on hover", resting the pointer on `‹` for 0.3 s expands, and leaving the menu bar folds it again.
+- No permission needed. When the gadget is turned OFF, every item is removed with `removeStatusItem`, so the push is undone
+  at once.
+- An item created later by another gadget (for example the System Monitor) lands left of the divider (the hidden side), so
+  the app then recreates its items to keep them on the visible side.
+- After collapsing, the gadget checks that the divider's window really grew. If macOS kept it small (macOS 27 betas render
+  the whole menu bar as one window and eject a stretched item), it reports this in the gallery and stays expanded.
 
-## 한계 (MVP에서 하지 않음)
-- 숨길 아이콘 자동 선택/목록 UI, 마우스 호버·단축키로 임시 펼침, 접힘 상태에서의 개별 아이콘 클릭 노출.
-- 구분선 왼쪽 아이콘이 많아 화면 폭을 넘는 경우의 동작은 OS 배치에 따른다(검증 필요).
+## Limits
+- No automatic selection of icons to hide, no list or search of other apps' icons, no second bar below the menu bar:
+  all of these need Accessibility, Screen Recording and private APIs.
+- On a Mac with a camera notch, icons that end up under the notch cannot be shown.

@@ -18,6 +18,11 @@ protocol PanelHost: AnyObject {
     func panelSetDim(_ value: Double)
     func panelOpenPermissionPane(_ id: ModuleID)
     func panelRecheck(_ id: ModuleID)
+    /// The gallery's live commands (capture modes, lock floats, pause dimming...).
+    func panelPerform(_ command: GadgetCommand)
+    /// Live facts of a gadget ("2 floats · locked", "Paused").
+    func panelStatusLine(_ id: ModuleID) -> String?
+    var panelOptions: GadgetOptions { get }
 }
 
 enum PanelRoute: Equatable {
@@ -228,8 +233,8 @@ final class PanelViewController: NSViewController {
         child.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(child)
         switch route {
-        case .list: view.setAccessibilityLabel("Nacho Combo 도구 목록")
-        case .tool(let id): view.setAccessibilityLabel("\(id.displayName) 조작 화면")
+        case .list: view.setAccessibilityLabel("Nacho Combo tool list")
+        case .tool(let id): view.setAccessibilityLabel("\(id.displayName) controls")
         }
         NSLayoutConstraint.activate([
             child.leadingAnchor.constraint(equalTo: view.leadingAnchor),

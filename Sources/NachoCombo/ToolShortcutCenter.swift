@@ -1,8 +1,8 @@
 import AppKit
 import NachoComboCore
 
-/// Registers the per-tool "open this tool's panel" shortcuts. These only navigate the panel;
-/// the gadgets' own action shortcuts stay inside the gadgets and stop when the gadget is switched off.
+/// Registers the per-tool "open this tool's panel" shortcuts. These only navigate the panel; the gadgets' action
+/// shortcuts are registered by `ActionShortcutCenter` and only while their gadget runs.
 final class ToolShortcutCenter {
     private let hotKeys = HotKeyCenter(signature: 0x4E43_544F)   // 'NCTO'
     private(set) var failed: Set<ModuleID> = []
@@ -28,57 +28,40 @@ final class ToolShortcutCenter {
     func suspend() { hotKeys.unregisterAll() }
 }
 
-/// Click, then press the new combination. Esc cancels. Nothing is stored here: the owner validates and saves.
-final class ShortcutRecorderButton: NSButton {
-    var onRecord: ((ToolShortcut) -> Void)?
-    var onRecordingChange: ((Bool) -> Void)?
-    private var monitor: Any?
-    private(set) var isRecording = false
-    var shortcut: ToolShortcut? { didSet { refreshTitle() } }
+/// Registers the gadgets' action shortcuts (snap left, show shelf, capture area...) for the gadgets that are running.
+/// A gadget that is off has none registered; the owner re-applies whenever a gadget or a shortcut changes.
+final class ActionShortcutCenter {
+    private let hotKeys = HotKeyCenter(signature: 0x4E43_4143)   // 'NCAC'
+    private(set) var registered: [String: ToolShortcut] = [:]
+    /// Set, wanted, but refused by macOS (usually another app holds the combination).
+    private(set) var failed: Set<String> = []
+    private(set) var firedCount = 0
+    var onTrigger: ((String) -> Void)?
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        bezelStyle = .rounded
-        target = self
-        action = #selector(clicked)
-        refreshTitle()
-    }
-    required init?(coder: NSCoder) { fatalError("not used") }
+    var registeredCount: Int { hotKeys.registeredCount }
 
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        refreshTitle()
+    func registeredCount(for module: ModuleID) -> Int {
+        registered.keys.filter { GadgetActions.action($0)?.module == module }.count
     }
 
-    private func refreshTitle() {
-        let text = isRecording ? "키를 누르세요… (Esc 취소)" : (shortcut?.label ?? "미설정 — 클릭해서 지정")
-        // The control glyph (U+2303) is enlarged so it does not read as a plain "^".
-        attributedTitle = UI.styled(text, font: UI.font(.callout), color: .labelColor)
-        setAccessibilityValue(text)
-    }
-
-    @objc private func clicked() { isRecording ? stop() : start() }
-
-    private func start() {
-        isRecording = true
-        refreshTitle()
-        onRecordingChange?(true)
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self, self.isRecording else { return event }
-            if event.keyCode == 53 { self.stop(); return nil }          // Esc cancels
-            let mods = UI.modifiersToCarbon(event.modifierFlags)
-            self.stop()
-            self.onRecord?(ToolShortcut(keyCode: UInt32(event.keyCode), modifiers: mods))
-            return nil
+    /// `wanted`: action id → shortcut, for running gadgets only.
+    func apply(_ wanted: [String: ToolShortcut]) {
+        hotKeys.unregisterAll()
+        registered = [:]
+        failed = []
+        for (index, action) in GadgetActions.all.enumerated() {
+            guard let s = wanted[action.id] else { continue }
+            let id = action.id
+            let ok = hotKeys.register(id: UInt32(index + 1), keyCode: s.keyCode, modifiers: s.modifiers) { [weak self] in
+                self?.firedCount += 1
+                DispatchQueue.main.async { self?.onTrigger?(id) }
+            }
+            if ok { registered[id] = s } else { failed.insert(id) }
         }
     }
 
-    func stop() {
-        guard isRecording else { return }
-        isRecording = false
-        if let m = monitor { NSEvent.removeMonitor(m) }
-        monitor = nil
-        refreshTitle()
-        onRecordingChange?(false)
+    func suspend() {
+        hotKeys.unregisterAll()
+        registered = [:]
     }
 }

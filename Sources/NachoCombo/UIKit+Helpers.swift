@@ -46,7 +46,7 @@ enum UI {
     }
 
     /// U+2060 WORD JOINER: invisible, keeps the glyphs of one Korean word together. NSTextField ignores
-    /// `lineBreakStrategy`, so Korean text was broken between syllables ("켜 / 둔"); with the joiners a line can only
+    /// `lineBreakStrategy`, so Korean text was broken between syllables, inside words; with the joiners a line can only
     /// break at a space, i.e. between words, and every line is filled up to the last word that fits.
     static let wordJoiner = "\u{2060}"
 
@@ -361,12 +361,12 @@ final class ToolRowView: NSControl {
         dot.kind = status.dot
         pinView.isHidden = !pinned
         shortcutLabel.textColor = shortcut == nil ? UI.tertiaryText : UI.secondaryText
-        shortcutLabel.setLive(shortcut?.label ?? "미설정")
-        let shortcutText = shortcut.map { "열기 단축키 \($0.label)" } ?? "열기 단축키 미설정"
+        shortcutLabel.setLive(shortcut?.label ?? "Not set")
+        let shortcutText = shortcut.map { "open shortcut \($0.label)" } ?? "no open shortcut"
         toolTip = "\(module.displayName) — \(status.stateText)" + (status.detail.map { "\n\($0)" } ?? "")
         setAccessibilityLabel(module.displayName)
-        setAccessibilityValue("\(status.accessibilityText)\(pinned ? ", 메뉴 막대에 고정됨" : ""), \(shortcutText)")
-        setAccessibilityHelp("도구 조작 화면을 엽니다")
+        setAccessibilityValue("\(status.accessibilityText)\(pinned ? ", pinned to the menu bar" : ""), \(shortcutText)")
+        setAccessibilityHelp("Opens the tool's controls")
     }
 
     override var acceptsFirstResponder: Bool { true }
@@ -423,32 +423,6 @@ final class ToolRowView: NSControl {
     }
 }
 
-/// Mini screen showing where the chosen window action will put the window.
-final class SnapPreviewView: NSView {
-    var action: SnapAction = .left {
-        didSet { needsDisplay = true; setAccessibilityLabel("배치 미리보기: \(action.displayName)") }
-    }
-
-    override var allowsVibrancy: Bool { false }
-    override var intrinsicContentSize: NSSize { NSSize(width: 128, height: 80) }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let screen = bounds.insetBy(dx: 1, dy: 1)
-        NSColor.quaternaryLabelColor.setFill()
-        let outline = NSBezierPath(roundedRect: screen, xRadius: 4, yRadius: 4)
-        outline.fill()
-        let f = WindowLayout.previewFraction(for: action)
-        let inner = screen.insetBy(dx: 3, dy: 3)
-        let r = NSRect(x: inner.minX + f.minX * inner.width, y: inner.minY + f.minY * inner.height,
-                       width: f.width * inner.width, height: f.height * inner.height).insetBy(dx: 1, dy: 1)
-        NSColor.controlAccentColor.withAlphaComponent(0.85).setFill()
-        NSBezierPath(roundedRect: r, xRadius: 3, yRadius: 3).fill()
-        NSColor.separatorColor.setStroke()
-        outline.lineWidth = 1
-        outline.stroke()
-    }
-}
-
 extension NSView {
     func invalidateAncestors() {
         var view: NSView? = self
@@ -466,7 +440,7 @@ extension NSView {
 extension NSTextField {
     /// Changing text can shrink the label's frame; the pixels it no longer covers belong to transparent ancestors (row,
     /// vibrancy popover frame) and were not repainted on Monterey, so old and new glyphs showed through each other
-    /// (real-OS captures: CPU digits, "상단바 고정됨" -> "상단바에 고정되지 않음"). Invalidate the whole ancestor chain
+    /// (real-OS captures: CPU digits, "Pinned to menu bar" -> "Not pinned"). Invalidate the whole ancestor chain
     /// and flush the window so the stale pixels are repainted.
     func setLive(_ text: String) {
         if let live = self as? LiveLabel, text.contains("\u{2303}") || live.usesAttributedText {
@@ -582,10 +556,23 @@ final class LiveLabel: NSTextField {
         set { super.font = newValue; if let f = newValue { baseFont = f } }
     }
 
+    /// Only labels inside a vibrant (popover) background need the erase below; on an ordinary window surface it would
+    /// punch the surface's color out from behind the text.
+    private var insideVibrancy = false
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        var view = superview
+        insideVibrancy = false
+        while let current = view {
+            if current is NSVisualEffectView { insideVibrancy = true; break }
+            view = current.superview
+        }
+    }
+
     /// Erase what an earlier string left behind before drawing the current one (labels without their own opaque
     /// background would otherwise paint new glyphs over old ones).
     override func draw(_ dirtyRect: NSRect) {
-        if !drawsBackground {
+        if !drawsBackground && insideVibrancy {
             NSGraphicsContext.saveGraphicsState()
             NSColor.clear.setFill()
             bounds.fill(using: .copy)
