@@ -9,22 +9,54 @@ public struct AppSettings: Codable, Equatable {
     public var menuBarCollapsed: Bool
     /// System monitor choices. Optional so settings files written before it existed still decode.
     public var monitor: MonitorSettings?
+    /// Focus dim strength (overlay opacity). Missing in files written by older versions.
+    public var dimIntensity: Double
+    /// Tools the user pinned to the menu bar. Independent of ON/OFF; nothing is pinned by default.
+    public var pinnedTools: [String: Bool]
+    /// Optional per-tool shortcut that opens the tool's panel screen. Unset by default.
+    public var toolShortcuts: [String: ToolShortcut]
 
     /// First launch: every module is OFF, so no permission prompt or monitoring starts before opt-in.
     public static let defaults = AppSettings(
         version: currentVersion, enabledModules: [:], menuBarCollapsed: false)
 
-    public init(version: Int, enabledModules: [String: Bool], menuBarCollapsed: Bool, monitor: MonitorSettings? = nil) {
+    public init(version: Int, enabledModules: [String: Bool], menuBarCollapsed: Bool, monitor: MonitorSettings? = nil,
+                dimIntensity: Double = FocusDimLogic.defaultIntensity,
+                pinnedTools: [String: Bool] = [:], toolShortcuts: [String: ToolShortcut] = [:]) {
+        self.pinnedTools = pinnedTools
+        self.toolShortcuts = toolShortcuts
         self.version = version
         self.enabledModules = enabledModules
         self.menuBarCollapsed = menuBarCollapsed
         self.monitor = monitor
+        self.dimIntensity = FocusDimLogic.clamp(dimIntensity)
     }
 
     public var monitorSettings: MonitorSettings {
         get { monitor ?? .defaults }
         set { monitor = newValue }
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case version, enabledModules, menuBarCollapsed, monitor, dimIntensity, pinnedTools, toolShortcuts
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decode(Int.self, forKey: .version)
+        enabledModules = try c.decode([String: Bool].self, forKey: .enabledModules)
+        menuBarCollapsed = try c.decode(Bool.self, forKey: .menuBarCollapsed)
+        // A broken monitor section falls back to its defaults instead of discarding the whole file.
+        monitor = try? c.decodeIfPresent(MonitorSettings.self, forKey: .monitor)
+        let raw = try c.decodeIfPresent(Double.self, forKey: .dimIntensity) ?? FocusDimLogic.defaultIntensity
+        dimIntensity = FocusDimLogic.clamp(raw)
+        // Files written by older versions have neither key: nothing pinned, no shortcuts.
+        pinnedTools = try c.decodeIfPresent([String: Bool].self, forKey: .pinnedTools) ?? [:]
+        toolShortcuts = try c.decodeIfPresent([String: ToolShortcut].self, forKey: .toolShortcuts) ?? [:]
+    }
+
+    public func isPinned(_ id: ModuleID) -> Bool { pinnedTools[id.rawValue] ?? false }
+    public func shortcut(for id: ModuleID) -> ToolShortcut? { toolShortcuts[id.rawValue] }
 
     public func isEnabled(_ id: ModuleID) -> Bool { enabledModules[id.rawValue] ?? false }
 

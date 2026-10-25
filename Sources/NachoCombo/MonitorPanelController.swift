@@ -20,10 +20,10 @@ final class MonitorPanelController: NSObject {
     var onClose: ((MonitorItem) -> Void)?
 
     /// Builds the flyout content for a factory and returns its root (the owner keeps it refreshed).
-    var makeFlyout: ((FlyoutFactory) -> PanelRootView?)?
+    var makeFlyout: ((FlyoutFactory) -> MonitorRootView?)?
     var onFlyoutClose: (() -> Void)?
     private var flyoutWindow: MonitorPanelWindow?
-    private weak var flyoutRoot: PanelRootView?
+    private weak var flyoutRoot: MonitorRootView?
     private weak var flyoutCard: StackElement?
     /// Opened by a debug command: stays until another card is hovered.
     private var flyoutPinned = false
@@ -44,7 +44,7 @@ final class MonitorPanelController: NSObject {
         return (text(window?.frame), text(anchor.flatMap(MonitorPanelController.screenRect)), text(flyoutWindow?.frame))
     }
 
-    func show(_ root: PanelRootView, item: MonitorItem, anchor: NSStatusBarButton?, hoverTargets: [HoverTarget]) {
+    func show(_ root: MonitorRootView, item: MonitorItem, anchor: NSStatusBarButton?, hoverTargets: [HoverTarget]) {
         close()
         let size = root.relayout()
         let scroll = NSScrollView()
@@ -75,7 +75,7 @@ final class MonitorPanelController: NSObject {
     }
 
     /// Re-measures the content (rows appeared / disappeared) keeping the top edge in place.
-    func relayout(_ root: PanelRootView) {
+    func relayout(_ root: MonitorRootView) {
         guard window != nil else { return }
         place(contentSize: root.relayout())
         if let card = flyoutCard, card.isHidden || card.window == nil { closeFlyout() } else { placeFlyout() }
@@ -315,7 +315,7 @@ final class MonitorPanelController: NSObject {
     }
 
     /// Debug aid (`ctl monitor flyout`): flyout and panel side by side, laid out like on screen.
-    static func renderFlyoutPNG(panel: PanelRootView, flyout: PanelRootView, card: StackElement,
+    static func renderFlyoutPNG(panel: MonitorRootView, flyout: MonitorRootView, card: StackElement,
                                 appearance: NSAppearance.Name, to url: URL) -> Bool {
         let gap = MonitorStyle.flyoutGap
         let top = max(0, card.convert(NSPoint.zero, to: panel).y)

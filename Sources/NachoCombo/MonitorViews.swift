@@ -182,7 +182,7 @@ class StackElement: PanelElement {
 }
 
 /// The whole panel (or flyout): cards stacked with outer insets, fixed width.
-final class PanelRootView: StackElement {
+final class MonitorRootView: StackElement {
     let width: CGFloat
 
     init(cards: [PanelElement], width: CGFloat = MonitorStyle.panelWidth) {

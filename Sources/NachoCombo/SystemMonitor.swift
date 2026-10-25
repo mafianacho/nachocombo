@@ -21,6 +21,22 @@ final class SystemMonitorModule: NSObject, FeatureModule {
     private var flyout: FlyoutContent?
 
     var isRunning: Bool { engine != nil }
+
+    /// Latest numbers for the tool panel's monitor summary.
+    struct Reading {
+        var cpuBusy: Double?
+        var memPercent: Double?
+        var memUsed: UInt64 = 0
+        var memTotal: UInt64 = 0
+        var rx: Double?
+        var tx: Double?
+    }
+
+    var latest: Reading {
+        guard let s = engine?.snapshot else { return Reading() }
+        return Reading(cpuBusy: s.cpu?.busy, memPercent: s.memory?.usedPercent, memUsed: s.memory?.used ?? 0,
+                       memTotal: s.memory?.total ?? 0, rx: s.netDown, tx: s.netUp)
+    }
     private var shownOrder: [MonitorItem] { MonitorItem.allCases.filter { statusItems[$0] != nil } }
 
     override init() {

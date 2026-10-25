@@ -8,6 +8,10 @@ final class HotKeyCenter {
     private var hotKeys: [UInt32: EventHotKeyRef] = [:]
     private var callbacks: [UInt32: () -> Void] = [:]
     private(set) var firedCount = 0
+    /// Each center only reacts to its own hotkeys, so several modules can coexist.
+    private let signature: OSType
+
+    init(signature: OSType = 0x4E43_4F4D) { self.signature = signature }   // default 'NCOM'
 
     var registeredCount: Int { hotKeys.count }
 
@@ -21,13 +25,15 @@ final class HotKeyCenter {
                                             EventParamType(typeEventHotKeyID), nil,
                                             MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
                 guard err == noErr else { return err }
-                Unmanaged<HotKeyCenter>.fromOpaque(userData).takeUnretainedValue().fire(hotKeyID.id)
+                let center = Unmanaged<HotKeyCenter>.fromOpaque(userData).takeUnretainedValue()
+                guard hotKeyID.signature == center.signature else { return OSStatus(eventNotHandledErr) }
+                center.fire(hotKeyID.id)
                 return noErr
             }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handlerRef)
             guard status == noErr else { return false }
         }
         var ref: EventHotKeyRef?
-        let hotKeyID = EventHotKeyID(signature: OSType(0x4E43_4F4D), id: id)  // 'NCOM'
+        let hotKeyID = EventHotKeyID(signature: signature, id: id)
         let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &ref)
         guard status == noErr, let registered = ref else { return false }
         hotKeys[id] = registered

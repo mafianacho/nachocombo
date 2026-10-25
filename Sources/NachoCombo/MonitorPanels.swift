@@ -51,7 +51,7 @@ struct PanelContext {
 /// Element tree of a dropdown panel or a hover flyout. Built once when shown, refreshed on every sample.
 class MonitorContent {
     let context: PanelContext
-    private(set) var root: PanelRootView!
+    private(set) var root: MonitorRootView!
     weak var engine: MonitorEngine?
     private var needsRelayout = false
 
@@ -60,7 +60,7 @@ class MonitorContent {
     }
 
     func setCards(_ cards: [PanelElement], width: CGFloat = MonitorStyle.panelWidth) {
-        root = PanelRootView(cards: cards, width: width)
+        root = MonitorRootView(cards: cards, width: width)
     }
 
     func update(_ engine: MonitorEngine) {
