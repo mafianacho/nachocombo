@@ -423,32 +423,6 @@ final class ToolRowView: NSControl {
     }
 }
 
-/// Mini screen showing where the chosen window action will put the window.
-final class SnapPreviewView: NSView {
-    var action: SnapAction = .left {
-        didSet { needsDisplay = true; setAccessibilityLabel("Snap preview: \(action.displayName)") }
-    }
-
-    override var allowsVibrancy: Bool { false }
-    override var intrinsicContentSize: NSSize { NSSize(width: 128, height: 80) }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let screen = bounds.insetBy(dx: 1, dy: 1)
-        NSColor.quaternaryLabelColor.setFill()
-        let outline = NSBezierPath(roundedRect: screen, xRadius: 4, yRadius: 4)
-        outline.fill()
-        let f = WindowLayout.previewFraction(for: action)
-        let inner = screen.insetBy(dx: 3, dy: 3)
-        let r = NSRect(x: inner.minX + f.minX * inner.width, y: inner.minY + f.minY * inner.height,
-                       width: f.width * inner.width, height: f.height * inner.height).insetBy(dx: 1, dy: 1)
-        NSColor.controlAccentColor.withAlphaComponent(0.85).setFill()
-        NSBezierPath(roundedRect: r, xRadius: 3, yRadius: 3).fill()
-        NSColor.separatorColor.setStroke()
-        outline.lineWidth = 1
-        outline.stroke()
-    }
-}
-
 extension NSView {
     func invalidateAncestors() {
         var view: NSView? = self
@@ -582,10 +556,23 @@ final class LiveLabel: NSTextField {
         set { super.font = newValue; if let f = newValue { baseFont = f } }
     }
 
+    /// Only labels inside a vibrant (popover) background need the erase below; on an ordinary window surface it would
+    /// punch the surface's color out from behind the text.
+    private var insideVibrancy = false
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        var view = superview
+        insideVibrancy = false
+        while let current = view {
+            if current is NSVisualEffectView { insideVibrancy = true; break }
+            view = current.superview
+        }
+    }
+
     /// Erase what an earlier string left behind before drawing the current one (labels without their own opaque
     /// background would otherwise paint new glyphs over old ones).
     override func draw(_ dirtyRect: NSRect) {
-        if !drawsBackground {
+        if !drawsBackground && insideVibrancy {
             NSGraphicsContext.saveGraphicsState()
             NSColor.clear.setFill()
             bounds.fill(using: .copy)

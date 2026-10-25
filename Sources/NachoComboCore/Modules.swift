@@ -131,10 +131,33 @@ public final class ModuleManager {
     @discardableResult
     public func setShortcut(_ id: ModuleID, _ shortcut: ToolShortcut?) -> ShortcutIssue? {
         if let shortcut = shortcut {
-            if let issue = ShortcutPolicy.validate(shortcut, for: id, existing: settings.toolShortcuts) { return issue }
+            let actions = settings.effectiveActionShortcuts.map { ($0.name, $0.keyCode, $0.modifiers) }
+            if let issue = ShortcutPolicy.validate(shortcut, for: id, existing: settings.toolShortcuts, actions: actions) {
+                return issue
+            }
             settings.toolShortcuts[id.rawValue] = shortcut
         } else {
             settings.toolShortcuts.removeValue(forKey: id.rawValue)
+        }
+        try? store.save(settings)
+        onChange?()
+        return nil
+    }
+
+    /// Gives an action a new shortcut, removes it (`nil`), or with `reset` goes back to the default.
+    /// Returns the policy issue and stores nothing when the shortcut is not allowed.
+    @discardableResult
+    public func setActionShortcut(_ id: String, _ shortcut: ToolShortcut?, reset: Bool = false) -> ShortcutIssue? {
+        if reset {
+            settings.actionShortcuts.removeValue(forKey: id)
+        } else {
+            if let shortcut = shortcut,
+               let issue = ShortcutPolicy.validateAction(shortcut, actionID: id, settings: settings) { return issue }
+            if shortcut == GadgetActions.action(id)?.defaultShortcut {
+                settings.actionShortcuts.removeValue(forKey: id)
+            } else {
+                settings.actionShortcuts[id] = ActionBinding(shortcut: shortcut)
+            }
         }
         try? store.save(settings)
         onChange?()
@@ -147,6 +170,13 @@ public final class ModuleManager {
 
     public func setMenuBarCollapsed(_ collapsed: Bool) {
         settings.menuBarCollapsed = collapsed
+        try? store.save(settings)
+        onChange?()
+    }
+
+    public func setOptions(_ value: GadgetOptions) {
+        guard settings.options != value else { return }
+        settings.options = value
         try? store.save(settings)
         onChange?()
     }

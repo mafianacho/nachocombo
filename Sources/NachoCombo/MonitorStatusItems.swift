@@ -33,6 +33,7 @@ enum StatusRenderer {
         case .disk: return padding + Draw.width("W 999.9M/s", smallFont) + padding
         case .network: return padding + Draw.width("↓ 999.9M/s", smallFont) + padding
         case .sensors: return padding + 9 + 3 + Draw.width("100°", valueFont) + padding
+        case .battery: return padding + 22 + 4 + Draw.width("100%", valueFont) + padding
         }
     }
 
@@ -81,6 +82,26 @@ enum StatusRenderer {
             Draw.text(s?.cpuTemperature.map { MonitorFormat.temperature($0) } ?? "–°",
                       in: NSRect(x: padding + 12, y: 0, width: bounds.width - padding * 2 - 12, height: bounds.height),
                       font: valueFont, color: text, align: .right)
+        case .battery:
+            // Battery outline with its charge level; green while charging, red when low.
+            let body = NSRect(x: padding, y: midY - 5.5, width: 19, height: 11)
+            NSColor.labelColor.withAlphaComponent(0.55).setStroke()
+            let outline = NSBezierPath(roundedRect: body.insetBy(dx: 0.5, dy: 0.5), xRadius: 2.5, yRadius: 2.5)
+            outline.lineWidth = 1
+            outline.stroke()
+            NSColor.labelColor.withAlphaComponent(0.55).setFill()
+            NSBezierPath(roundedRect: NSRect(x: body.maxX + 0.5, y: midY - 2, width: 1.5, height: 4), xRadius: 0.75, yRadius: 0.75).fill()
+            if let battery = s?.battery {
+                let level = max(0, min(1, battery.percent / 100))
+                let color: NSColor = battery.charging || battery.onAC ? .systemGreen
+                    : (battery.percent <= MonitorAlerts.batteryPercent ? .systemRed : .labelColor)
+                color.setFill()
+                NSBezierPath(roundedRect: NSRect(x: body.minX + 2, y: body.minY + 2, width: (body.width - 4) * CGFloat(level),
+                                                 height: body.height - 4), xRadius: 1, yRadius: 1).fill()
+            }
+            Draw.text(s?.battery.map { MonitorFormat.percent($0.percent) } ?? "–",
+                      in: NSRect(x: padding + 26, y: 0, width: bounds.width - padding * 2 - 26, height: bounds.height),
+                      font: valueFont, color: text, align: .right)
         }
     }
 
@@ -96,6 +117,17 @@ enum StatusRenderer {
 
     /// Debug aid: every item side by side, as the menu bar would show them.
     static func renderStrip(engine: MonitorEngine, items: [MonitorItem], appearance: NSAppearance.Name, to url: URL) -> Bool {
+        let strip = makeStrip(engine: engine, items: items)
+        return MonitorPanelController.renderPNG(strip, size: strip.frame.size, appearance: appearance, to: url)
+    }
+
+    /// The items as they draw in the menu bar, on a transparent background.
+    static func stripImage(engine: MonitorEngine, items: [MonitorItem], appearance: NSAppearance.Name) -> NSImage? {
+        let strip = makeStrip(engine: engine, items: items)
+        return MonitorPanelController.renderImage(strip, size: strip.frame.size, appearance: appearance, background: false)
+    }
+
+    private static func makeStrip(engine: MonitorEngine, items: [MonitorItem]) -> NSView {
         let height: CGFloat = 24
         let total = items.map { width(for: $0) + 8 }.reduce(0, +)
         let strip = FlippedStrip(frame: NSRect(x: 0, y: 0, width: total, height: height))
@@ -107,7 +139,7 @@ enum StatusRenderer {
             strip.addSubview(view)
             x += width(for: item) + 8
         }
-        return MonitorPanelController.renderPNG(strip, size: strip.frame.size, appearance: appearance, to: url)
+        return strip
     }
 }
 

@@ -520,7 +520,7 @@ final class ProcessListElement: PanelElement {
     var rows: [Row] = [] { didSet { needsDisplay = true } }
     var placeholder = "" { didSet { needsDisplay = true } }
     var footnote = "" { didSet { needsDisplay = true } }
-    private let columnWidth: CGFloat = 50
+    private let columnWidth: CGFloat = 58      // fits "400.5MB" at 11 pt
     private let rowHeight: CGFloat = 19
 
     init(columns: [String], maxRows: Int = 5, footnote: String = "") {

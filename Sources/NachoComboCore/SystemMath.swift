@@ -11,6 +11,10 @@ public struct CPUTicks: Equatable {
 public struct CPUUsage: Equatable {
     public let user: Double, system: Double, idle: Double
     public var busy: Double { user + system }
+
+    public init(user: Double, system: Double, idle: Double) {
+        self.user = user; self.system = system; self.idle = idle
+    }
 }
 
 public enum SystemMath {

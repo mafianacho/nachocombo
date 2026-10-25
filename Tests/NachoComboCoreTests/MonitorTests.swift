@@ -207,7 +207,7 @@ final class MonitorTests: XCTestCase {
 
     func testMonitorSettingsDefaultsAndOldFiles() throws {
         let s = MonitorSettings.defaults
-        XCTAssertEqual(s.shownItems, MonitorItem.allCases)
+        XCTAssertEqual(s.shownItems, MonitorItem.allCases.filter { $0 != .battery })   // battery is opt-in
         XCTAssertFalse(s.publicIPLookup)
         XCTAssertEqual(s.range(for: "cpu"), .oneHour)
         // Old settings file without the monitor block, and a partial monitor block.
@@ -234,5 +234,86 @@ final class MonitorTests: XCTestCase {
         let loaded = SettingsStore(url: url).load().monitorSettings
         XCTAssertFalse(loaded.isShown(.sensors))
         XCTAssertEqual(loaded.range(for: "network"), .tenMinutes)
+    }
+}
+
+final class BatteryAlertTests: XCTestCase {
+    func testBatteryParsing() throws {
+        let source: [String: Any] = ["Type": "InternalBattery", "Current Capacity": 84, "Max Capacity": 100,
+                                     "Is Charging": false, "Power Source State": "Battery Power", "Time to Empty": 254,
+                                     "BatteryHealthCondition": "Normal"]
+        let registry: [String: Any] = ["CycleCount": 212, "DesignCapacity": 6075, "AppleRawMaxCapacity": 5528,
+                                       "Temperature": 3012, "Voltage": 12_480, "Amperage": NSNumber(value: UInt64(bitPattern: -1_250)),
+                                       "AdapterDetails": ["Watts": 96]]
+        let b = try XCTUnwrap(BatteryInfo(powerSource: source, registry: registry))
+        XCTAssertEqual(b.percent, 84)
+        XCTAssertFalse(b.onAC)
+        XCTAssertEqual(b.stateText, "On Battery")
+        XCTAssertEqual(b.minutesToEmpty, 254)
+        XCTAssertNil(b.minutesToFull)
+        XCTAssertEqual(b.cycleCount, 212)
+        XCTAssertEqual(b.healthPercent ?? 0, 91, accuracy: 0.1)
+        XCTAssertEqual(b.condition, "Normal", "no reported condition means normal")
+        var named = source
+        named["BatteryHealthCondition"] = "Service Recommended"
+        named["BatteryHealth"] = "Check Battery"
+        XCTAssertEqual(BatteryInfo(powerSource: named, registry: registry)?.condition, "Service Recommended")
+        var nominal = registry
+        nominal["NominalChargeCapacity"] = 4_678
+        XCTAssertEqual(BatteryInfo(powerSource: source, registry: nominal)?.maxCapacity, 4_678)
+        XCTAssertEqual(b.temperature ?? 0, 30.12, accuracy: 0.001)
+        XCTAssertEqual(b.amperage ?? 0, -1.25, accuracy: 0.0001)
+        XCTAssertEqual(b.power ?? 0, -15.6, accuracy: 0.01)
+        XCTAssertNil(b.adapterWatts, "adapter watts only while on power")
+        XCTAssertEqual(BatteryInfo.duration(minutes: 254), "4:14")
+        XCTAssertEqual(BatteryInfo.duration(minutes: 42), "42 min")
+        XCTAssertNil(BatteryInfo(powerSource: ["Type": "UPS", "Current Capacity": 1, "Max Capacity": 2], registry: [:]))
+        // Still estimating (-1) is not a time.
+        var estimating = source
+        estimating["Time to Empty"] = -1
+        XCTAssertNil(BatteryInfo(powerSource: estimating, registry: registry)?.minutesToEmpty)
+    }
+
+    func testAlertsNeedSustainedValuesAndRearm() {
+        var alerts = MonitorAlerts(cpuThreshold: 90)
+        func input(cpu: Double = 10, pressure: Int = 1, disk: Double = 50, temp: Double = 50, battery: BatteryInfo? = nil) -> MonitorAlertInput {
+            MonitorAlertInput(cpuBusy: cpu, pressureLevel: pressure, diskUsedPercent: disk, cpuTemperature: temp, battery: battery)
+        }
+        for _ in 0..<(MonitorAlerts.cpuSamples - 1) { XCTAssertEqual(alerts.update(input(cpu: 95)), []) }
+        XCTAssertEqual(alerts.update(input(cpu: 95)), [.cpu])
+        XCTAssertEqual(alerts.update(input(cpu: 96)), [], "an active alert does not start again")
+        XCTAssertTrue(alerts.active.contains(.cpu))
+        _ = alerts.update(input(cpu: 88))                  // below the threshold but above the reset level: still active
+        XCTAssertTrue(alerts.active.contains(.cpu))
+        _ = alerts.update(input(cpu: 40))
+        XCTAssertTrue(alerts.active.contains(.cpu), "one calm sample is not enough to end it")
+        _ = alerts.update(input(cpu: 40))
+        _ = alerts.update(input(cpu: 40))
+        XCTAssertFalse(alerts.active.contains(.cpu))
+        // A single spike never alerts.
+        XCTAssertEqual(alerts.update(input(cpu: 99)), [])
+        // Disk and battery start at once.
+        XCTAssertEqual(Set(alerts.update(input(disk: 93, battery: BatteryInfo(percent: 8, charging: false, onAC: false)))),
+                       [.disk, .battery])
+        XCTAssertEqual(alerts.messages.count, 2)
+        _ = alerts.update(input(disk: 50, battery: BatteryInfo(percent: 8, charging: true, onAC: true)))
+        XCTAssertTrue(alerts.active.isEmpty)
+        // Memory pressure that flickers between normal and warning stays one alert, not a new one each time.
+        var memory = MonitorAlerts(cpuThreshold: 0)
+        var starts = 0
+        for i in 0..<60 { starts += memory.update(input(pressure: i < 6 || i % 2 == 0 ? 2 : 1)).count }
+        XCTAssertEqual(starts, 1)
+        XCTAssertTrue(memory.active.contains(.memory))
+        for _ in 0..<MonitorAlerts.memoryClearSamples { _ = memory.update(input(pressure: 1)) }
+        XCTAssertFalse(memory.active.contains(.memory))
+        // CPU alert off.
+        var off = MonitorAlerts(cpuThreshold: 0)
+        for _ in 0..<40 { XCTAssertFalse(off.update(input(cpu: 100)).contains(.cpu)) }
+    }
+
+    func testBatteryItemIsOptIn() {
+        XCTAssertFalse(MonitorSettings.defaults.isShown(.battery))
+        XCTAssertTrue(MonitorSettings.defaults.isShown(.cpu))
+        XCTAssertFalse(MonitorSettings.defaults.shownItems.contains(.battery))
     }
 }

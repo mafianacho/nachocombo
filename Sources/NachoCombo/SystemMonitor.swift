@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 import NachoComboCore
 
 /// iStat-style system monitor: one status item per metric group (CPU, memory, disk, network, sensors),
@@ -8,6 +9,9 @@ final class SystemMonitorModule: NSObject, FeatureModule {
     let id = ModuleID.systemMonitor
 
     var settingsProvider: () -> MonitorSettings = { .defaults }
+    var optionsProvider: () -> GadgetOptions = { .defaults }
+    /// Alerts started or ended (the gallery badge counts them).
+    var onAlertsChange: (() -> Void)?
     var settingsChanged: (MonitorSettings) -> Void = { _ in }
     /// Our status items were re-created (the menu bar divider must move back to their left).
     var onStatusItemsRebuilt: (() -> Void)?
@@ -19,6 +23,8 @@ final class SystemMonitorModule: NSObject, FeatureModule {
     private let panels = MonitorPanelController()
     private var panel: PanelContent?
     private var flyout: FlyoutContent?
+    private var alerts = MonitorAlerts(cpuThreshold: 90)
+    private(set) var notificationsPosted = 0
 
     var isRunning: Bool { engine != nil }
 
@@ -72,7 +78,13 @@ final class SystemMonitorModule: NSObject, FeatureModule {
         removeStatusItems()
         engine?.stop()
         engine = nil
+        let hadAlerts = !alerts.active.isEmpty
+        alerts = MonitorAlerts(cpuThreshold: alerts.cpuThreshold)
+        if hadAlerts { onAlertsChange?() }
     }
+
+    /// Alerts that are on now, in words.
+    var alertMessages: [String] { engine == nil ? [] : alerts.messages }
 
     /// Re-reads the settings: re-creates status items when the shown set changed.
     func applySettings() {
@@ -133,6 +145,23 @@ final class SystemMonitorModule: NSObject, FeatureModule {
         guard let engine = engine else { return }
         panel?.update(engine)
         flyout?.update(engine)
+        evaluateAlerts(engine.snapshot)
+    }
+
+    private func evaluateAlerts(_ s: MonitorSnapshot) {
+        let options = optionsProvider()
+        let before = alerts.active
+        alerts.cpuThreshold = Double(options.cpuAlertPercent)
+        let started = alerts.update(MonitorAlertInput(cpuBusy: s.cpu?.busy, pressureLevel: s.pressureLevel,
+                                                      diskUsedPercent: s.volume?.usedPercent,
+                                                      cpuTemperature: s.cpuTemperature, battery: s.battery))
+        if options.alertNotifications {
+            for kind in started {
+                AlertNotifier.post(title: "Nacho Combo · System Monitor", body: alerts.message(kind), id: kind.rawValue)
+                notificationsPosted += 1
+            }
+        }
+        if alerts.active != before { onAlertsChange?() }
     }
 
     // MARK: Panels
@@ -196,8 +225,9 @@ final class SystemMonitorModule: NSObject, FeatureModule {
 
     // MARK: Debug snapshots (`--debug-ctl`)
 
-    func writeSnapshot(_ item: MonitorItem, to url: URL, dark: Bool) -> Bool {
-        guard let engine = engine else { return false }
+    /// `sample` renders made-up numbers instead of this Mac's (for documentation screenshots).
+    func writeSnapshot(_ item: MonitorItem, to url: URL, dark: Bool, sample: Bool = false) -> Bool {
+        guard let engine = sample ? MonitorEngine.sample() : engine else { return false }
         let content = PanelContent.make(item, context: makeContext(relayout: .none))
         content.update(engine)
         let size = content.root.relayout()
@@ -205,8 +235,8 @@ final class SystemMonitorModule: NSObject, FeatureModule {
     }
 
     /// The panel with its `index`-th hover card highlighted and that card's flyout beside it.
-    func writeFlyoutSnapshot(_ item: MonitorItem, index: Int, to url: URL, dark: Bool) -> Bool {
-        guard let engine = engine else { return false }
+    func writeFlyoutSnapshot(_ item: MonitorItem, index: Int, to url: URL, dark: Bool, sample: Bool = false) -> Bool {
+        guard let engine = sample ? MonitorEngine.sample() : engine else { return false }
         let content = PanelContent.make(item, context: makeContext(relayout: .none))
         content.update(engine)
         guard content.hoverTargets.indices.contains(index) else { return false }
@@ -220,9 +250,26 @@ final class SystemMonitorModule: NSObject, FeatureModule {
                                                       appearance: dark ? .darkAqua : .aqua, to: url)
     }
 
-    func writeMenuBarSnapshot(to url: URL, dark: Bool) -> Bool {
-        guard let engine = engine else { return false }
+    func writeMenuBarSnapshot(to url: URL, dark: Bool, sample: Bool = false) -> Bool {
+        guard let engine = sample ? MonitorEngine.sample() : engine else { return false }
         return StatusRenderer.renderStrip(engine: engine, items: MonitorItem.allCases, appearance: dark ? .darkAqua : .aqua, to: url)
+    }
+
+    // MARK: Gallery preview
+
+    /// Pictures of the real menu bar items and CPU panel for the gadget gallery: live numbers while the monitor runs,
+    /// otherwise a sample engine (`live` says which).
+    func previewImages(appearance: NSAppearance.Name, sample: Bool = false) -> (strip: NSImage?, panel: NSImage?, live: Bool) {
+        let live = engine != nil && !sample
+        let source = (live ? engine : nil) ?? MonitorEngine.sample()
+        let items = live ? settingsProvider().shownItems : MonitorItem.allCases.filter { $0.shownByDefault }
+        let strip = StatusRenderer.stripImage(engine: source, items: items.isEmpty ? MonitorItem.allCases : items,
+                                              appearance: appearance)
+        let content = PanelContent.make(.cpu, context: makeContext(relayout: .none))
+        content.update(source)
+        let size = content.root.relayout()
+        let panel = MonitorPanelController.renderImage(content.root, size: size, appearance: appearance)
+        return (strip, panel, live)
     }
 
     // MARK: Diagnostics
@@ -262,7 +309,52 @@ final class SystemMonitorModule: NSObject, FeatureModule {
             "powerWatts": number(s?.power),
             "ssdHealth": s?.ssd.map { "\($0.healthPercent)" } ?? "-",
             "processGroups": "\(s?.processes.count ?? 0)",
+            "battery": s?.battery.map { String(format: "%.0f%% %@", $0.percent, $0.stateText) } ?? "-",
+            "alerts": alerts.active.map { $0.rawValue }.sorted().joined(separator: ","),
+            "notificationsPosted": "\(notificationsPosted)",
             "networkProcessGroups": "\(s?.networkProcesses.count ?? 0)",
         ]
+    }
+}
+
+/// Alert notifications (only when the user turned them on). The permission state is cached for the gallery, which
+/// asks synchronously; it is refreshed whenever the gallery redraws.
+enum AlertNotifier {
+    /// nil = macOS has not asked the user yet.
+    private(set) static var granted: Bool?
+    /// Notification Center needs a real app bundle (not a bare binary started from a terminal).
+    static var available: Bool { Bundle.main.bundleURL.pathExtension == "app" && Bundle.main.bundleIdentifier != nil }
+
+    static func refreshStatus(_ completion: (() -> Void)? = nil) {
+        guard available else { return }
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                let old = granted
+                switch settings.authorizationStatus {
+                case .notDetermined: granted = nil
+                case .denied: granted = false
+                default: granted = true
+                }
+                if old != granted { completion?() }
+            }
+        }
+    }
+
+    static func request(_ completion: @escaping () -> Void) {
+        guard available else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { ok, _ in
+            DispatchQueue.main.async {
+                granted = ok
+                completion()
+            }
+        }
+    }
+
+    static func post(title: String, body: String, id: String) {
+        guard available, granted == true else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "alert.\(id)", content: content, trigger: nil))
     }
 }

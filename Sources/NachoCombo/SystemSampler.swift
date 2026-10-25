@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import IOKit
+import IOKit.ps
 import SystemConfiguration
 import NachoComboCore
 
@@ -165,6 +166,29 @@ enum SystemSampler {
             write &+= (stats["Bytes (Write)"] as? NSNumber)?.uint64Value ?? 0
         }
         return (read, write)
+    }
+
+    /// The internal battery through the public power source API, plus cycle count, capacities, temperature and
+    /// electrical readings from the AppleSmartBattery registry entry. nil on Macs without a battery.
+    static func battery() -> BatteryInfo? {
+        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let list = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else { return nil }
+        var registry: [String: Any] = [:]
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        if service != 0 {
+            var properties: Unmanaged<CFMutableDictionary>?
+            if IORegistryEntryCreateCFProperties(service, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+               let dictionary = properties?.takeRetainedValue() as? [String: Any] {
+                registry = dictionary
+            }
+            IOObjectRelease(service)
+        }
+        for source in list {
+            guard let description = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any],
+                  let battery = BatteryInfo(powerSource: description, registry: registry) else { continue }
+            return battery
+        }
+        return nil
     }
 
     static func volumeInfo() -> VolumeInfo? {

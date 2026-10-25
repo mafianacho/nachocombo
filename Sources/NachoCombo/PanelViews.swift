@@ -15,11 +15,13 @@ final class ToolListView: NSView {
         let inner = UI.panelWidth - 2 * UI.margin
 
         // The title says what this is; the count answers the one question of this screen: what is on right now.
+        let logo = NSImageView(image: AppIcon.artwork(height: 18))
+        logo.setAccessibilityElement(false)
         let title = UI.label("Nacho Combo", style: .headline, weight: .semibold)
         title.setAccessibilityIdentifier("panel-list-title")
         summary.alignment = .right
         summary.setAccessibilityIdentifier("panel-list-summary")
-        let header = UI.hstack([title, UI.spacer(), summary], spacing: 8)
+        let header = UI.hstack([logo, title, UI.spacer(), summary], spacing: 6)
         header.widthAnchor.constraint(equalToConstant: inner).isActive = true
 
         var views: [NSView] = [header, UI.separator(width: inner)]
@@ -106,17 +108,18 @@ final class ToolDetailView: NSView {
     private let memValue = UI.label("–", style: .callout, color: .labelColor)
     private let rxValue = UI.label("–", style: .callout, color: .labelColor)
     private let txValue = UI.label("–", style: .callout, color: .labelColor)
-    private let snapSegments = NSSegmentedControl(labels: SnapAction.allCases.map { $0.displayName },
-                                                  trackingMode: .selectOne, target: nil, action: nil)
-    private let snapPreview = SnapPreviewView()
-    private let snapApply = NSButton(title: "Apply", target: nil, action: nil)
+    private var snapGrid: SnapGridView?
+    private let statusLine = UI.label("", style: .subheadline, color: UI.secondaryText)
+    private let alwaysHiddenButton = NSButton(title: "Show Always-Hidden", target: nil, action: nil)
+    private let pasteButton = NSButton(title: "Add Clipboard", target: nil, action: nil)
+    private let pauseButton = NSButton(title: "Pause", target: nil, action: nil)
+    private var captureButtons: [NSButton] = []
     private let shelfButton = NSButton(title: "Open Shelf", target: nil, action: nil)
     private let shelfCount = UI.label("", style: .subheadline, color: UI.secondaryText)
     private let captureButton = NSButton(title: "Capture Area", target: nil, action: nil)
     private let dimSlider = NSSlider(value: 0.5, minValue: FocusDimLogic.minimumIntensity,
                                      maxValue: FocusDimLogic.maximumIntensity, target: nil, action: nil)
     private let dimValue = UI.label("", style: .callout, color: .labelColor)
-    private var snapSelection: SnapAction = .left
 
     init(module: ModuleID, host: PanelHost) {
         self.module = module
@@ -228,9 +231,12 @@ final class ToolDetailView: NSView {
             collapseButton.target = self
             collapseButton.action = #selector(collapseClicked)
             collapseButton.setAccessibilityIdentifier("panel-collapse")
-            controls.append(collapseButton)
+            alwaysHiddenButton.target = self
+            alwaysHiddenButton.action = #selector(alwaysHiddenClicked)
+            alwaysHiddenButton.setAccessibilityIdentifier("panel-always-hidden")
+            controls.append(contentsOf: [collapseButton, alwaysHiddenButton])
             let note = UI.wrapLabel("To hide an icon, ⌘-drag it left of the divider (┊).", width: inner)
-            return [collapseButton, note]
+            return [UI.hstack([collapseButton, alwaysHiddenButton], spacing: 8), note]
         case .systemMonitor:
             func line(_ title: String, _ value: NSTextField) -> NSView {
                 value.font = UI.digitsFont(.callout)
@@ -248,28 +254,13 @@ final class ToolDetailView: NSView {
             return [line("CPU", cpuValue), line("Memory", memValue), line("Network down", rxValue),
                     line("Network up", txValue)]
         case .windowSnap:
-            snapSegments.target = self
-            snapSegments.action = #selector(snapSelected)
-            snapSegments.selectedSegment = 0
-            snapSegments.setAccessibilityIdentifier("panel-snap-choice")
-            snapSegments.setAccessibilityLabel("Snap layout")
-            snapApply.target = self
-            snapApply.action = #selector(snapApplyClicked)
-            snapApply.bezelStyle = .rounded
-            snapApply.keyEquivalent = ""
-            snapApply.setAccessibilityIdentifier("panel-snap-apply")
-            snapApply.setAccessibilityLabel("Apply the selected layout")
-            snapPreview.action = .left
-            snapPreview.setAccessibilityElement(true)
-            snapPreview.setAccessibilityRole(.image)
-            snapPreview.setAccessibilityLabel("Snap preview: Left Half")
-            controls.append(contentsOf: [snapSegments, snapApply])
-            snapSegments.translatesAutoresizingMaskIntoConstraints = false
-            snapSegments.segmentDistribution = .fillEqually
-            snapSegments.widthAnchor.constraint(equalToConstant: inner).isActive = true
-            let bottom = UI.hstack([snapPreview, UI.spacer(), snapApply], spacing: 12, alignment: .bottom)
-            let note = UI.wrapLabel("Targets the window of the app you used last.", width: inner)
-            return [snapSegments, bottom, note]
+            let grid = SnapGridView(cell: NSSize(width: 40, height: 27)) { [weak self] action in
+                self?.host?.panelApplySnap(action)
+            }
+            grid.setAccessibilityIdentifier("panel-snap-grid")
+            snapGrid = grid
+            let note = UI.wrapLabel("Click a layout to apply it to the window of the app you used last.", width: inner)
+            return [grid, note]
         case .fileShelf:
             shelfButton.target = self
             shelfButton.action = #selector(shelfClicked)
@@ -277,14 +268,33 @@ final class ToolDetailView: NSView {
             controls.append(shelfButton)
             shelfCount.setAccessibilityIdentifier("panel-shelf-count")
             shelfCount.setAccessibilityLabel("Shelf item count")
-            return [UI.hstack([shelfButton, shelfCount], spacing: 12)]
+            pasteButton.target = self
+            pasteButton.action = #selector(pasteClicked)
+            pasteButton.setAccessibilityIdentifier("panel-shelf-paste")
+            controls.append(pasteButton)
+            return [UI.hstack([shelfButton, pasteButton, shelfCount], spacing: 8)]
         case .captureFloat:
             captureButton.target = self
             captureButton.action = #selector(captureClicked)
+            captureButton.title = "Area"
             captureButton.setAccessibilityIdentifier("panel-capture-start")
-            controls.append(captureButton)
-            let note = UI.wrapLabel("Pick the area after the panel closes. Switching it on asks for Screen Recording permission.", width: inner)
-            return [captureButton, note]
+            func make(_ title: String, _ id: String, _ command: GadgetCommand) -> NSButton {
+                let b = ClosureButton(title: title) { [weak self] in self?.capture(command) }
+                b.bezelStyle = .rounded
+                b.setAccessibilityIdentifier(id)
+                return b
+            }
+            let window = make("Window", "panel-capture-window", .captureWindow)
+            let screen = make("Screen", "panel-capture-screen", .captureScreen)
+            let previous = make("Previous", "panel-capture-previous", .capturePrevious)
+            let lock = make("Lock / Unlock", "panel-floats-lock", .lockFloats)
+            let close = make("Close All", "panel-floats-close", .closeFloats)
+            captureButtons = [captureButton, window, screen, previous, lock, close]
+            controls.append(contentsOf: captureButtons)
+            statusLine.setAccessibilityIdentifier("panel-capture-status")
+            let note = UI.wrapLabel("Capturing starts after the panel closes.", width: inner)
+            return [UI.hstack([captureButton, window, screen, previous], spacing: 6),
+                    UI.hstack([lock, close, statusLine], spacing: 6), note]
         case .focusDim:
             dimSlider.target = self
             dimSlider.action = #selector(dimChanged(_:))
@@ -301,7 +311,11 @@ final class ToolDetailView: NSView {
                                 spacing: 12)       // slider takes the free width; the value ends at the right edge
             dimSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
             dimSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
-            return [row]
+            pauseButton.target = self
+            pauseButton.action = #selector(pauseClicked)
+            pauseButton.setAccessibilityIdentifier("panel-dim-pause")
+            controls.append(pauseButton)
+            return [row, UI.hstack([pauseButton, statusLine], spacing: 8)]
         }
     }
 
@@ -342,11 +356,14 @@ final class ToolDetailView: NSView {
 
         let running = status.dot == .on
         for c in controls { c.isEnabled = running }
+        snapGrid?.isEnabled = running
+        statusLine.setLive(running ? (host.panelStatusLine(module) ?? "") : "")
         switch module {
         case .menuBar:
             let info = host.panelCollapse
             collapseButton.isEnabled = running && info.running
             collapseButton.title = info.collapsed ? "Expand Hidden Icons" : "Collapse Hidden Icons"
+            alwaysHiddenButton.isHidden = !host.panelOptions.alwaysHiddenSection
         case .systemMonitor:
             let r = host.panelReading
             if running {
@@ -373,8 +390,7 @@ final class ToolDetailView: NSView {
             dimValue.textColor = running ? .labelColor : UI.tertiaryText
             dimValue.setLive("\(percent)%")
             dimSlider.setAccessibilityValueDescription("\(percent)%")
-        case .windowSnap:
-            snapPreview.alphaValue = running ? 1.0 : 0.35      // a preview of something that cannot run stays quiet
+            pauseButton.title = host.panelStatusLine(.focusDim) == "Paused" ? "Resume" : "Pause"
         default: break
         }
         // Off: say why the controls are dimmed - on the dimmed controls only, not on the whole screen. When the tool is
@@ -396,11 +412,9 @@ final class ToolDetailView: NSView {
     @objc private func collapseClicked() { host?.panelToggleCollapse() }
     @objc private func shelfClicked() { host?.panelToggleShelf() }
     @objc private func captureClicked() { host?.panelStartCapture() }
+    @objc private func alwaysHiddenClicked() { host?.panelPerform(.showAlwaysHidden) }
+    @objc private func pasteClicked() { host?.panelPerform(.pasteToShelf) }
+    @objc private func pauseClicked() { host?.panelPerform(.toggleDimPause) }
+    private func capture(_ command: GadgetCommand) { host?.panelPerform(command) }
     @objc private func dimChanged(_ sender: NSSlider) { host?.panelSetDim(sender.doubleValue) }
-    @objc private func snapSelected() {
-        let i = max(0, snapSegments.selectedSegment)
-        snapSelection = SnapAction.allCases[i]
-        snapPreview.action = snapSelection
-    }
-    @objc private func snapApplyClicked() { host?.panelApplySnap(snapSelection) }
 }

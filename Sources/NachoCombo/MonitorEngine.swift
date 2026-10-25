@@ -74,6 +74,8 @@ struct MonitorSnapshot {
     var gpuTemperature: Double?
     var fans: [FanReading] = []
     var power: Double?
+    // Battery (nil on Macs without one)
+    var battery: BatteryInfo?
     // Processes (only while a panel that shows them is open)
     var processes: [ProcessGroupUsage] = []
     var processesSampled = false
@@ -101,6 +103,7 @@ final class MonitorEngine {
     let powerHistory = TimeSeries(channels: 1, capacity: historyCapacity)     // W
     let temperatureHistory = TimeSeries(channels: 2, capacity: historyCapacity) // CPU, GPU °C
     let fanHistory = TimeSeries(channels: 1, capacity: historyCapacity)       // mean rpm
+    let batteryHistory = TimeSeries(channels: 1, capacity: historyCapacity)   // charge %
 
     private(set) var snapshot = MonitorSnapshot()
     private(set) var sampleCount = 0
@@ -162,6 +165,7 @@ final class MonitorEngine {
             discoverSensors()
         }
         snapshot.volume = SystemSampler.volumeInfo()
+        snapshot.battery = SystemSampler.battery()
 
         let t = Timer(timeInterval: MonitorEngine.interval, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(t, forMode: .common)  // keeps ticking while a popup menu tracks
@@ -267,6 +271,9 @@ final class MonitorEngine {
         // Sensors
         readSensors(into: &s, full: focus == .sensors)
 
+        // Battery: every 10 s, every tick while its panel is open.
+        if focus == .battery || ticks % 5 == 0 { s.battery = SystemSampler.battery() }
+
         // Processes
         if focus == .cpu || focus == .memory || focus == .disk {
             s.processes = ProcessPresentation.shared.group(processSampler.sample(at: now))
@@ -295,6 +302,7 @@ final class MonitorEngine {
         powerHistory.append(time: now, values: [s.power])
         temperatureHistory.append(time: now, values: [s.cpuTemperature, s.gpuTemperature])
         fanHistory.append(time: now, values: [s.fans.isEmpty ? nil : s.fans.map { $0.rpm }.reduce(0, +) / Double(s.fans.count)])
+        batteryHistory.append(time: now, values: [s.battery?.percent])
         onSample?()
     }
 
@@ -372,6 +380,7 @@ final class MonitorEngine {
             snapshot.ssd = SystemSampler.ssdHealth()
         }
         if focus == .sensors { readSensors(into: &snapshot, full: true) }
+        if focus == .battery { snapshot.battery = SystemSampler.battery() }
         if focus == .network {
             snapshot.interfaces = SystemSampler.interfaces()
             sampleNetworkProcesses()
@@ -444,5 +453,91 @@ final class MonitorEngine {
             }
         }.resume()
         session.finishTasksAndInvalidate()
+    }
+}
+
+// MARK: - Sample data (gadget gallery preview while the monitor is off)
+
+extension MonitorEngine {
+    /// An engine filled with 70 minutes of made-up but plausible history, so the gallery can show the real panel
+    /// views while the monitor is switched off. Never sampled, never started.
+    static func sample() -> MonitorEngine {
+        let engine = MonitorEngine()
+        engine.loadSampleData()
+        return engine
+    }
+
+    private func loadSampleData() {
+        let now = Date().timeIntervalSince1970
+        let count = 2_100
+        // Smooth, repeatable wobble: a few sines at unrelated periods.
+        func wave(_ i: Int, _ base: Double, _ amp: Double, _ seed: Double) -> Double {
+            let t = Double(i)
+            return max(0, base + amp * (0.55 * sin(t / 23 + seed) + 0.3 * sin(t / 7.3 + seed * 2) + 0.15 * sin(t / 2.1 + seed * 3)))
+        }
+        for i in 0..<count {
+            let time = now - Double(count - i) * MonitorEngine.interval
+            let user = wave(i, 16, 10, 0.4), system = wave(i, 8, 4, 1.7)
+            cpuHistory.append(time: time, values: [user, system])
+            coreHistory.append(time: time, values: [wave(i, 22, 14, 0.9), wave(i, 34, 12, 2.2)])
+            loadHistory.append(time: time, values: [wave(i, 2.6, 1.2, 0.3), wave(i, 2.4, 0.6, 0.5), wave(i, 2.2, 0.3, 0.7)])
+            gpuHistory.append(time: time, values: [wave(i, 9, 7, 1.1), wave(i, 18, 3, 0.2), wave(i, 420, 180, 2.9)])
+            memoryHistory.append(time: time, values: [wave(i, 72, 4, 0.6), wave(i, 38, 6, 1.4), wave(i, 46, 3, 2.5),
+                                                      wave(i, 17, 1, 0.1), wave(i, 9, 2, 1.9)])
+            swapHistory.append(time: time, values: [1.2e9])
+            pagingHistory.append(time: time, values: [wave(i, 2e5, 2e5, 0.8), wave(i, 0, 4e4, 2.1)])
+            diskHistory.append(time: time, values: [wave(i, 3e6, 4e6, 1.3), wave(i, 1.5e6, 2e6, 0.4)])
+            networkHistory.append(time: time, values: [wave(i, 9e4, 8e4, 2.6), wave(i, 6e5, 5e5, 0.2)])
+            powerHistory.append(time: time, values: [wave(i, 9, 5, 1.6)])
+            temperatureHistory.append(time: time, values: [wave(i, 48, 6, 0.5), wave(i, 44, 4, 1.2)])
+            fanHistory.append(time: time, values: [0])
+            batteryHistory.append(time: time, values: [max(20, 93 - Double(i) * 0.015)])
+        }
+        var s = MonitorSnapshot()
+        s.cpu = CPUUsage(user: 18.4, system: 8.7, idle: 72.9)
+        let coreBusy: [Double] = [12, 9, 41, 33, 26, 18, 52, 14, 8, 21]
+        s.cores = coreBusy.indices.map { CoreLoad(busy: coreBusy[$0], efficiency: $0 < 2) }
+        s.efficiencyAverage = 10.5
+        s.performanceAverage = 26.6
+        s.cpuMHz = 2_890
+        s.loadAverage = [2.71, 2.43, 2.18]
+        s.uptime = 274_320   // 3 days 4 h 12 min
+        s.gpuUtilization = 11
+        s.gpuMemoryInUse = 1_200_000_000
+        s.gpuMemoryAllocated = 6_400_000_000
+        s.gpuMHz = 389
+        let gib: UInt64 = 1 << 30
+        s.memory = MemoryBreakdown(total: 16 * gib, app: 7 * gib + gib / 2, wired: 2 * gib + gib / 2, compressed: gib + gib / 4,
+                                   cached: 3 * gib)
+        s.pressure = 38
+        s.swapUsed = 1_200_000_000
+        s.swapTotal = 2 * gib
+        s.diskRead = 3_400_000
+        s.diskWrite = 1_100_000
+        s.netUp = 84_000
+        s.netDown = 612_000
+        s.cpuTemperature = 48.2
+        s.gpuTemperature = 44.6
+        s.power = 9.4
+        var battery = BatteryInfo(percent: 62, charging: false, onAC: false)
+        battery.minutesToEmpty = 254
+        battery.cycleCount = 212
+        battery.designCapacity = 6075
+        battery.maxCapacity = 5528
+        battery.condition = "Normal"
+        battery.temperature = 30.1
+        battery.voltage = 12.48
+        battery.amperage = -0.75
+        s.battery = battery
+        s.processesSampled = true
+        let names = ["Safari", "Xcode", "Music", "Mail", "Finder"]
+        let cpu: [Double] = [21.4, 14.8, 6.2, 3.1, 1.4]
+        let memory: [UInt64] = [1_900_000_000, 3_100_000_000, 420_000_000, 380_000_000, 160_000_000]
+        s.processes = names.indices.map { i in
+            ProcessGroupUsage(key: "sample-\(i)", name: names[i], bundlePath: nil, path: "", processCount: 1,
+                              cpuPercent: cpu[i], memory: memory[i])
+        }
+        snapshot = s
+        sampleCount = count
     }
 }

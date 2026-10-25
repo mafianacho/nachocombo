@@ -2,7 +2,7 @@ import Foundation
 
 /// Menu bar items of the system monitor. Declaration order = left-to-right order in the menu bar.
 public enum MonitorItem: String, Codable, CaseIterable {
-    case cpu, memory, disk, network, sensors
+    case cpu, memory, disk, network, sensors, battery
 
     public var displayName: String {
         switch self {
@@ -11,8 +11,12 @@ public enum MonitorItem: String, Codable, CaseIterable {
         case .disk: return "Disk"
         case .network: return "Network"
         case .sensors: return "Sensors"
+        case .battery: return "Battery"
         }
     }
+
+    /// Battery is opt-in (not every Mac has one, and existing menu bars should not grow); the rest show by default.
+    public var shownByDefault: Bool { self != .battery }
 }
 
 /// Time span shown by a history chart.
@@ -60,7 +64,7 @@ public struct MonitorSettings: Codable, Equatable {
         publicIPLookup = (try? c.decodeIfPresent(Bool.self, forKey: .publicIPLookup)) ?? false
     }
 
-    public func isShown(_ item: MonitorItem) -> Bool { items[item.rawValue] ?? true }
+    public func isShown(_ item: MonitorItem) -> Bool { items[item.rawValue] ?? item.shownByDefault }
     public mutating func setShown(_ item: MonitorItem, _ shown: Bool) { items[item.rawValue] = shown }
     public var shownItems: [MonitorItem] { MonitorItem.allCases.filter { isShown($0) } }
 
@@ -199,6 +203,13 @@ public struct ProcessGroupUsage: Equatable {
     public var diskWrite: Double
     public var netIn: Double
     public var netOut: Double
+
+    public init(key: String, name: String, bundlePath: String?, path: String, processCount: Int, cpuPercent: Double,
+                memory: UInt64, diskRead: Double = 0, diskWrite: Double = 0, netIn: Double = 0, netOut: Double = 0) {
+        self.key = key; self.name = name; self.bundlePath = bundlePath; self.path = path
+        self.processCount = processCount; self.cpuPercent = cpuPercent; self.memory = memory
+        self.diskRead = diskRead; self.diskWrite = diskWrite; self.netIn = netIn; self.netOut = netOut
+    }
 }
 
 public enum ProcessGrouping {

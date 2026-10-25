@@ -18,6 +18,11 @@ protocol PanelHost: AnyObject {
     func panelSetDim(_ value: Double)
     func panelOpenPermissionPane(_ id: ModuleID)
     func panelRecheck(_ id: ModuleID)
+    /// The gallery's live commands (capture modes, lock floats, pause dimming...).
+    func panelPerform(_ command: GadgetCommand)
+    /// Live facts of a gadget ("2 floats · locked", "Paused").
+    func panelStatusLine(_ id: ModuleID) -> String?
+    var panelOptions: GadgetOptions { get }
 }
 
 enum PanelRoute: Equatable {

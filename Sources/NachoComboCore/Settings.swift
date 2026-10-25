@@ -15,6 +15,10 @@ public struct AppSettings: Codable, Equatable {
     public var pinnedTools: [String: Bool]
     /// Optional per-tool shortcut that opens the tool's panel screen. Unset by default.
     public var toolShortcuts: [String: ToolShortcut]
+    /// Behaviour choices of the gadgets (auto-collapse, gaps, shelf trigger, dim scope...).
+    public var options: GadgetOptions
+    /// Action shortcuts the user changed or removed (GadgetAction.id → binding). Absent = the default.
+    public var actionShortcuts: [String: ActionBinding]
 
     /// First launch: every module is OFF, so no permission prompt or monitoring starts before opt-in.
     public static let defaults = AppSettings(
@@ -22,7 +26,10 @@ public struct AppSettings: Codable, Equatable {
 
     public init(version: Int, enabledModules: [String: Bool], menuBarCollapsed: Bool, monitor: MonitorSettings? = nil,
                 dimIntensity: Double = FocusDimLogic.defaultIntensity,
-                pinnedTools: [String: Bool] = [:], toolShortcuts: [String: ToolShortcut] = [:]) {
+                pinnedTools: [String: Bool] = [:], toolShortcuts: [String: ToolShortcut] = [:],
+                options: GadgetOptions = .defaults, actionShortcuts: [String: ActionBinding] = [:]) {
+        self.options = options
+        self.actionShortcuts = actionShortcuts
         self.pinnedTools = pinnedTools
         self.toolShortcuts = toolShortcuts
         self.version = version
@@ -38,7 +45,8 @@ public struct AppSettings: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, enabledModules, menuBarCollapsed, monitor, dimIntensity, pinnedTools, toolShortcuts
+        case version, enabledModules, menuBarCollapsed, monitor, dimIntensity, pinnedTools, toolShortcuts, options,
+             actionShortcuts
     }
 
     public init(from decoder: Decoder) throws {
@@ -53,6 +61,9 @@ public struct AppSettings: Codable, Equatable {
         // Files written by older versions have neither key: nothing pinned, no shortcuts.
         pinnedTools = try c.decodeIfPresent([String: Bool].self, forKey: .pinnedTools) ?? [:]
         toolShortcuts = try c.decodeIfPresent([String: ToolShortcut].self, forKey: .toolShortcuts) ?? [:]
+        // Each option falls back on its own; a missing section means every default.
+        options = (try? c.decodeIfPresent(GadgetOptions.self, forKey: .options)) ?? .defaults
+        actionShortcuts = (try? c.decodeIfPresent([String: ActionBinding].self, forKey: .actionShortcuts)) ?? [:]
     }
 
     public func isPinned(_ id: ModuleID) -> Bool { pinnedTools[id.rawValue] ?? false }

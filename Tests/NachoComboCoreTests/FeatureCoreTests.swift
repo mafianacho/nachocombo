@@ -121,6 +121,8 @@ final class FeatureCoreTests: XCTestCase {
         XCTAssertTrue(imageURL.path.hasPrefix(owned.standardizedFileURL.path + "/"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: imageURL.path))
         XCTAssertTrue(store.remove(id: image.id))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: imageURL.path), "kept while the removal can be undone")
+        store.discardUndo()
         XCTAssertFalse(FileManager.default.fileExists(atPath: imageURL.path), "shelf-created copy is cleaned up")
         let second = try store.addImagePNG(Data([1]))
         store.removeAllOwnedFiles()
@@ -190,5 +192,77 @@ final class FeatureCoreTests: XCTestCase {
         XCTAssertEqual(capped, CGSize(width: 600, height: 300))
         XCTAssertEqual(FloatSizing.scaled(original, percent: 50), CGSize(width: 200, height: 100))
         XCTAssertGreaterThan(FloatSizing.resized(original: .zero, proposedWidth: 100, max: .zero).width, 0)
+    }
+
+    // MARK: shelf additions
+
+    func testShelfUndoRestoresTheLastRemoval() throws {
+        let dir = try tempDir()
+        let store = ShelfStore(ownedDirectory: dir.appendingPathComponent("Shelf"))
+        let text = try XCTUnwrap(store.addText("note"))
+        let image = try store.addImagePNG(Data([1, 2]))
+        store.clear()
+        XCTAssertTrue(store.items.isEmpty)
+        XCTAssertTrue(store.undo())
+        XCTAssertEqual(store.items.map { $0.id }, [text.id, image.id])
+        XCTAssertFalse(store.undo(), "one level of undo")
+        // A newer removal replaces the undo, and the older stash's own copies are deleted then.
+        XCTAssertTrue(store.remove(id: image.id))
+        XCTAssertTrue(store.remove(id: text.id))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(image.fileURL).path))
+        XCTAssertTrue(store.undo())
+        XCTAssertEqual(store.items.map { $0.id }, [text.id])
+    }
+
+    func testShelfLinksAndOwnedFilesStayInsideTheShelf() throws {
+        let dir = try tempDir()
+        let owned = dir.appendingPathComponent("Shelf")
+        try FileManager.default.createDirectory(at: owned, withIntermediateDirectories: true)
+        let store = ShelfStore(ownedDirectory: owned)
+        let link = try XCTUnwrap(store.addLink(URL(string: "https://example.com/docs/page")!))
+        XCTAssertEqual(link.kind, .link)
+        XCTAssertEqual(link.title, "example.com/docs/page")
+        XCTAssertEqual(link.linkURL, URL(string: "https://example.com/docs/page"))
+        XCTAssertEqual(store.addLink(URL(string: "https://example.com/docs/page")!)?.id, link.id)
+        XCTAssertNil(store.addLink(URL(fileURLWithPath: "/tmp")))
+        // A promised file written into the shelf folder is owned; anything outside is refused.
+        let promised = owned.appendingPathComponent("photo.jpg")
+        try Data([0xFF]).write(to: promised)
+        let item = try XCTUnwrap(store.addOwnedFile(promised))
+        XCTAssertTrue(item.ownsFile)
+        XCTAssertEqual(item.kind, .image)
+        let outside = dir.appendingPathComponent("mine.txt")
+        try Data("x".utf8).write(to: outside)
+        XCTAssertNil(store.addOwnedFile(outside))
+        XCTAssertNil(store.addOwnedFile(owned.appendingPathComponent("../mine.txt")))
+        store.removeAllOwnedFiles()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: promised.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outside.path))
+    }
+
+    func testShakeNeedsQuickReversals() {
+        var shake = ShakeDetector()
+        var t = 0.0
+        var fired = false
+        for x in [0, 30, 0, 30, 0] as [CGFloat] {
+            t += 0.1
+            fired = shake.add(x: x, time: t) || fired
+        }
+        XCTAssertTrue(fired)
+        // Slow reversals (outside the window) and small jitter do not count.
+        shake.reset()
+        fired = false
+        t = 0
+        for x in [0, 30, 0, 30, 0] as [CGFloat] {
+            t += 0.5
+            fired = shake.add(x: x, time: t) || fired
+        }
+        XCTAssertFalse(fired)
+        shake.reset()
+        fired = false
+        for (i, x) in ([0, 10, 0, 10, 0, 10, 0] as [CGFloat]).enumerated() {
+            fired = shake.add(x: x, time: Double(i) * 0.05) || fired
+        }
+        XCTAssertFalse(fired)
     }
 }

@@ -299,19 +299,37 @@ final class MonitorPanelController: NSObject {
 
     /// Debug aid (`ctl monitor snapshot`): renders a view onto an opaque panel-like background as PNG.
     static func renderPNG(_ view: NSView, size: NSSize, appearance: NSAppearance.Name, to url: URL) -> Bool {
-        let container = SnapshotBackground(frame: NSRect(origin: .zero, size: size))
+        guard let rep = renderBitmap(view, size: size, appearance: appearance),
+              let data = rep.representation(using: .png, properties: [:]) else { return false }
+        return (try? data.write(to: url)) != nil
+    }
+
+    /// The view drawn at 2x on the panel background, in an offscreen window with the given appearance.
+    static func renderBitmap(_ view: NSView, size: NSSize, appearance: NSAppearance.Name,
+                             background: Bool = true) -> NSBitmapImageRep? {
+        let container: NSView = background ? SnapshotBackground(frame: NSRect(origin: .zero, size: size))
+                                           : FlippedView(frame: NSRect(origin: .zero, size: size))
         let window = NSWindow(contentRect: container.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: appearance)
+        window.backgroundColor = .clear
+        window.isOpaque = false
         window.contentView = container
         container.addSubview(view)
         view.setFrameOrigin(.zero)
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2),
                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return false }
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
         rep.size = size  // 2x, like a Retina display
         container.cacheDisplay(in: container.bounds, to: rep)
-        guard let data = rep.representation(using: .png, properties: [:]) else { return false }
-        return (try? data.write(to: url)) != nil
+        view.removeFromSuperview()
+        return rep
+    }
+
+    static func renderImage(_ view: NSView, size: NSSize, appearance: NSAppearance.Name, background: Bool = true) -> NSImage? {
+        guard let rep = renderBitmap(view, size: size, appearance: appearance, background: background) else { return nil }
+        let image = NSImage(size: size)
+        image.addRepresentation(rep)
+        return image
     }
 
     /// Debug aid (`ctl monitor flyout`): flyout and panel side by side, laid out like on screen.

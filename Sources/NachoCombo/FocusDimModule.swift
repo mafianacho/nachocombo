@@ -2,37 +2,41 @@ import AppKit
 import CoreGraphics
 import NachoComboCore
 
-/// HazeOver-style focus dimming. One click-through, borderless overlay window per screen is ordered
-/// directly below the active window, so the active window stays bright and every other normal window
-/// is darkened. Menu bar, Dock and floating panels stay above the overlay.
-/// No permission is needed: window numbers and frames come from CGWindowListCopyWindowInfo.
+/// Focus dimming. Click-through, borderless overlay windows (two per screen, for cross-fades) are ordered directly
+/// below the active window, so it stays bright and every other normal window is darkened. Menu bar, Dock and floating
+/// panels stay above the overlay. Options keep all windows of the active app bright, leave other displays undimmed,
+/// and fade between windows. No permission is needed: window numbers and frames come from CGWindowListCopyWindowInfo.
 final class FocusDimModule: NSObject, FeatureModule {
     let id = ModuleID.focusDim
-    static let hotKeyLabel = "⌃⌥D"
+    var optionsProvider: () -> GadgetOptions = { .defaults }
 
-    private var overlays: [NSWindow] = []
+    /// Per screen: the overlay in use and a spare for the next cross-fade.
+    private var overlays: [(screen: CGRect, current: NSWindow, spare: NSWindow)] = []
     private var timer: Timer?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var defaultObservers: [NSObjectProtocol] = []
-    private let hotKeys = HotKeyCenter(signature: 0x4E43_4446)   // 'NCDF'
     private(set) var intensity = FocusDimLogic.defaultIntensity
+    private(set) var paused = false
     private(set) var activeNumber: Int?
+    private var activeScreen: Int?
+    private var fadeGeneration = 0
     private(set) var refreshCount = 0
     private(set) var reorderCount = 0
     private var lastFrontApp = "-"
-    /// Called (on the main queue) when the user presses the instant-release hotkey.
-    var onInstantRelease: (() -> Void)?
+    var onPauseChange: (() -> Void)?
 
     var isRunning: Bool { !overlays.isEmpty }
+    private var allWindows: [NSWindow] { overlays.flatMap { [$0.current, $0.spare] } }
 
     func setIntensity(_ value: Double) {
         intensity = FocusDimLogic.clamp(value)
         let color = NSColor.black.withAlphaComponent(CGFloat(intensity))
-        for overlay in overlays { overlay.backgroundColor = color }
+        for window in allWindows { window.backgroundColor = color }
     }
 
     func start() -> ModuleState {
         guard overlays.isEmpty else { return .running }
+        paused = false
         buildOverlays()
         let workspace = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didActivateApplicationNotification,
@@ -48,10 +52,9 @@ final class FocusDimModule: NSObject, FeatureModule {
             self?.rebuildOverlays()
         })
         // Window switches inside one app produce no notification: a light poll covers them.
-        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.refresh() }
-        _ = hotKeys.register(id: 1, keyCode: 2, modifiers: HotKeySpec.controlKey | HotKeySpec.optionKey) { [weak self] in
-            DispatchQueue.main.async { self?.onInstantRelease?() }
-        }
+        let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.refresh() }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
         refresh()
         return .running
     }
@@ -64,37 +67,48 @@ final class FocusDimModule: NSObject, FeatureModule {
         workspaceObservers.removeAll()
         defaultObservers.forEach { NotificationCenter.default.removeObserver($0) }
         defaultObservers.removeAll()
-        hotKeys.unregisterAll()
-        for overlay in overlays {
-            overlay.orderOut(nil)
-            overlay.close()
+        for window in allWindows {
+            window.orderOut(nil)
+            window.close()
         }
         overlays.removeAll()
         activeNumber = nil
+        activeScreen = nil
+        paused = false
+    }
+
+    /// Hides the shade (or brings it back) without switching the gadget off.
+    func togglePause() {
+        guard isRunning else { return }
+        paused.toggle()
+        if paused { hideAll(); activeNumber = nil; activeScreen = nil } else { refresh() }
+        onPauseChange?()
+    }
+
+    private func makeOverlay(_ screen: NSScreen) -> NSWindow {
+        let window = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.backgroundColor = NSColor.black.withAlphaComponent(CGFloat(intensity))
+        window.isOpaque = false
+        window.hasShadow = false
+        window.ignoresMouseEvents = true          // clicks always reach the windows underneath
+        window.level = .normal
+        window.hidesOnDeactivate = false
+        window.canHide = false
+        window.animationBehavior = .none
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        window.title = "NachoCombo Focus Dim"
+        window.setFrame(screen.frame, display: false)
+        return window
     }
 
     private func buildOverlays() {
-        let color = NSColor.black.withAlphaComponent(CGFloat(intensity))
-        overlays = NSScreen.screens.map { screen in
-            let window = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
-            window.isReleasedWhenClosed = false
-            window.backgroundColor = color
-            window.isOpaque = false
-            window.hasShadow = false
-            window.ignoresMouseEvents = true          // clicks always reach the windows underneath
-            window.level = .normal
-            window.hidesOnDeactivate = false
-            window.canHide = false
-            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-            window.title = "NachoCombo Focus Dim"
-            window.setFrame(screen.frame, display: false)
-            return window
-        }
+        overlays = NSScreen.screens.map { ($0.frame, makeOverlay($0), makeOverlay($0)) }
     }
 
     private func rebuildOverlays() {
         guard !overlays.isEmpty else { return }
-        for overlay in overlays { overlay.orderOut(nil); overlay.close() }
+        for window in allWindows { window.orderOut(nil); window.close() }
         overlays.removeAll()
         buildOverlays()
         activeNumber = nil
@@ -102,25 +116,70 @@ final class FocusDimModule: NSObject, FeatureModule {
     }
 
     private func hideAll() {
-        for overlay in overlays where overlay.isVisible { overlay.orderOut(nil) }
+        for window in allWindows where window.isVisible { window.orderOut(nil) }
+        activeScreen = nil
     }
 
     func refresh() {
         refreshCount += 1
-        guard !overlays.isEmpty else { return }
+        guard !overlays.isEmpty, !paused else { return }
         guard let front = NSWorkspace.shared.frontmostApplication else { hideAll(); activeNumber = nil; return }
         lastFrontApp = front.localizedName ?? "pid:\(front.processIdentifier)"
-        let own = Set(overlays.map { $0.windowNumber })
+        let own = Set(allWindows.map { $0.windowNumber })
         let snapshots = FocusDimModule.windowList()
+        let options = optionsProvider()
         guard let active = FocusDimLogic.activeWindow(in: snapshots, frontmostPID: front.processIdentifier, excluding: own) else {
             hideAll()
             activeNumber = nil
             return
         }
-        if active.number != activeNumber || overlays.contains(where: { !$0.isVisible }) {
-            activeNumber = active.number
-            reorderCount += 1
-            for overlay in overlays { overlay.order(.below, relativeTo: active.number) }
+        // With "all windows of the app", the shade goes below the app's backmost window instead of the front one.
+        let anchor = options.dimScope == .frontApp
+            ? FocusDimLogic.backmostWindow(in: snapshots, ownerPID: front.processIdentifier, excluding: own) ?? active
+            : active
+        // The active window's display, from the window server's top-left coordinates.
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let activeCocoa = CGRect(x: active.frame.minX, y: primaryHeight - active.frame.maxY,
+                                 width: active.frame.width, height: active.frame.height)
+        let screen = WindowLayout.screenIndex(for: activeCocoa, screens: overlays.map { $0.screen })
+        func wanted(_ index: Int) -> Bool { options.dimOtherDisplays || index == screen }
+        let stale = overlays.indices.contains { wanted($0) && !overlays[$0].current.isVisible }
+        guard anchor.number != activeNumber || stale || screen != activeScreen else { return }
+        let changed = anchor.number != activeNumber
+        activeNumber = anchor.number
+        activeScreen = screen
+        reorderCount += 1
+        let fade = (options.dimFadeSeconds > 0 && !UI.reduceMotion && changed && !stale) ? options.dimFadeSeconds : 0
+        fadeGeneration += 1
+        let generation = fadeGeneration
+        for index in overlays.indices {
+            let entry = overlays[index]
+            guard wanted(index) else {
+                entry.current.orderOut(nil)
+                entry.spare.orderOut(nil)
+                continue
+            }
+            if fade > 0 && entry.current.isVisible {
+                // Cross-fade: the spare appears below the new window while the old shade fades out.
+                let incoming = entry.spare, outgoing = entry.current
+                incoming.alphaValue = 0
+                incoming.order(.below, relativeTo: anchor.number)
+                overlays[index] = (entry.screen, incoming, outgoing)
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = fade
+                    incoming.animator().alphaValue = 1
+                    outgoing.animator().alphaValue = 0
+                }, completionHandler: { [weak self] in
+                    // A newer switch may already have reused this window as its incoming shade.
+                    guard self?.fadeGeneration == generation else { return }
+                    outgoing.orderOut(nil)
+                    outgoing.alphaValue = 1
+                })
+            } else {
+                entry.current.alphaValue = 1
+                entry.current.order(.below, relativeTo: anchor.number)
+                entry.spare.orderOut(nil)
+            }
         }
     }
 
@@ -140,20 +199,22 @@ final class FocusDimModule: NSObject, FeatureModule {
     }
 
     var diagnostics: [String: String] {
-        let overlayNumbers = overlays.map { $0.windowNumber }
+        let shades = overlays.map { $0.current }
         var below = "n/a"
         if let active = activeNumber, !overlays.isEmpty {
             let order = FocusDimModule.windowList().map { $0.number }
-            below = overlayNumbers.allSatisfy { FocusDimLogic.isBelow($0, active: active, in: order) } ? "true" : "false"
+            below = shades.filter { $0.isVisible }.allSatisfy { FocusDimLogic.isBelow($0.windowNumber, active: active, in: order) }
+                ? "true" : "false"
         }
         return [
-            "overlays": "\(overlays.count)",
-            "overlaysVisible": "\(overlays.filter { $0.isVisible }.count)",
-            "overlaysIgnoreMouse": overlays.isEmpty ? "n/a" : "\(overlays.allSatisfy { $0.ignoresMouseEvents })",
+            "overlays": "\(shades.count)",
+            "overlaysVisible": "\(shades.filter { $0.isVisible }.count)",
+            "overlaysIgnoreMouse": shades.isEmpty ? "n/a" : "\(allWindows.allSatisfy { $0.ignoresMouseEvents })",
             "overlayAlpha": String(format: "%.2f", intensity),
+            "paused": "\(paused)",
+            "scope": optionsProvider().dimScope.rawValue,
             "timerActive": "\(timer != nil)",
             "observers": "\(workspaceObservers.count + defaultObservers.count)",
-            "hotkeysRegistered": "\(hotKeys.registeredCount)",
             "activeWindow": activeNumber.map(String.init) ?? "none",
             "overlayBelowActive": below,
             "frontApp": lastFrontApp,

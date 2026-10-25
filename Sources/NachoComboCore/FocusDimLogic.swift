@@ -46,6 +46,20 @@ public enum FocusDimLogic {
         }
     }
 
+    /// The back-most ordinary window of an app (same rules as `activeWindow`): the shade goes below it when every
+    /// window of the active app should stay bright.
+    public static func backmostWindow(in windows: [WindowSnapshot], ownerPID: Int32,
+                                      excluding: Set<Int>) -> WindowSnapshot? {
+        windows.last { w in
+            w.ownerPID == ownerPID
+                && w.layer == 0
+                && w.alpha > 0.01
+                && !excluding.contains(w.number)
+                && w.frame.width >= minimumWindowSide
+                && w.frame.height >= minimumWindowSide
+        }
+    }
+
     /// True when `overlay` is behind `active` in a front-to-back list (dimming never covers the active window).
     public static func isBelow(_ overlay: Int, active: Int, in orderedNumbers: [Int]) -> Bool {
         guard let o = orderedNumbers.firstIndex(of: overlay),

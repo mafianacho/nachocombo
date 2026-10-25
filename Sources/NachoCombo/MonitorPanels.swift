@@ -130,6 +130,7 @@ class PanelContent: MonitorContent {
         case .disk: return DiskPanelContent(context: context)
         case .network: return NetworkPanelContent(context: context)
         case .sensors: return SensorsPanelContent(context: context)
+        case .battery: return BatteryPanelContent(context: context)
         }
     }
 
@@ -502,5 +503,82 @@ final class SensorsPanelContent: PanelContent {
             row.gauge = fan.percent / 100
         }
         setHidden(fanCard, s.fans.isEmpty)
+    }
+}
+
+final class BatteryPanelContent: PanelContent {
+    private let rings = RingsElement(diameter: 80, lineWidth: 7, centerSize: 17)
+    private let note = NoteElement("This Mac has no internal battery")
+    private var chargeHeader: HeaderElement!
+    private let chargeChart = ChartElement(style: .stacked, height: 54, fixedMax: 100) { [MonitorStyle.blue] }
+    private let timeRow = RowElement("Time Remaining")
+    private var chargeCard: StackElement!
+    private let source = RowElement("Power Source")
+    private let condition = RowElement("Condition")
+    private let capacity = RowElement("Capacity")
+    private let cycles = RowElement("Cycle Count")
+    private let temperature = RowElement("Temperature")
+    private let power = RowElement("Power")
+    private let adapter = RowElement("Power Adapter")
+    private var detailCard: StackElement!
+
+    init(context: PanelContext) {
+        super.init(item: .battery, context: context)
+        chargeHeader = rangeHeader("Charge", chart: "battery")
+        chargeCard = StackElement([chargeHeader, chargeChart, timeRow])
+        detailCard = StackElement([HeaderElement("Battery"), source, condition, capacity, cycles, temperature, power, adapter],
+                                  spacing: 1)
+        note.isHidden = true
+        setCards([
+            StackElement([rings, note], insets: NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)),
+            chargeCard,
+            detailCard,
+            toolbar([.activityMonitor, .systemInformation, .settings]),
+        ])
+    }
+
+    override func refresh(_ engine: MonitorEngine) {
+        guard let b = engine.snapshot.battery else {
+            rings.rings = []
+            setHidden(note, false)
+            setHidden(chargeCard, true)
+            setHidden(detailCard, true)
+            return
+        }
+        setHidden(note, true)
+        setHidden(chargeCard, false)
+        setHidden(detailCard, false)
+        let chargeColor = b.charging || b.onAC ? NSColor.systemGreen : (b.percent <= MonitorAlerts.batteryPercent ? .systemRed : MonitorStyle.blue)
+        let health = b.healthPercent
+        rings.rings = [
+            .init(segments: [(b.percent / 100, chargeColor)], center: PanelContent.percent(b.percent), top: "Charge",
+                  bottom: b.stateText),
+            .init(segments: [((health ?? 0) / 100, MonitorStyle.blue)], center: PanelContent.percent(health), top: "Health",
+                  bottom: b.condition ?? " "),
+            .init(segments: [(Double(min(b.cycleCount ?? 0, 1000)) / 1000, MonitorStyle.blue)],
+                  center: b.cycleCount.map { MonitorFormat.grouped($0) } ?? "–", top: "Cycles", bottom: "of ~1,000"),
+        ]
+        plot(chargeChart, engine.batteryHistory, chart: "battery")
+        if let minutes = b.minutesToEmpty {
+            timeRow.label = "Time Remaining"
+            timeRow.value = BatteryInfo.duration(minutes: minutes)
+        } else if let minutes = b.minutesToFull {
+            timeRow.label = "Until Full"
+            timeRow.value = BatteryInfo.duration(minutes: minutes)
+        } else {
+            timeRow.label = "Time Remaining"
+            timeRow.value = b.onAC ? (b.charged ? "Charged" : "On Power") : "Calculating…"
+        }
+        source.value = b.onAC ? "Power Adapter" : "Battery"
+        condition.value = b.condition ?? "–"
+        if let max = b.maxCapacity, let design = b.designCapacity {
+            capacity.value = "\(MonitorFormat.grouped(max)) of \(MonitorFormat.grouped(design)) mAh"
+        } else {
+            capacity.value = "–"
+        }
+        cycles.value = b.cycleCount.map { MonitorFormat.grouped($0) } ?? "–"
+        temperature.value = b.temperature.map { String(format: "%.1f°C", $0) } ?? "–"
+        power.value = b.power.map { String(format: "%@%.1f W", $0 >= 0 ? "+" : "−", abs($0)) } ?? "–"
+        adapter.value = b.adapterWatts.map { "\($0) W" } ?? (b.onAC ? "Connected" : "Not Connected")
     }
 }

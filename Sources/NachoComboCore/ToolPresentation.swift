@@ -15,11 +15,11 @@ public extension ModuleID {
 
     var toolSummary: String {
         switch self {
-        case .menuBar: return "Collapses or expands the icons left of the divider."
-        case .systemMonitor: return "Shows CPU, memory, disk, network and sensors in the menu bar."
-        case .windowSnap: return "Snaps the active window to the left or right half, or maximizes it."
-        case .fileShelf: return "Holds files, images and text for a moment so you can drag them out again."
-        case .captureFloat: return "Captures an area of the screen and floats it above other windows."
+        case .menuBar: return "Folds away the icons left of the divider; they come back on a click, on hover or from a shortcut."
+        case .systemMonitor: return "Shows CPU, memory, disk, network, sensors and battery in the menu bar."
+        case .windowSnap: return "Snaps windows to halves, quarters and thirds from the keyboard or by dragging to an edge."
+        case .fileShelf: return "Holds files, images, links and text for a moment so you can drag them out again."
+        case .captureFloat: return "Captures an area, a window or the screen and floats it above other windows."
         case .focusDim: return "Keeps the active window bright and dims the rest."
         }
     }

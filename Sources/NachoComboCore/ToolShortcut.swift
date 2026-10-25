@@ -64,7 +64,7 @@ public enum ShortcutIssue: Equatable {
         case .unsupportedKey:
             return "This key cannot be used in a shortcut."
         case .needsMoreModifiers:
-            return "Use at least two modifier keys including ⌃ or ⌥ (so it never clashes with typing or app shortcuts)."
+            return "Use at least two modifier keys (open shortcuts also need ⌃ or ⌥), so it never clashes with typing."
         case .reservedBySystem(let name):
             return "macOS uses this combination (\(name))."
         case .conflictsWithAction(let name):
@@ -76,14 +76,10 @@ public enum ShortcutIssue: Equatable {
 }
 
 public enum ShortcutPolicy {
-    /// Fixed action shortcuts owned by the gadgets. A tool-open shortcut must never shadow them.
-    public static let actionShortcuts: [(name: String, keyCode: UInt32, modifiers: UInt32)] = {
-        let co = ToolShortcut.control | ToolShortcut.option
-        return [
-            ("Window Snap left ⌃⌥←", 123, co), ("Window Snap right ⌃⌥→", 124, co), ("Window Snap maximize ⌃⌥↩", 36, co),
-            ("File Shelf ⌃⌥S", 1, co), ("Capture Float ⌃⌥C", 8, co), ("Focus Dim release ⌃⌥D", 2, co),
-        ]
-    }()
+    /// Default action shortcuts owned by the gadgets (what a fresh install registers).
+    public static var actionShortcuts: [(name: String, keyCode: UInt32, modifiers: UInt32)] {
+        AppSettings.defaults.effectiveActionShortcuts.map { ($0.name, $0.keyCode, $0.modifiers) }
+    }
 
     private static let reserved: [(name: String, keyCode: UInt32, modifiers: UInt32)] = {
         let c = ToolShortcut.command, o = ToolShortcut.option, ct = ToolShortcut.control, s = ToolShortcut.shift
@@ -91,13 +87,17 @@ public enum ShortcutPolicy {
             ("Lock Screen ⌃⌘Q", 12, ct | c), ("Full Screen ⌃⌘F", 3, ct | c), ("Emoji ⌃⌘Space", 49, ct | c),
             ("Force Quit ⌘⌥⎋", 53, c | o), ("Hide Dock ⌘⌥D", 2, c | o), ("Finder Search ⌘⌥Space", 49, c | o),
             ("Hide Others ⌘⌥H", 4, c | o), ("Minimize All ⌘⌥M", 46, c | o),
+            ("Screenshot ⇧⌘3", 20, s | c), ("Screenshot ⇧⌘4", 21, s | c), ("Screenshot ⇧⌘5", 23, s | c),
+            ("Screenshot ⇧⌘6", 22, s | c),
             ("Screenshot ⌃⇧⌘3", 20, ct | s | c), ("Screenshot ⌃⇧⌘4", 21, ct | s | c), ("Screenshot ⌃⇧⌘5", 23, ct | s | c),
-            ("Switch Space ⌃⌥Space", 49, ct | o),
+            ("Switch Space ⌃⌥Space", 49, ct | o), ("Spotlight ⌘Space", 49, c), ("Input Source ⌃Space", 49, ct),
+            ("Mission Control ⌃↑", 126, ct), ("App Windows ⌃↓", 125, ct),
         ]
     }()
 
-    public static func validate(_ shortcut: ToolShortcut, for id: ModuleID,
-                                existing: [String: ToolShortcut]) -> ShortcutIssue? {
+    /// Tool-open shortcut check. `actions` are the action shortcuts in use (defaults unless given).
+    public static func validate(_ shortcut: ToolShortcut, for id: ModuleID, existing: [String: ToolShortcut],
+                                actions: [(name: String, keyCode: UInt32, modifiers: UInt32)]? = nil) -> ShortcutIssue? {
         let mods = shortcut.modifiers & ToolShortcut.allModifiers
         guard KeyNames.name(forKeyCode: shortcut.keyCode) != nil, shortcut.keyCode != 51, shortcut.keyCode != 53 else {
             return .unsupportedKey
@@ -112,13 +112,39 @@ public enum ShortcutPolicy {
         if let hit = reserved.first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
             return .reservedBySystem(hit.name)
         }
-        if let hit = actionShortcuts.first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
+        if let hit = (actions ?? actionShortcuts).first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
             return .conflictsWithAction(hit.name)
         }
         for other in ModuleID.allCases where other != id {
             if let s = existing[other.rawValue], s.keyCode == shortcut.keyCode,
                s.modifiers & ToolShortcut.allModifiers == mods {
                 return .conflictsWithTool(other)
+            }
+        }
+        return nil
+    }
+
+    /// Action shortcut check: any two modifiers (or one with a function key), not a macOS combination, not used by
+    /// another action or a tool-open shortcut. Delete is allowed (Restore uses ⌃⌥⌫); Escape is not.
+    public static func validateAction(_ shortcut: ToolShortcut, actionID: String, settings: AppSettings) -> ShortcutIssue? {
+        let mods = shortcut.modifiers & ToolShortcut.allModifiers
+        guard KeyNames.name(forKeyCode: shortcut.keyCode) != nil, shortcut.keyCode != 53 else { return .unsupportedKey }
+        let count = [ToolShortcut.command, ToolShortcut.shift, ToolShortcut.option, ToolShortcut.control]
+            .filter { mods & $0 != 0 }.count
+        let enough = KeyNames.isFunctionKey(shortcut.keyCode) ? count >= 1 : count >= 2
+        guard enough else { return .needsMoreModifiers }
+        if let hit = reserved.first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
+            return .reservedBySystem(hit.name)
+        }
+        if let hit = settings.effectiveActionShortcuts.first(where: {
+            $0.id != actionID && $0.keyCode == shortcut.keyCode && $0.modifiers == mods
+        }) {
+            return .conflictsWithAction(hit.name)
+        }
+        for id in ModuleID.allCases {
+            if let s = settings.toolShortcuts[id.rawValue], s.keyCode == shortcut.keyCode,
+               s.modifiers & ToolShortcut.allModifiers == mods {
+                return .conflictsWithTool(id)
             }
         }
         return nil
