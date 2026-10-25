@@ -11,6 +11,17 @@ final class SystemMonitorModule: NSObject, FeatureModule {
     private var lastCPU: CPUTicks?
     private let network = NetworkRateTracker()
     private(set) var sampleCount = 0
+
+    /// Latest numbers, shared by the menu bar text and the quick panel.
+    struct Reading {
+        var cpuBusy: Double?
+        var memPercent: Double?
+        var memUsed: UInt64 = 0
+        var memTotal: UInt64 = 0
+        var rx: Double?
+        var tx: Double?
+    }
+    private(set) var latest = Reading()
     private var lastRxRate = 0.0, lastTxRate = 0.0
 
     var isRunning: Bool { item != nil }
@@ -46,6 +57,7 @@ final class SystemMonitorModule: NSObject, FeatureModule {
         cpuLine = nil; memLine = nil; netLine = nil; netTotalLine = nil
         lastCPU = nil
         lastRxRate = 0; lastTxRate = 0
+        latest = Reading()
     }
 
     private func sample() {
@@ -55,6 +67,7 @@ final class SystemMonitorModule: NSObject, FeatureModule {
 
         if let now = SystemSampler.cpuTicks() {
             if let prev = lastCPU, let usage = SystemMath.cpuUsage(previous: prev, current: now) {
+                latest.cpuBusy = usage.busy
                 cpuText = String(format: "%.0f%%", usage.busy)
                 cpuLine?.title = String(format: "CPU: 사용자 %.1f%%  시스템 %.1f%%  유휴 %.1f%%",
                                         usage.user, usage.system, usage.idle)
@@ -63,12 +76,14 @@ final class SystemMonitorModule: NSObject, FeatureModule {
         }
         if let mem = SystemSampler.memory() {
             let percent = SystemMath.memoryPercent(used: mem.used, total: mem.total)
+            latest.memPercent = percent; latest.memUsed = mem.used; latest.memTotal = mem.total
             memText = String(format: "%.0f%%", percent)
             memLine?.title = "메모리: \(SystemMath.formatBytes(mem.used)) / \(SystemMath.formatBytes(mem.total)) (" + String(format: "%.0f%%)", percent)
         }
         let counters = SystemSampler.networkCounters()
         if let rate = network.update(counters: counters, at: Date.timeIntervalSinceReferenceDate) {
             lastRxRate = rate.rx; lastTxRate = rate.tx
+            latest.rx = rate.rx; latest.tx = rate.tx
             down = SystemMath.formatRateCompact(rate.rx)
             up = SystemMath.formatRateCompact(rate.tx)
             netLine?.title = "네트워크: ↓ \(down)/s  ↑ \(up)/s"

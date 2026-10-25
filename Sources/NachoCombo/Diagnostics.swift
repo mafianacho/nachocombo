@@ -8,7 +8,7 @@ enum Diagnostics {
         SettingsStore.defaultURL().deletingLastPathComponent().appendingPathComponent("state.json")
     }
 
-    static func write(manager: ModuleManager) {
+    static func write(manager: ModuleManager, extra: [String: Any] = [:]) {
         var modules: [String: Any] = [:]
         for id in ModuleID.allCases {
             let state = manager.states[id] ?? .off
@@ -28,6 +28,7 @@ enum Diagnostics {
             "written": ISO8601DateFormatter().string(from: Date()),
             "os": ProcessInfo.processInfo.operatingSystemVersionString,
             "modules": modules,
+            "ui": extra,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) else { return }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

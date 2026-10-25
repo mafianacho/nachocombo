@@ -1,7 +1,7 @@
 import AppKit
 import NachoComboCore
 
-/// Menu bar tidying within what macOS allows.
+/// Bartender-style menu bar tidying within what macOS allows.
 ///
 /// OS constraint (verified design, see docs/MENUBAR-CONSTRAINTS.md): macOS has no public API to
 /// enumerate, hide or reorder status items owned by other apps. The supported technique is a

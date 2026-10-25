@@ -48,6 +48,15 @@ public enum WindowLayout {
         }
     }
 
+    /// Result of an action inside a unit square (origin bottom-left), used for the panel preview.
+    public static func previewFraction(for action: SnapAction) -> CGRect {
+        switch action {
+        case .left: return CGRect(x: 0, y: 0, width: 0.5, height: 1)
+        case .right: return CGRect(x: 0.5, y: 0, width: 0.5, height: 1)
+        case .maximize: return CGRect(x: 0, y: 0, width: 1, height: 1)
+        }
+    }
+
     /// Accessibility API uses a top-left origin anchored at the primary display.
     public static func accessibilityOrigin(forCocoa rect: CGRect, primaryScreenHeight: CGFloat) -> CGPoint {
         CGPoint(x: rect.minX, y: primaryScreenHeight - rect.maxY)

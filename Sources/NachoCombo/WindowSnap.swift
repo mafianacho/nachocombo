@@ -14,8 +14,9 @@ enum WindowSnapError: Error, CustomStringConvertible {
     }
 }
 
-/// Left/right/maximize window placement through the Accessibility API.
-final class WindowSnapModule: NSObject, FeatureModule {
+/// Magnet-style window placement through the Accessibility API.
+final class WindowSnapModule: NSObject, FeatureModule, PermissionPrompting {
+    var allowPermissionPrompt = false
     let id = ModuleID.windowSnap
     static let permissionMessage =
         "창을 움직이려면 시스템 설정(Monterey: 시스템 환경설정) ▸ 보안 및 개인 정보 보호 ▸ 손쉬운 사용에서 Nacho Combo를 허용해야 합니다."
@@ -26,6 +27,8 @@ final class WindowSnapModule: NSObject, FeatureModule {
     /// The OS permission dialog is shown once per ON switch; re-checks never re-prompt.
     private var promptedSinceEnabled = false
     var onPermissionLost: (() -> Void)?
+    /// The quick panel can be the frontmost app while the user clicks "apply": this tells which app's window to move.
+    var targetAppProvider: (() -> NSRunningApplication?)?
 
     static func isTrusted(prompt: Bool) -> Bool {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
@@ -34,8 +37,8 @@ final class WindowSnapModule: NSObject, FeatureModule {
 
     func start() -> ModuleState {
         // The OS permission dialog is shown once per explicit opt-in; later re-checks stay silent.
-        let shouldPrompt = !promptedSinceEnabled
-        promptedSinceEnabled = true
+        let shouldPrompt = allowPermissionPrompt && !promptedSinceEnabled
+        if allowPermissionPrompt { promptedSinceEnabled = true }
         guard WindowSnapModule.isTrusted(prompt: shouldPrompt) else {
             return .needsPermission(WindowSnapModule.permissionMessage)
         }
@@ -76,7 +79,7 @@ final class WindowSnapModule: NSObject, FeatureModule {
 
     private func snapFrontmostWindow(_ action: SnapAction) throws {
         guard WindowSnapModule.isTrusted(prompt: false) else { throw WindowSnapError.notTrusted }
-        guard let app = NSWorkspace.shared.frontmostApplication,
+        guard let app = targetAppProvider?() ?? NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else { throw WindowSnapError.noTargetApp }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
