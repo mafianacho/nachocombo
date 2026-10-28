@@ -1,7 +1,8 @@
 import AppKit
 import NachoComboCore
+import ServiceManagement
 
-final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHost, NSMenuDelegate {
     static let commandName = Notification.Name("com.mafianacho.nachocombo.command")
 
     private let debugCtl: Bool
@@ -27,12 +28,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
     private var lastA11y: [String: Any] = [:]
     /// Debug only (`ctl gallery sample on`): gallery pictures use sample data, for documentation screenshots.
     private var samplePreviews = false
+    /// Debug only (`ctl permstage <permission> <stage>`): shows a permission card stage without going through it.
+    private var stageOverrides: [GadgetPermission: PermissionStage] = [:]
+    /// When the user opened a permission's list from Nacho Combo (cleared once it is allowed or the gadget is off).
+    private var settingsVisits: [GadgetPermission: Date] = [:]
+    /// Gadgets that just started because their permission arrived: the card confirms it for a few seconds.
+    private var recentlyAllowed: [ModuleID: Date] = [:]
+    /// Polls the permissions while a switched-on gadget waits for one (macOS does not announce a grant).
+    private var permissionWatch: Timer?
+    private var permissionWatchStarted = Date.distantPast
+    private var settingsWindowWasVisible = false
+    private var firstLaunch = false
+    /// The box before the last order, for Undo (a few minutes, until the next order).
+    private var undoBox: (name: String, box: BoxSnapshot, at: Date)?
 
     init(debugCtl: Bool) {
         self.debugCtl = debugCtl
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Brand.registerFonts()
+        firstLaunch = !FileManager.default.fileExists(atPath: store.url.path)
         organizer = MenuBarOrganizerModule(initiallyCollapsed: store.load().menuBarCollapsed)
         monitor = SystemMonitorModule()
         snap = WindowSnapModule()
@@ -63,7 +79,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
         monitor.optionsProvider = options
 
         settingsWindow = SettingsWindowController(host: self)
-        settingsWindow.quitApp = { NSApp.terminate(nil) }
 
         monitor.settingsProvider = { [weak self] in self?.manager.settings.monitorSettings ?? .defaults }
         monitor.settingsChanged = { [weak self] value in self?.updateMonitorSettings(value) }
@@ -93,13 +108,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
             if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                app.processIdentifier != getpid() { self?.lastExternalApp = app }
+            // Coming back from System Settings changes what the permission card says (waiting → still not / restart).
+            if self?.settingsVisits.isEmpty == false { self?.recheckPermissions() }
         }
 
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             // Event-driven re-check: returning from System Settings is the natural moment.
-            self?.manager.retry(.windowSnap)
-            self?.manager.retry(.captureFloat)
+            self?.recheckPermissions()
             AlertNotifier.refreshStatus { self?.stateChanged() }
         }
         if debugCtl {
@@ -115,8 +131,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
         AlertNotifier.refreshStatus { [weak self] in self?.stateChanged() }
         syncPins()
         manager.bootstrap()
-        // Opening the app (double-click) always shows the settings window; tools saved as ON are already running.
-        settingsWindow.show()
+        notePermissionGrants()
+        startPermissionWatchIfNeeded()
+        // The first launch always shows the window; later launches follow General ▸ Show This Window at Launch.
+        if firstLaunch {
+            // Everything starts off: the first window is the combo menu.
+            settingsWindow.combos.welcome = true
+            settingsWindow.select(.combos)
+        }
+        switch manager.settings.launchWindow {
+        case _ where firstLaunch, .always: settingsWindow.show()
+        case .whenNeeded: if gadgetsNeedingUser().isEmpty == false { showSettings(gadgetsNeedingUser().first) }
+        case .never: break
+        }
     }
 
     /// Double-clicking the app again (or `open -a`) while it is already running re-opens the settings window.
@@ -135,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
     private func showSettings(_ id: ModuleID? = nil) {
         if let id = id { settingsWindow.select(id) }
         settingsWindow.show()
+        startPermissionWatchIfNeeded(restart: true)
     }
 
     private func updateMonitorSettings(_ value: MonitorSettings) {
@@ -147,7 +175,165 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
         panel.refresh()
         settingsWindow.refresh()
         refreshPinnedItems()
+        refreshMainItem()
+        startPermissionWatchIfNeeded()
         writeDiagnostics()
+    }
+
+    /// Switched-on gadgets that cannot run until the user does something (a permission) or that failed.
+    private func gadgetsNeedingUser() -> [ModuleID] {
+        ModuleID.allCases.filter { id in
+            guard manager.settings.isEnabled(id) else { return false }
+            switch manager.states[id] ?? .off {
+            case .needsPermission, .failed: return true
+            default: return false
+            }
+        }
+    }
+
+    /// The nacho box gets a small orange dot while a gadget needs the user (General can turn the dot off).
+    private func refreshMainItem() {
+        let needing = gadgetsNeedingUser()
+        let dot = manager.settings.menuBarAttentionDot && !needing.isEmpty
+        let base = AppIcon.artwork(height: 17)
+        if dot {
+            let size = NSSize(width: base.size.width + 3, height: base.size.height)
+            mainItem.button?.image = NSImage(size: size, flipped: false) { rect in
+                base.draw(in: NSRect(origin: .zero, size: base.size))
+                let d: CGFloat = 7
+                let circle = NSRect(x: rect.width - d, y: rect.height - d, width: d, height: d)
+                DotPalette.orange.setFill()
+                NSBezierPath(ovalIn: circle).fill()
+                return true
+            }
+        } else {
+            mainItem.button?.image = base
+        }
+        if let first = needing.first, needing.count == 1 {
+            mainItem.button?.toolTip = "Nacho Combo — \(first.displayName): \(manager.status(of: first).stateText)"
+        } else if !needing.isEmpty {
+            mainItem.button?.toolTip = "Nacho Combo — \(needing.count) gadgets need you"
+        } else {
+            mainItem.button?.toolTip = "Nacho Combo — open the tool list"
+        }
+        mainItem.button?.setAccessibilityLabel(needing.isEmpty ? "Nacho Combo tool list"
+                                                : "Nacho Combo tool list, \(needing.count) need attention")
+    }
+
+    // MARK: permissions
+
+    private static let systemSettingsID = "com.apple.systempreferences"
+    private var systemSettingsInFront: Bool {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier == AppDelegate.systemSettingsID
+    }
+
+    /// Re-tries the gadgets that wait for a permission; one that starts gets a short "allowed" confirmation, and if the
+    /// user came here from the permission card the window comes back to show it.
+    private func recheckPermissions() {
+        var started: [ModuleID] = []
+        for id in [ModuleID.windowSnap, .captureFloat] where manager.settings.isEnabled(id) {
+            guard case .needsPermission = manager.states[id] ?? .off else { continue }
+            manager.retry(id)
+            if manager.states[id] == .running { started.append(id) }
+        }
+        notePermissionGrants()
+        for id in started {
+            recentlyAllowed[id] = Date()
+            if let permission = id.info.requiredPermission, settingsVisits[permission] != nil, settingsWindowWasVisible {
+                showSettings(id)
+            }
+            if let permission = id.info.requiredPermission { settingsVisits[permission] = nil }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.2) { [weak self] in self?.stateChanged() }
+        }
+        stateChanged()
+    }
+
+    /// Remembers which copy of the app had each permission, so a later copy can tell an update from a revocation.
+    private func notePermissionGrants() {
+        guard let signature = CodeSignature.current else { return }
+        for permission in [GadgetPermission.accessibility, .screenRecording] where gadgetPermissionGranted(permission) == true {
+            if manager.settings.permissionGrants[permission.rawValue] != signature {
+                manager.update { $0.permissionGrants[permission.rawValue] = signature }
+            }
+        }
+    }
+
+    /// Polls once a second while a switched-on gadget waits for a permission, for at most 10 minutes at a time (opening
+    /// the window, the panel or System Settings from here starts it again). Stops by itself when nothing waits.
+    private func startPermissionWatchIfNeeded(restart: Bool = false) {
+        let waiting = [ModuleID.windowSnap, .captureFloat].contains { id in
+            guard manager.settings.isEnabled(id), case .needsPermission = manager.states[id] ?? .off else { return false }
+            return true
+        }
+        guard waiting else { permissionWatch?.invalidate(); permissionWatch = nil; return }
+        if restart { permissionWatchStarted = Date() }
+        guard permissionWatch == nil else { return }
+        if !restart && Date().timeIntervalSince(permissionWatchStarted) > 600 { permissionWatchStarted = Date() }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.permissionTick() }
+        RunLoop.main.add(timer, forMode: .common)
+        permissionWatch = timer
+    }
+
+    private func permissionTick() {
+        if settingsWindow.isVisible { settingsWindowWasVisible = true }
+        if Date().timeIntervalSince(permissionWatchStarted) > 600 {
+            permissionWatch?.invalidate()
+            permissionWatch = nil
+            return
+        }
+        let ready = [ModuleID.windowSnap, .captureFloat].contains { id in
+            guard manager.settings.isEnabled(id), case .needsPermission = manager.states[id] ?? .off,
+                  let permission = id.info.requiredPermission else { return false }
+            return gadgetPermissionGranted(permission) == true
+        }
+        if ready || !settingsVisits.isEmpty { recheckPermissions() }
+    }
+
+    /// The short explanation before macOS's own permission dialog appears (only when the permission is missing).
+    private func confirmPermission(for id: ModuleID, then proceed: @escaping () -> Void, cancelled: @escaping () -> Void) {
+        guard let permission = id.info.requiredPermission, gadgetPermissionGranted(permission) != true else { proceed(); return }
+        let alert = NSAlert()
+        alert.messageText = "\(id.displayName) needs \(permission.displayName)"
+        let app = GadgetPermission.settingsAppName()
+        switch permission {
+        case .screenRecording:
+            alert.informativeText = "To read the area you select, Nacho Combo needs your OK in \(app). Next, macOS shows "
+                + "its own message: choose Open \(app), then turn on Nacho Combo.\n\nNothing is recorded or uploaded."
+        default:
+            alert.informativeText = "To move and resize other apps' windows, Nacho Combo needs your OK in \(app). Next, "
+                + "macOS shows its own message: choose Open \(app), then turn on Nacho Combo.\n\nWindow titles and "
+                + "contents are never read."
+        }
+        alert.icon = GadgetIcon.image(for: id, size: 64)
+        alert.addButton(withTitle: "Continue")
+        alert.addButton(withTitle: "Not Now")
+        alert.beginSheetModal(for: settingsWindow.window) { response in
+            if response == .alertFirstButtonReturn { proceed() } else { cancelled() }
+        }
+    }
+
+    /// Turning a gadget on from the gallery or the panel: a gadget that needs a missing permission explains it first.
+    private func userEnable(_ id: ModuleID, _ on: Bool, navigate: Bool = true) {
+        guard on, let permission = id.info.requiredPermission, gadgetPermissionGranted(permission) != true else {
+            if !on, let permission = id.info.requiredPermission { settingsVisits[permission] = nil }
+            manager.setEnabled(id, on)
+            return
+        }
+        if navigate { showSettings(id) } else { settingsWindow.show() }
+        confirmPermission(for: id, then: { [weak self] in
+            self?.manager.setEnabled(id, true)
+            self?.startPermissionWatchIfNeeded(restart: true)
+        }, cancelled: { [weak self] in self?.stateChanged() })
+    }
+
+    /// Starts a fresh copy once this one has quit (macOS applies Screen Recording to a new process).
+    private func relaunch() {
+        let path = Bundle.main.bundlePath
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "while kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done; /usr/bin/open \"$0\"", path]
+        try? process.run()
+        NSApp.terminate(nil)
     }
 
     // MARK: action shortcuts
@@ -204,14 +390,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
         var labels: [String: String] = [:]
         for id in ModuleID.allCases { if let s = manager.settings.shortcut(for: id) { labels[id.rawValue] = s.label } }
         extra["toolShortcutLabels"] = labels
-        var gallery: [String: Any] = ["selected": settingsWindow.selected.rawValue, "visible": settingsWindow.isVisible,
+        var gallery: [String: Any] = ["selected": settingsWindow.page.key, "visible": settingsWindow.isVisible,
+                                      "tab": settingsWindow.detail.tab.key,
                                       "windowFrame": NSStringFromRect(settingsWindow.window.frame),
                                       "contentFitting": NSStringFromSize(settingsWindow.window.contentView?.fittingSize ?? .zero)]
         for id in ModuleID.allCases {
-            gallery[id.rawValue] = ["subtitle": gadgetSubtitle(id), "attention": gadgetAttention(id),
-                                    "status": gadgetStatusLine(id) ?? ""] as [String: Any]
+            var entry: [String: Any] = ["subtitle": gadgetSubtitle(id), "attention": gadgetAttention(id),
+                                        "badge": gadgetBadgeCount(id), "status": gadgetStatusLine(id) ?? ""]
+            if let permission = id.info.requiredPermission { entry["permissionStage"] = gadgetPermissionStage(permission).rawValue }
+            gallery[id.rawValue] = entry
         }
         extra["gallery"] = gallery
+        extra["settingsVisits"] = settingsVisits.keys.map { $0.rawValue }.sorted()
+        extra["permissionWatch"] = permissionWatch != nil
+        extra["mainItemAttention"] = !gadgetsNeedingUser().isEmpty
+        extra["loginItem"] = "\(loginItemState)"
+        extra["combo"] = ["ordered": manager.settings.combo ?? "", "current": ComboCatalog.current(manager.settings)?.id ?? "",
+                          "shown": settingsWindow.combos.selected.id]
         // How the UI currently looks to the system: light/dark, the accent color the controls follow, Reduce Motion.
         extra["appearance"] = NSApp.effectiveAppearance.name.rawValue
         if let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB) {
@@ -239,6 +434,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
         panel.close()
         let menu = NSMenu()
         menu.delegate = self
+        // Combos straight from the icon: the one that is the box is checked; choosing another orders it (Undo is here too).
+        let comboItem = NSMenuItem(title: "Combo", action: nil, keyEquivalent: "")
+        let combos = NSMenu()
+        let current = ComboCatalog.current(manager.settings)
+        for combo in ComboCatalog.combos(manager.settings) {
+            let item = NSMenuItem(title: "No.\(combo.number)  \(combo.name)", action: #selector(menuOrderCombo(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = combo.id
+            item.state = combo.id == current?.id ? .on : .off
+            item.toolTip = combo.gadgets.map { $0.displayName }.joined(separator: ", ")
+            combos.addItem(item)
+        }
+        combos.addItem(.separator())
+        if let name = orderUndoName {
+            let undo = NSMenuItem(title: "Undo \(name)", action: #selector(menuUndoOrder), keyEquivalent: "")
+            undo.target = self
+            combos.addItem(undo)
+        }
+        let own = NSMenuItem(title: "Make Your Own…", action: #selector(menuNewCombo), keyEquivalent: "")
+        own.target = self
+        combos.addItem(own)
+        comboItem.submenu = combos
+        menu.addItem(comboItem)
+        menu.addItem(.separator())
         let settings = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -358,7 +577,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
     var panelReading: SystemMonitorModule.Reading { monitor.latest }
     var panelOptions: GadgetOptions { manager.settings.options }
 
-    func panelSetEnabled(_ id: ModuleID, _ on: Bool) { manager.setEnabled(id, on) }
+    func panelSetEnabled(_ id: ModuleID, _ on: Bool) {
+        if on, let permission = id.info.requiredPermission, gadgetPermissionGranted(permission) != true { panel.close() }
+        userEnable(id, on)
+    }
+    func panelOrderCombo(_ id: String) { orderCombo(id) }
+    var panelUndoName: String? { orderUndoName }
+    func panelUndoOrder() { undoOrder() }
+    func panelPermissionGranted(_ permission: GadgetPermission) -> Bool? { gadgetPermissionGranted(permission) }
+
+    func panelOpenCombos(newCombo: Bool) {
+        panel.close()
+        settingsWindow.select(.combos)
+        if newCombo { settingsWindow.combos.startNewCombo() }
+        settingsWindow.show()
+    }
+
+    func panelOpenGadget(_ id: ModuleID?) {
+        panel.close()
+        if let id = id { showSettings(id) } else { settingsWindow.select(.permissions); settingsWindow.show() }
+    }
     func panelSetPinned(_ id: ModuleID, _ pinned: Bool) {
         manager.setPinned(id, pinned)
         syncPins()
@@ -379,13 +617,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
     func panelStartCapture() { gadgetPerform(.captureArea) }
     func panelSetDim(_ value: Double) { applyDimIntensity(value) }
     func panelOpenPermissionPane(_ id: ModuleID) {
-        switch id {
-        case .windowSnap: openPermissionPane(.accessibility)
-        case .captureFloat: openPermissionPane(.screenRecording)
-        default: break
-        }
+        if let permission = id.info.requiredPermission { gadgetOpenPermissionSettings(permission) }
     }
-    func panelRecheck(_ id: ModuleID) { manager.retry(id) }
+    func panelRecheck(_ id: ModuleID) { recheckPermissions() }
     func panelPerform(_ command: GadgetCommand) { gadgetPerform(command) }
     func panelStatusLine(_ id: ModuleID) -> String? { gadgetStatusLine(id) }
 
@@ -400,9 +634,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
     func gadgetSubtitle(_ id: ModuleID) -> String {
         guard manager.settings.isEnabled(id) else { return "Off" }
         switch manager.states[id] ?? .off {
-        case .needsPermission: return "Needs Permission"
-        case .failed: return "Error"
-        case .off: return "Not Started"
+        case .needsPermission, .failed, .off: return manager.status(of: id).stateText
         case .running: break
         }
         switch id {
@@ -432,13 +664,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
     }
 
     func gadgetAttention(_ id: ModuleID) -> [String] {
+        // A missing permission has its own card; these are the other things that need the user.
         var items: [String] = []
         let enabled = manager.settings.isEnabled(id)
-        switch manager.states[id] ?? .off {
-        case .needsPermission(let message) where enabled: items.append(message)
-        case .failed(let message) where enabled: items.append(message)
-        default: break
-        }
+        if case .failed(let message) = manager.states[id] ?? .off, enabled { items.append(message) }
         guard running(id) else { return items }
         for action in GadgetActions.of(id) where actionShortcuts.failed.contains(action.id) {
             let label = manager.settings.shortcut(forAction: action.id)?.label ?? ""
@@ -453,12 +682,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
             if snap.motionFailed { items.append("⌃⌘-drag could not start: macOS refused the event tap. Check Accessibility.") }
         case .systemMonitor:
             items.append(contentsOf: monitor.alertMessages)
-            if manager.settings.options.alertNotifications, AlertNotifier.granted == false {
-                items.append("Notifications are turned off for Nacho Combo in System Settings.")
-            }
         default: break
         }
         return items
+    }
+
+    func gadgetBadgeCount(_ id: ModuleID) -> Int {
+        var count = gadgetAttention(id).count
+        if manager.settings.isEnabled(id), case .needsPermission = manager.states[id] ?? .off { count += 1 }
+        return count
     }
 
     func gadgetStatusLine(_ id: ModuleID) -> String? {
@@ -521,26 +753,190 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
         }
     }
 
-    func gadgetOpenPermissionSettings(_ permission: GadgetPermission) { openPermissionPane(permission) }
+    func gadgetPermissionStage(_ permission: GadgetPermission) -> PermissionStage {
+        if let forced = stageOverrides[permission] { return forced }
+        return PermissionGuide.stage(granted: gadgetPermissionGranted(permission) == true, permission: permission,
+                                     visitedSettings: settingsVisits[permission] != nil,
+                                     settingsInFront: systemSettingsInFront,
+                                     grantedSignature: manager.settings.permissionGrants[permission.rawValue],
+                                     currentSignature: CodeSignature.current)
+    }
+
+    func gadgetRecentlyAllowed(_ id: ModuleID) -> Bool {
+        guard let at = recentlyAllowed[id] else { return false }
+        return Date().timeIntervalSince(at) < 5 && manager.states[id] == .running
+    }
+
+    func gadgetOpenPermissionSettings(_ permission: GadgetPermission) {
+        if permission != .notifications {
+            settingsVisits[permission] = Date()
+            settingsWindowWasVisible = settingsWindow.isVisible
+            startPermissionWatchIfNeeded(restart: true)
+        }
+        openPermissionPane(permission)
+    }
 
     func gadgetRequestPermission(_ permission: GadgetPermission) {
-        guard permission == .notifications else { openPermissionPane(permission); return }
+        guard permission == .notifications else { gadgetOpenPermissionSettings(permission); return }
         AlertNotifier.request { [weak self] in self?.stateChanged() }
     }
 
-    func gadgetRecheck(_ id: ModuleID) {
-        manager.retry(id)
-        AlertNotifier.refreshStatus { [weak self] in self?.stateChanged() }
+    /// Removes this app's entry from the permission's list (`tccutil reset <service> <bundle id>`, which needs no
+    /// administrator for one's own app), then asks macOS again so the current copy is added.
+    func gadgetAskAgain(_ permission: GadgetPermission) {
+        if let service = permission.tccService, let bundleID = Bundle.main.bundleIdentifier {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            process.arguments = ["reset", service, bundleID]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try? process.run()
+            process.waitUntilExit()
+        }
+        manager.update { $0.permissionGrants[permission.rawValue] = nil }
+        switch permission {
+        case .accessibility: _ = WindowSnapModule.isTrusted(prompt: true)
+        case .screenRecording: _ = CGRequestScreenCaptureAccess()
+        case .notifications: AlertNotifier.request { [weak self] in self?.stateChanged() }
+        }
+        settingsVisits[permission] = Date()
+        settingsWindowWasVisible = settingsWindow.isVisible
+        startPermissionWatchIfNeeded(restart: true)
         stateChanged()
     }
 
-    func gadgetSetEnabled(_ id: ModuleID, _ on: Bool) { manager.setEnabled(id, on) }
+    func gadgetForgetSettingsVisit(_ permission: GadgetPermission) {
+        settingsVisits[permission] = nil
+        stateChanged()
+    }
+
+    func gadgetRelaunch() { relaunch() }
+
+    func gadgetRecheck(_ id: ModuleID) {
+        recheckPermissions()
+        AlertNotifier.refreshStatus { [weak self] in self?.stateChanged() }
+    }
+
+    func gadgetSetEnabled(_ id: ModuleID, _ on: Bool) { userEnable(id, on) }
     func gadgetSetPinned(_ id: ModuleID, _ pinned: Bool) { panelSetPinned(id, pinned) }
     func gadgetSetToolShortcut(_ id: ModuleID, _ shortcut: ToolShortcut?) -> String? { applyShortcut(id, shortcut) }
     func gadgetSetActionShortcut(_ actionID: String, _ shortcut: ToolShortcut?, reset: Bool) -> String? {
         applyActionShortcut(actionID, shortcut, reset: reset)
     }
     func gadgetActionShortcutUnavailable(_ actionID: String) -> Bool { actionShortcuts.failed.contains(actionID) }
+
+    func gadgetResetActionShortcuts(_ id: ModuleID) {
+        manager.resetActionShortcuts(of: id)
+        applyActionShortcuts(force: true)
+        stateChanged()
+    }
+
+    func gadgetDismissHint(_ key: String) { manager.update { $0.dismissedHints[key] = true } }
+
+    func gadgetOpenDesktopSettings() {
+        let address = GadgetPermission.currentMajor >= 13 ? "x-apple.systempreferences:com.apple.Desktop-Settings.extension"
+                                                          : "x-apple.systempreferences:com.apple.preference.dock"
+        if let url = URL(string: address) { NSWorkspace.shared.open(url) }
+    }
+
+    var gadgetWindow: NSWindow? { settingsWindow.window }
+
+    // MARK: SettingsHost
+
+    var loginItemState: LoginItemState {
+        guard #available(macOS 13.0, *) else { return .unsupported }
+        switch SMAppService.mainApp.status {
+        case .enabled: return .on
+        case .requiresApproval: return .needsApproval
+        default: return .off
+        }
+    }
+
+    func setOpenAtLogin(_ on: Bool) -> String? {
+        guard #available(macOS 13.0, *) else { return "Open at Login needs macOS 13 or later." }
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            return nil
+        } catch {
+            return "macOS did not change the login item: \(error.localizedDescription)"
+        }
+    }
+
+    func openLoginItemsSettings() {
+        if #available(macOS 13.0, *) { SMAppService.openSystemSettingsLoginItems() }
+    }
+
+    func revealSettingsFile() {
+        NSWorkspace.shared.activateFileViewerSelecting([store.url])
+    }
+
+    func resetAllSettings() {
+        manager.resetAll()
+        settingsVisits.removeAll()
+        recentlyAllowed.removeAll()
+        toolShortcuts.apply(manager.settings.toolShortcuts)
+        applyActionShortcuts(force: true)
+        organizer.applyOptions()
+        snap.applyOptions()
+        capture.applyOptions()
+        dim.setIntensity(manager.settings.dimIntensity)
+        monitor.applySettings()
+        syncPins()
+        stateChanged()
+    }
+
+    func quitApp() { NSApp.terminate(nil) }
+
+    func orderCombo(_ id: String) {
+        guard let combo = ComboCatalog.combo(id, in: manager.settings) else { return }
+        undoBox = (combo.name, manager.snapshot(), Date())
+        // Gadgets whose permission is missing wait for their own Allow: ordering never raises a system dialog.
+        let ready = combo.gadgets.filter { gadget in
+            gadget.info.requiredPermission.map { gadgetPermissionGranted($0) == true } ?? true
+        }
+        manager.order(combo, enable: ready)
+        applyBoxSettings()
+        settingsWindow.combos.welcome = false
+        stateChanged()
+    }
+
+    /// After a combo changed options in one go: every gadget takes its new settings.
+    private func applyBoxSettings() {
+        dim.setIntensity(manager.settings.dimIntensity)
+        organizer.applyOptions()
+        snap.applyOptions()
+        capture.applyOptions()
+        dim.refresh()
+        monitor.applySettings()
+    }
+
+    func saveCombo(_ combo: SavedCombo) -> Bool { manager.saveCombo(combo) }
+
+    func deleteCombo(_ id: String) { manager.deleteCombo(id) }
+
+    var orderUndoName: String? {
+        guard let undo = undoBox, Date().timeIntervalSince(undo.at) < 300 else { return nil }
+        return undo.name
+    }
+
+    func undoOrder() {
+        guard orderUndoName != nil, let undo = undoBox else { return }
+        undoBox = nil
+        manager.restore(undo.box)
+        applyBoxSettings()
+        stateChanged()
+    }
+
+    func allowFromCombo(_ id: ModuleID) { userEnable(id, true, navigate: false) }
+
+    func permissionsAttentionCount() -> Int {
+        var count = 0
+        for id in [ModuleID.windowSnap, .captureFloat] where manager.settings.isEnabled(id) {
+            if case .needsPermission = manager.states[id] ?? .off { count += 1 }
+        }
+        if manager.settings.options.alertNotifications, AlertNotifier.granted == false { count += 1 }
+        return count
+    }
 
     func gadgetRecordingChanged(_ recording: Bool) {
         recordingShortcut = recording
@@ -601,6 +997,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
     }
 
     @objc private func menuSettings() { showSettings() }
+    @objc private func menuOrderCombo(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        orderCombo(id)
+        // A combo that still needs a permission continues on the Combos page, where its Allow buttons are.
+        if let combo = ComboCatalog.combo(id, in: manager.settings),
+           combo.gadgets.contains(where: { $0.info.requiredPermission.map { gadgetPermissionGranted($0) != true } ?? false }) {
+            settingsWindow.combos.select(id)
+            settingsWindow.select(.combos)
+            settingsWindow.show()
+        }
+    }
+    @objc private func menuUndoOrder() { undoOrder() }
+    @objc private func menuNewCombo() { panelOpenCombos(newCombo: true) }
     @objc private func menuQuit() { NSApp.terminate(nil) }
 
     private func applyDimIntensity(_ value: Double) {
@@ -654,8 +1063,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
         case "gallery" where parts.count >= 3:
             switch parts[1] {
             case "select": if let id = ModuleID(rawValue: parts[2]) { showSettings(id) }
+            case "page": if let page = SettingsPage(key: parts[2]) { settingsWindow.select(page); settingsWindow.show() }
+            case "tab":
+                if let tab = DetailTab.allCases.first(where: { $0.key == parts[2] }) { settingsWindow.detail.select(tab: tab) }
             case "sample": samplePreviews = parts[2] == "on"; settingsWindow.refreshPreview()
             case "detail": settingsWindow.show(); _ = settingsWindow.writeDetailSnapshot(to: URL(fileURLWithPath: parts[2]))
+            case "content": settingsWindow.show(); _ = settingsWindow.writeTabSnapshot(to: URL(fileURLWithPath: parts[2]))
             case "preview" where parts.count >= 4:
                 if let id = ModuleID(rawValue: parts[2]) {
                     let appearance = NSAppearance(named: parts.last == "light" ? .aqua : .darkAqua)!
@@ -698,6 +1111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
             guard let button = mainItem.button else { break }
             switch parts[1] {
             case "list": panel.show(from: button, route: .list)
+            case "combos": panel.show(from: button, route: .combos)
             case "tool" where parts.count == 3:
                 if let id = ModuleID(rawValue: parts[2]) { openToolForce(id) }
             case "back": panel.back()
@@ -721,6 +1135,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, GadgetHost,
             }
         case "settings" where parts.count == 2 && parts[1] == "show":
             showSettings()
+        case "permstage" where parts.count == 3:
+            // Debug only: show a permission card stage (`auto` follows the real state again).
+            if let permission = GadgetPermission(rawValue: parts[1]) {
+                stageOverrides[permission] = PermissionStage(rawValue: parts[2])
+            }
+        case "relaunch":
+            relaunch()
+        case "combo" where parts.count >= 2:
+            // Debug only: `combo select|order|edit <id>`, `combo new [preset]`, `combo save`, `combo undo`,
+            // `combo welcome on|off`.
+            let argument = parts.count >= 3 ? parts[2] : ""
+            switch parts[1] {
+            case "select": settingsWindow.combos.select(argument); settingsWindow.select(.combos)
+            case "order": orderCombo(argument)
+            case "welcome": settingsWindow.combos.welcome = argument == "on"
+            case "new": settingsWindow.select(.combos); settingsWindow.combos.startNewCombo(copying: ComboCatalog.combo(argument))
+            case "edit": settingsWindow.select(.combos); settingsWindow.combos.edit(argument)
+            case "undo": undoOrder()
+            case "save": settingsWindow.combos.saveDraft()
+            default: break
+            }
+
+        case "allowed" where parts.count == 2:
+            if let id = ModuleID(rawValue: parts[1]) { recentlyAllowed[id] = Date() }
         case "appearance" where parts.count == 2:
             // Debug-only override to capture both looks; "system" returns to following the OS.
             switch parts[1] {

@@ -18,6 +18,15 @@ protocol PanelHost: AnyObject {
     func panelSetDim(_ value: Double)
     func panelOpenPermissionPane(_ id: ModuleID)
     func panelRecheck(_ id: ModuleID)
+    /// Opens the settings window on a gadget (nil: the Permissions page).
+    func panelOpenGadget(_ id: ModuleID?)
+    func panelOrderCombo(_ id: String)
+    /// The combo just ordered, while its order can still be undone.
+    var panelUndoName: String? { get }
+    func panelUndoOrder()
+    /// Opens the settings window's Combos page (with a new combo of one's own started).
+    func panelOpenCombos(newCombo: Bool)
+    func panelPermissionGranted(_ permission: GadgetPermission) -> Bool?
     /// The gallery's live commands (capture modes, lock floats, pause dimming...).
     func panelPerform(_ command: GadgetCommand)
     /// Live facts of a gadget ("2 floats · locked", "Paused").
@@ -27,11 +36,13 @@ protocol PanelHost: AnyObject {
 
 enum PanelRoute: Equatable {
     case list
+    case combos
     case tool(ModuleID)
 
     var name: String {
         switch self {
         case .list: return "list"
+        case .combos: return "combos"
         case .tool(let id): return "tool:\(id.rawValue)"
         }
     }
@@ -58,6 +69,7 @@ final class PanelController: NSObject, NSPopoverDelegate {
         content.onBack = { [weak self] in self?.back() }
         content.onEscape = { [weak self] in self?.escape() }
         content.onSelect = { [weak self] id in self?.navigate(to: .tool(id)) }
+        content.onCombos = { [weak self] in self?.navigate(to: .combos) }
         popover.contentViewController = content
         popover.behavior = .transient
         popover.animates = false      // no motion at all: nothing here may start moving when Reduce Motion is on
@@ -121,14 +133,14 @@ final class PanelController: NSObject, NSPopoverDelegate {
     }
 
     func back() {
-        guard case .tool = route else { return }
+        guard route != .list else { return }
         backCount += 1
         navigate(to: .list)
     }
 
-    /// Esc: tool screen -> list, list -> close.
+    /// Esc: tool or combo screen -> list, list -> close.
     func escape() {
-        if case .tool = route { back() } else { close() }
+        if route != .list { back() } else { close() }
     }
 
     func close() {
@@ -200,8 +212,10 @@ final class PanelViewController: NSViewController {
     var onBack: (() -> Void)?
     var onEscape: (() -> Void)?
     var onSelect: ((ModuleID) -> Void)?
+    var onCombos: (() -> Void)?
     private var listView: ToolListView?
     private var detailView: ToolDetailView?
+    private var comboView: ComboPanelView?
     private var current: NSView?
 
     override func loadView() {
@@ -217,13 +231,20 @@ final class PanelViewController: NSViewController {
         current?.removeFromSuperview()
         listView = nil
         detailView = nil
+        comboView = nil
         let child: NSView
         switch route {
         case .list:
             let list = ToolListView(host: host)
             list.onSelect = { [weak self] id in self?.onSelect?(id) }
+            list.onCombos = { [weak self] in self?.onCombos?() }
             listView = list
             child = list
+        case .combos:
+            let combos = ComboPanelView(host: host)
+            combos.onBack = { [weak self] in self?.onBack?() }
+            comboView = combos
+            child = combos
         case .tool(let id):
             let detail = ToolDetailView(module: id, host: host)
             detail.onBack = { [weak self] in self?.onBack?() }
@@ -234,6 +255,7 @@ final class PanelViewController: NSViewController {
         view.addSubview(child)
         switch route {
         case .list: view.setAccessibilityLabel("Nacho Combo tool list")
+        case .combos: view.setAccessibilityLabel("Combos")
         case .tool(let id): view.setAccessibilityLabel("\(id.displayName) controls")
         }
         NSLayoutConstraint.activate([
@@ -250,6 +272,7 @@ final class PanelViewController: NSViewController {
         (view as? PanelRootView)?.applyBaseAppearance()
         listView?.update()
         detailView?.update()
+        comboView?.update()
         guard let child = current else { return }
         child.layoutSubtreeIfNeeded()
         let size = child.fittingSize
@@ -261,6 +284,8 @@ final class PanelViewController: NSViewController {
     func focusInitial() {
         guard let window = view.window else { return }
         if let list = listView, let first = list.firstRow {
+            window.makeFirstResponder(first)
+        } else if let combos = comboView, let first = combos.firstRow {
             window.makeFirstResponder(first)
         } else {
             window.makeFirstResponder(view)

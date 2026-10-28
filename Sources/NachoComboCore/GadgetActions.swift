@@ -63,6 +63,22 @@ public enum GadgetActions {
 
     public static let all: [GadgetAction] = snap + other
 
+    /// Window Snap's positions in the groups the Shortcuts tab shows; every SnapAction appears exactly once.
+    public static let snapGroups: [(title: String, actions: [SnapAction])] = [
+        ("Halves", [.left, .right, .centerHalf, .topHalf, .bottomHalf]),
+        ("Quarters", [.topLeft, .topRight, .bottomLeft, .bottomRight]),
+        ("Thirds", [.firstThird, .centerThird, .lastThird]),
+        ("Two Thirds", [.firstTwoThirds, .centerTwoThirds, .lastTwoThirds]),
+        ("Size and Position", [.maximize, .almostMaximize, .maximizeHeight, .center, .smaller, .larger, .restore]),
+        ("Displays", [.nextDisplay, .previousDisplay]),
+    ]
+
+    /// A gadget's actions as the Shortcuts tab lists them: Window Snap in titled groups, the others as one list.
+    public static func groups(of module: ModuleID) -> [(title: String?, actions: [GadgetAction])] {
+        guard module == .windowSnap else { return [(nil, of(module))] }
+        return snapGroups.map { group in (group.title, group.actions.compactMap { action(snapID($0)) }) }
+    }
+
     public static func of(_ module: ModuleID) -> [GadgetAction] { all.filter { $0.module == module } }
     public static func action(_ id: String) -> GadgetAction? { all.first { $0.id == id } }
 }

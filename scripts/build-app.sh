@@ -40,6 +40,11 @@ if [ -f Resources/AppIcon.png ]; then
   iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
   rm -rf "$ICONSET"
 fi
+# Brand fonts (SIL Open Font License, licenses beside them); the app registers them at launch.
+if [ -d Resources/Fonts ]; then
+  mkdir -p "$APP/Contents/Resources/Fonts"
+  cp Resources/Fonts/*.ttf Resources/Fonts/*.txt "$APP/Contents/Resources/Fonts/"
+fi
 # Drop debug-map entries so build-machine paths are not embedded in the release binary.
 strip -S -x "$APP/Contents/MacOS/NachoCombo"
 cat > "$APP/Contents/Info.plist" <<PLIST

@@ -6,7 +6,13 @@ final class ToolListView: NSView {
     private weak var host: PanelHost?
     private var rows: [ModuleID: ToolRowView] = [:]
     private let summary = UI.label("", style: .subheadline, color: UI.secondaryText)
+    /// What needs the user, right under the header: "Window Snap needs Accessibility  [Allow…]".
+    private let banner = TintedCardView(tone: .attention, content: NSView(), padding: 0)
+    private let bannerText = UI.label("", style: .subheadline, weight: .semibold)
+    private var bannerTarget: ModuleID?
+    private let comboRow = ComboEntryRow()
     var onSelect: ((ModuleID) -> Void)?
+    var onCombos: (() -> Void)?
     var firstRow: ToolRowView? { ModuleID.allCases.first.flatMap { rows[$0] } }
 
     init(host: PanelHost) {
@@ -17,14 +23,36 @@ final class ToolListView: NSView {
         // The title says what this is; the count answers the one question of this screen: what is on right now.
         let logo = NSImageView(image: AppIcon.artwork(height: 18))
         logo.setAccessibilityElement(false)
-        let title = UI.label("Nacho Combo", style: .headline, weight: .semibold)
+        let title = Brand.signLabel("Nacho Combo", size: 16)
         title.setAccessibilityIdentifier("panel-list-title")
         summary.alignment = .right
         summary.setAccessibilityIdentifier("panel-list-summary")
         let header = UI.hstack([logo, title, UI.spacer(), summary], spacing: 6)
         header.widthAnchor.constraint(equalToConstant: inner).isActive = true
 
-        var views: [NSView] = [header, UI.separator(width: inner)]
+        let warn = UI.symbolView("exclamationmark.triangle.fill", size: 12, tint: DotPalette.orange)
+        bannerText.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        bannerText.setAccessibilityIdentifier("panel-banner-text")
+        let allow = BrandButton("Allow…", style: .attention, small: true) { [weak self] in
+            self?.host?.panelOpenGadget(self?.bannerTarget)
+        }
+        allow.setAccessibilityIdentifier("panel-banner-allow")
+        let bannerRow = UI.hstack([warn, bannerText, UI.spacer(), allow], spacing: 6)
+        bannerRow.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 6)
+        banner.subviews.forEach { $0.removeFromSuperview() }
+        banner.addSubview(bannerRow)
+        NSLayoutConstraint.activate([
+            bannerRow.leadingAnchor.constraint(equalTo: banner.leadingAnchor),
+            bannerRow.trailingAnchor.constraint(equalTo: banner.trailingAnchor),
+            bannerRow.topAnchor.constraint(equalTo: banner.topAnchor),
+            bannerRow.bottomAnchor.constraint(equalTo: banner.bottomAnchor),
+            banner.widthAnchor.constraint(equalToConstant: inner),
+        ])
+        banner.isHidden = true
+
+        comboRow.onActivate = { [weak self] in self?.onCombos?() }
+        comboRow.widthAnchor.constraint(equalToConstant: inner).isActive = true
+        var views: [NSView] = [header, UI.separator(width: inner), banner, comboRow]
         for id in ModuleID.allCases {
             let row = ToolRowView(module: id)
             row.setAccessibilityIdentifier("panel-row-\(id.rawValue)")
@@ -65,15 +93,27 @@ final class ToolListView: NSView {
     func update() {
         guard let host = host else { return }
         let manager = host.panelManager
-        var dots: [StatusDotKind] = []
+        var statuses: [ToolStatusPresentation] = []
         for id in ModuleID.allCases {
             let status = manager.status(of: id)
-            dots.append(status.dot)
+            statuses.append(status)
             rows[id]?.configure(status: status, pinned: manager.settings.isPinned(id),
                                 shortcut: manager.settings.shortcut(for: id))
         }
-        // Only tools that really run count as on; a tool still waiting for a permission is named separately.
-        summary.setLive(ToolStatusPresentation.summary(of: dots))
+        comboRow.configure(current: ComboCatalog.current(manager.settings),
+                           anyOn: ModuleID.allCases.contains { manager.settings.isEnabled($0) })
+        // Only tools that really run count; what waits for the user gets the banner below instead.
+        summary.setLive([ToolStatusPresentation.runningText(of: statuses), ToolStatusPresentation.errorText(of: statuses)]
+                            .compactMap { $0 }.joined(separator: " · "))
+        let waiting = ModuleID.allCases.filter { manager.status(of: $0).waitingFor != nil }
+        if let first = waiting.first {
+            bannerTarget = waiting.count == 1 ? first : nil
+            bannerText.setLive(waiting.count == 1 ? "\(first.displayName) \(manager.status(of: first).stateText.lowercasedFirst)"
+                                                  : "\(waiting.count) gadgets need permissions")
+            banner.isHidden = false
+        } else {
+            banner.isHidden = true
+        }
     }
 
     @objc private func settingsClicked() { host?.panelOpenSettings() }
@@ -157,15 +197,17 @@ final class ToolDetailView: NSView {
         permissionRow.spacing = 8
         permissionRow.isHidden = true
         permissionRow.translatesAutoresizingMaskIntoConstraints = false
-        let openPane = NSButton(title: module == .captureFloat ? "Open Screen Recording Settings" : "Open Accessibility Settings",
-                                target: self, action: #selector(openPaneClicked))
+        // The steps live in the settings window's permission card; here: go there, or straight to the list.
+        let allow = NSButton(title: "Allow…", target: self, action: #selector(allowClicked))
+        allow.setAccessibilityIdentifier("panel-allow")
+        allow.bezelStyle = .rounded
+        allow.keyEquivalent = "\r"          // the one thing to do on this screen
+        let paneName = module.info.requiredPermission?.displayName ?? "Privacy"
+        let openPane = NSButton(title: "Open \(paneName) Settings", target: self, action: #selector(openPaneClicked))
         openPane.setAccessibilityIdentifier("panel-open-permission")
         openPane.bezelStyle = .rounded
-        openPane.keyEquivalent = "\r"          // the one thing to do on this screen
-        let recheck = NSButton(title: "Check Again", target: self, action: #selector(recheckClicked))
-        recheck.setAccessibilityIdentifier("panel-recheck")
+        permissionRow.addArrangedSubview(allow)
         permissionRow.addArrangedSubview(openPane)
-        permissionRow.addArrangedSubview(recheck)
 
         for (button, title) in [(pinButtonOn, "Unpin"), (pinButtonOff, "Pin to Menu Bar")] {
             button.isBordered = false
@@ -331,15 +373,17 @@ final class ToolDetailView: NSView {
         stateLabel.setLive(status.stateText)
         enableSwitch.state = enabled ? .on : .off
 
-        if let detail = status.detail {
-            let extra = status.dot == .onNeedsSetup ? "\nThis tool stays off until it is allowed." : ""
-            messageLabel.setLive(attributed: UI.notice(detail + extra,
-                                                      tint: status.dot == .onError ? .systemRed : .systemOrange))
+        if let permission = status.waitingFor {
+            messageLabel.setLive(attributed: UI.notice("\(module.displayName) is on but can't run until \(permission) is allowed.",
+                                                      tint: .systemOrange))
+            messageLabel.isHidden = false
+        } else if let detail = status.detail {
+            messageLabel.setLive(attributed: UI.notice(detail, tint: status.dot == .onError ? .systemRed : .systemOrange))
             messageLabel.isHidden = false
         } else {
             messageLabel.isHidden = true
         }
-        let showsPermission = status.dot == .onNeedsSetup && (module == .windowSnap || module == .captureFloat)
+        let showsPermission = status.waitingFor != nil
         permissionRow.isHidden = !showsPermission
 
         let pinned = manager.settings.isPinned(module)
@@ -348,11 +392,9 @@ final class ToolDetailView: NSView {
         pinStatusOff.isHidden = pinned
         pinButtonOff.isHidden = pinned
 
-        if let shortcut = manager.settings.shortcut(for: module) {
-            shortcutLabel.setLive("Shortcut for this screen: \(shortcut.label)")
-        } else {
-            shortcutLabel.setLive("Shortcut for this screen: not set (set it in Settings)")
-        }
+        // Shown only when one is set; it is chosen in Settings ▸ Menu Bar Access.
+        shortcutLabel.setLive(manager.settings.shortcut(for: module).map { "Shortcut for this screen: \($0.label)" } ?? "")
+        shortcutLabel.isHidden = manager.settings.shortcut(for: module) == nil
 
         let running = status.dot == .on
         for c in controls { c.isEnabled = running }
@@ -408,7 +450,7 @@ final class ToolDetailView: NSView {
     }
     @objc private func settingsClicked() { host?.panelOpenSettings() }
     @objc private func openPaneClicked() { host?.panelOpenPermissionPane(module) }
-    @objc private func recheckClicked() { host?.panelRecheck(module) }
+    @objc private func allowClicked() { host?.panelOpenGadget(module) }
     @objc private func collapseClicked() { host?.panelToggleCollapse() }
     @objc private func shelfClicked() { host?.panelToggleShelf() }
     @objc private func captureClicked() { host?.panelStartCapture() }
@@ -417,4 +459,335 @@ final class ToolDetailView: NSView {
     @objc private func pauseClicked() { host?.panelPerform(.toggleDimPause) }
     private func capture(_ command: GadgetCommand) { host?.panelPerform(command) }
     @objc private func dimChanged(_ sender: NSSlider) { host?.panelSetDim(sender.doubleValue) }
+}
+
+extension String {
+    /// "Needs Accessibility" → "needs Accessibility" (keeps the rest, unlike lowercased()).
+    var lowercasedFirst: String { prefix(1).lowercased() + dropFirst() }
+}
+
+/// The list's way into combos: the takeout icon, "Combo", which combo the box is now, and `›`.
+final class ComboEntryRow: NSControl {
+    var onActivate: (() -> Void)?
+    private let value = UI.label("", style: .subheadline, weight: .semibold, color: UI.secondaryText)
+    private var hover = false { didSet { updateBackground() } }
+    private var tracking: NSTrackingArea?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        focusRingType = .none
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Combos")
+        setAccessibilityIdentifier("panel-combos")
+        let icon = NSImageView(image: SidebarView.symbolIcon("takeoutbag.and.cup.and.straw.fill", tint: Brand.nacho,
+                                                             glyph: Brand.onNacho))
+        icon.setAccessibilityElement(false)
+        let name = UI.label("Combo", style: .body, weight: .medium)
+        let chevron = UI.symbolView("chevron.right", size: 10, tint: UI.tertiaryText)
+        value.lineBreakMode = .byTruncatingTail
+        let row = UI.hstack([icon, name, UI.spacer(), value, chevron], spacing: 8)
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            row.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalToConstant: 34),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    func configure(current: Combo?, anyOn: Bool) {
+        let text = current.map { "No.\($0.number) \($0.name)" } ?? (anyOn ? "Your own box" : "Pick one")
+        value.setLive(text)
+        value.textColor = current == nil ? UI.secondaryText : UI.linkText
+        setAccessibilityValue(text)
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+    override var isFlipped: Bool { true }
+    override var allowsVibrancy: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { bounds.contains(convert(point, from: superview)) ? self : nil }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        tracking = area
+    }
+    override func mouseEntered(with event: NSEvent) { hover = true }
+    override func mouseExited(with event: NSEvent) { hover = false }
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onActivate?() }
+    }
+    override func keyDown(with event: NSEvent) {
+        if focusRingType != .exterior { focusRingType = .exterior; noteFocusRingMaskChanged() }
+        switch event.keyCode {
+        case 36, 49, 76: onActivate?()
+        case 125: window?.selectNextKeyView(nil)
+        case 126: window?.selectPreviousKeyView(nil)
+        default: super.keyDown(with: event)
+        }
+    }
+    override func accessibilityPerformPress() -> Bool { onActivate?(); return true }
+    override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill() }
+    override var focusRingMaskBounds: NSRect { bounds }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBackground()
+    }
+    private func updateBackground() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = (hover ? Brand.nacho.withAlphaComponent(0.22) : Brand.nacho.withAlphaComponent(0.1)).cgColor
+        }
+    }
+}
+
+/// One combo in the panel's list: its number, its name and what it means for the box ("Your box", "Asks for 1").
+final class ComboListRow: NSControl {
+    let combo: Combo
+    var onActivate: ((Combo) -> Void)?
+    var picked = false { didSet { updateBackground(); setAccessibilitySelected(picked) } }
+    private var hover = false { didSet { updateBackground() } }
+    private var tracking: NSTrackingArea?
+
+    init(combo: Combo, note: String, noteColor: NSColor) {
+        self.combo = combo
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        focusRingType = .none
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Combo \(combo.number), \(combo.name)")
+        setAccessibilityValue(note)
+        setAccessibilityIdentifier("panel-combo-\(combo.id)")
+        let number = Brand.signLabel("No.\(combo.number)", size: 14, color: Brand.nachoInk)
+        number.translatesAutoresizingMaskIntoConstraints = false
+        number.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        let name = UI.label(combo.name, style: .callout, weight: .semibold)
+        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let small = UI.label(note, style: .footnote, weight: .semibold, color: noteColor)
+        let row = UI.hstack([number, name, UI.spacer(), small], spacing: 8)
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            row.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalToConstant: 30),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var acceptsFirstResponder: Bool { true }
+    override var isFlipped: Bool { true }
+    override var allowsVibrancy: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { bounds.contains(convert(point, from: superview)) ? self : nil }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        tracking = area
+    }
+    override func mouseEntered(with event: NSEvent) { hover = true }
+    override func mouseExited(with event: NSEvent) { hover = false }
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onActivate?(combo) }
+    }
+    override func keyDown(with event: NSEvent) {
+        if focusRingType != .exterior { focusRingType = .exterior; noteFocusRingMaskChanged() }
+        switch event.keyCode {
+        case 36, 49, 76: onActivate?(combo)
+        case 125: window?.selectNextKeyView(nil)
+        case 126: window?.selectPreviousKeyView(nil)
+        default: super.keyDown(with: event)
+        }
+    }
+    override func accessibilityPerformPress() -> Bool { onActivate?(combo); return true }
+    override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill() }
+    override var focusRingMaskBounds: NSRect { bounds }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBackground()
+    }
+    private func updateBackground() {
+        let color: NSColor = picked ? Brand.nacho.withAlphaComponent(0.32)
+            : (hover ? Brand.ink.withAlphaComponent(0.08) : .clear)
+        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.backgroundColor = color.cgColor }
+        layer?.borderWidth = picked ? 1.5 : 0
+        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.borderColor = Brand.nachoInk.withAlphaComponent(0.6).cgColor }
+    }
+}
+
+/// Level 2: combos from the menu bar. Pick one to see what it would change, order it, undo it; make your own in Settings.
+final class ComboPanelView: NSView {
+    private weak var host: PanelHost?
+    var onBack: (() -> Void)?
+    private var pickedID: String
+    private let stack = UI.vstack([], spacing: 6)
+    private var lastKey = ""
+    private let inner = UI.panelWidth - 2 * UI.margin
+
+    init(host: PanelHost) {
+        self.host = host
+        let settings = host.panelManager.settings
+        pickedID = ComboCatalog.current(settings)?.id ?? settings.combo ?? ComboCatalog.presets[0].id
+        super.init(frame: .zero)
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UI.margin),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UI.margin),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            widthAnchor.constraint(equalToConstant: UI.panelWidth),
+        ])
+        update()
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    var firstRow: NSView? { stack.arrangedSubviews.first { $0 is ComboListRow } }
+
+    private func note(_ combo: Combo, _ settings: AppSettings) -> (String, NSColor) {
+        guard let host = host else { return ("", UI.secondaryText) }
+        if ComboCatalog.current(settings)?.id == combo.id { return ("Your box", Brand.guac) }
+        let missing = combo.permissions.filter { host.panelPermissionGranted($0) != true }.count
+        return missing == 0 ? ("\(combo.gadgets.count) gadgets", UI.secondaryText) : ("Asks for \(missing)", Brand.nachoInk)
+    }
+
+    func update() {
+        guard let host = host else { return }
+        let settings = host.panelManager.settings
+        let combos = ComboCatalog.combos(settings)
+        if !combos.contains(where: { $0.id == pickedID }) { pickedID = combos[0].id }
+        let picked = combos.first { $0.id == pickedID } ?? combos[0]
+        let plan = ComboPlan.make(picked, settings: settings)
+        let key = combos.map { "\($0.id):\($0.name):\(note($0, settings).0)" }.joined(separator: ",")
+            + "|\(pickedID)|\(plan.turnsOn)|\(plan.turnsOff)|\(plan.optionChanges)|\(host.panelUndoName ?? "-")"
+            + "|" + picked.gadgets.map { "\($0.rawValue)\(settings.isEnabled($0))" }.joined()
+        guard key != lastKey else { return }
+        lastKey = key
+        for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
+
+        let back = UI.linkButton("All Tools", symbol: "chevron.left", target: self, action: #selector(backClicked))
+        back.setAccessibilityIdentifier("panel-back")
+        back.setAccessibilityLabel("Back to all tools")
+        back.keyEquivalent = "["
+        back.keyEquivalentModifierMask = .command
+        stack.addArrangedSubview(UI.hstack([back, UI.spacer()], spacing: 8))
+        let current = ComboCatalog.current(settings)
+        let title = Brand.signLabel("Combos", size: 20)
+        let currentLabel = UI.label(current.map { "Your box: \($0.name)" } ?? "Your own box", style: .subheadline,
+                                    color: UI.secondaryText)
+        let titleRow = UI.hstack([title, UI.spacer(), currentLabel], spacing: 8)
+        stack.addArrangedSubview(titleRow)
+
+        if let name = host.panelUndoName {
+            let text = UI.label("\(name) ordered.", style: .subheadline, weight: .semibold)
+            let undo = UI.linkButton("Undo", symbol: "arrow.uturn.backward", target: self, action: #selector(undoClicked))
+            undo.setAccessibilityIdentifier("panel-combo-undo")
+            stack.addArrangedSubview(UI.hstack([text, UI.spacer(), undo], spacing: 8))
+        }
+
+        for combo in combos {
+            let (text, color) = note(combo, settings)
+            let row = ComboListRow(combo: combo, note: text, noteColor: color)
+            row.picked = combo.id == pickedID
+            row.onActivate = { [weak self] combo in
+                self?.pickedID = combo.id
+                self?.update()
+                self?.invalidateIntrinsicContentSize()
+            }
+            stack.addArrangedSubview(row)
+        }
+        stack.addArrangedSubview(detail(picked, plan: plan, settings: settings))
+
+        let separator = UI.separator(width: inner)
+        stack.addArrangedSubview(separator)
+        let own = UI.linkButton("Make Your Own…", target: self, action: #selector(makeOwnClicked))
+        own.setAccessibilityIdentifier("panel-combo-new")
+        let more = UI.linkButton("Combos in Settings…", symbol: "arrow.up.forward.square", symbolTrailing: true,
+                                 target: self, action: #selector(settingsClicked))
+        stack.addArrangedSubview(UI.hstack([own, UI.spacer(), more], spacing: 8))
+        for view in stack.arrangedSubviews where view is NSStackView || view is ComboListRow || view is OutlinedRow {
+            view.widthAnchor.constraint(equalToConstant: inner).isActive = true
+        }
+        stack.setCustomSpacing(10, after: titleRow)
+    }
+
+    /// What the picked combo would do to the box, and the button that does it.
+    private func detail(_ combo: Combo, plan: ComboPlan, settings: AppSettings) -> NSView {
+        guard let host = host else { return NSView() }
+        let width = inner - 24
+        var views: [NSView] = []
+        // The gadgets it holds, as icons.
+        var icons: [NSView] = []
+        for id in combo.gadgets {
+            let icon = NSImageView(image: GadgetIcon.image(for: id, size: 20))
+            icon.toolTip = id.displayName
+            icon.setAccessibilityLabel(id.displayName)
+            icons.append(icon)
+        }
+        views.append(UI.hstack(icons + [UI.spacer()], spacing: 6))
+        func line(_ tag: String, _ text: String, _ color: NSColor) {
+            let label = UI.wrapLabel("", width: width, style: .subheadline, color: Brand.ink)
+            let attributed = NSMutableAttributedString(string: tag.uppercased() + "  ", attributes: [
+                .font: Brand.mono(10), .foregroundColor: color, .kern: 0.8])
+            attributed.append(NSAttributedString(string: text, attributes: [.font: UI.font(.subheadline), .foregroundColor: Brand.ink]))
+            label.attributedStringValue = attributed
+            views.append(label)
+        }
+        let names: ([ModuleID]) -> String = { $0.map { $0.displayName }.joined(separator: ", ") }
+        if plan.isNoChange {
+            line("Box", "This is your box as it is.", Brand.guac)
+        } else {
+            if !plan.turnsOn.isEmpty { line("On", names(plan.turnsOn), Brand.nachoInk) }
+            if !plan.turnsOff.isEmpty { line("Off", names(plan.turnsOff), Brand.salsa) }
+            for change in plan.optionChanges { line("Set", change, UI.secondaryText) }
+        }
+        let missing = combo.gadgets.compactMap { id -> (ModuleID, GadgetPermission)? in
+            guard let permission = id.info.requiredPermission, host.panelPermissionGranted(permission) != true else { return nil }
+            return (id, permission)
+        }
+        let ordered = settings.combo == combo.id
+        if ordered, let first = missing.first {
+            let text = UI.wrapLabel("\(first.0.displayName) needs \(first.1.displayName).", width: width - 90,
+                                    style: .subheadline, color: UI.attentionText)
+            let allow = BrandButton("Allow…", style: .attention, small: true) { [weak self] in
+                self?.host?.panelOpenCombos(newCombo: false)
+            }
+            allow.setAccessibilityIdentifier("panel-combo-allow")
+            views.append(UI.hstack([text, UI.spacer(), allow], spacing: 8))
+        } else if !plan.isNoChange {
+            if !missing.isEmpty {
+                line("Asks", missing.map { "\($0.1.displayName) for \($0.0.displayName)" }.joined(separator: ", "), Brand.nachoInk)
+            }
+            let order = BrandButton("Order \(combo.name)", style: .primary, small: true) { [weak self] in
+                self?.host?.panelOrderCombo(combo.id)
+            }
+            order.setAccessibilityIdentifier("panel-combo-order")
+            views.append(UI.hstack([order, UI.spacer()], spacing: 8))
+        }
+        let column = UI.vstack(views, spacing: 6)
+        let surface = OutlinedRow(views: [column])
+        surface.orientation = .vertical
+        surface.alignment = .leading
+        surface.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        surface.translatesAutoresizingMaskIntoConstraints = false
+        surface.setAccessibilityElement(true)
+        surface.setAccessibilityRole(.group)
+        surface.setAccessibilityLabel("\(combo.name): what it changes")
+        return surface
+    }
+
+    @objc private func backClicked() { onBack?() }
+    @objc private func undoClicked() { host?.panelUndoOrder() }
+    @objc private func makeOwnClicked() { host?.panelOpenCombos(newCombo: true) }
+    @objc private func settingsClicked() { host?.panelOpenCombos(newCombo: false) }
 }

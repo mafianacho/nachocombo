@@ -87,12 +87,14 @@ public final class ModuleManager {
         onChange?()
     }
 
+    /// `userInitiated: false` switches a gadget on without letting it raise a permission dialog (a combo order holds
+    /// those back until the user presses Allow).
     @discardableResult
-    public func setEnabled(_ id: ModuleID, _ enabled: Bool) -> ModuleState {
+    public func setEnabled(_ id: ModuleID, _ enabled: Bool, userInitiated: Bool = true) -> ModuleState {
         settings.setEnabled(id, enabled)
         try? store.save(settings)
         if enabled {
-            startModule(id, userInitiated: true)
+            startModule(id, userInitiated: userInitiated)
         } else {
             stopModule(id)
         }
@@ -165,7 +167,46 @@ public final class ModuleManager {
     }
 
     public func status(of id: ModuleID) -> ToolStatusPresentation {
-        ToolStatusPresentation.make(enabled: settings.isEnabled(id), state: states[id] ?? .off)
+        ToolStatusPresentation.make(enabled: settings.isEnabled(id), state: states[id] ?? .off,
+                                    permission: id.info.requiredPermission?.displayName)
+    }
+
+    /// Changes app-level choices (launch window, hints, permission bookkeeping) and saves them.
+    public func update(_ change: (inout AppSettings) -> Void) {
+        var value = settings
+        change(&value)
+        guard value != settings else { return }
+        settings = value
+        try? store.save(settings)
+        onChange?()
+    }
+
+    /// Every gadget off and every choice back to its default. The permission bookkeeping stays: it describes this Mac's
+    /// privacy settings, not a choice made here.
+    public func resetAll() {
+        for id in ModuleID.allCases { stopModule(id) }
+        var fresh = AppSettings.defaults
+        fresh.permissionGrants = settings.permissionGrants
+        settings = fresh
+        try? store.save(settings)
+        onChange?()
+    }
+
+    /// Puts one gadget's action shortcuts back to their defaults. A default another gadget's action now uses is left
+    /// empty instead, so the reset never creates a clash.
+    public func resetActionShortcuts(of module: ModuleID) {
+        let actions = GadgetActions.of(module)
+        for action in actions { settings.actionShortcuts.removeValue(forKey: action.id) }
+        let others = settings.effectiveActionShortcuts.filter { item in !actions.contains { $0.id == item.id } }
+        for action in actions {
+            guard let wanted = action.defaultShortcut else { continue }
+            let mods = wanted.modifiers & ToolShortcut.allModifiers
+            if others.contains(where: { $0.keyCode == wanted.keyCode && $0.modifiers == mods }) {
+                settings.actionShortcuts[action.id] = ActionBinding(shortcut: nil)
+            }
+        }
+        try? store.save(settings)
+        onChange?()
     }
 
     public func setMenuBarCollapsed(_ collapsed: Bool) {

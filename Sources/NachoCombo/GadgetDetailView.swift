@@ -16,22 +16,34 @@ protocol GadgetHost: AnyObject {
     var gadgetManager: ModuleManager { get }
     /// One line under the tile: a shortcut, a count or live numbers.
     func gadgetSubtitle(_ id: ModuleID) -> String
-    /// Things that need the user's attention (missing permission, error, alert); the tile badge counts them.
+    /// What needs the user's attention besides a missing permission (an error, a shortcut clash, an alert), in words.
     func gadgetAttention(_ id: ModuleID) -> [String]
+    /// The tile badge: the attention items plus a missing permission.
+    func gadgetBadgeCount(_ id: ModuleID) -> Int
     /// Live facts for the Controls section ("Collapsed", "3 items", "2 floats").
     func gadgetStatusLine(_ id: ModuleID) -> String?
     func gadgetPreviewInputs() -> GadgetPreviewInputs
     func gadgetMonitorPreview(appearance: NSAppearance.Name) -> (strip: NSImage?, panel: NSImage?, live: Bool)
     /// nil when macOS has not been asked yet (notifications).
     func gadgetPermissionGranted(_ permission: GadgetPermission) -> Bool?
+    /// Which step of allowing the permission the card shows.
+    func gadgetPermissionStage(_ permission: GadgetPermission) -> PermissionStage
+    /// The gadget just started because its permission was allowed: the card says so for a few seconds.
+    func gadgetRecentlyAllowed(_ id: ModuleID) -> Bool
     func gadgetOpenPermissionSettings(_ permission: GadgetPermission)
     func gadgetRequestPermission(_ permission: GadgetPermission)
+    /// Removes this app's old entry from the permission's list and asks macOS again.
+    func gadgetAskAgain(_ permission: GadgetPermission)
+    /// "Not Yet" on the restart step: back to the plain steps.
+    func gadgetForgetSettingsVisit(_ permission: GadgetPermission)
+    func gadgetRelaunch()
     func gadgetRecheck(_ id: ModuleID)
     func gadgetSetEnabled(_ id: ModuleID, _ on: Bool)
     func gadgetSetPinned(_ id: ModuleID, _ pinned: Bool)
     /// Returns an error message when refused.
     func gadgetSetToolShortcut(_ id: ModuleID, _ shortcut: ToolShortcut?) -> String?
     func gadgetSetActionShortcut(_ actionID: String, _ shortcut: ToolShortcut?, reset: Bool) -> String?
+    func gadgetResetActionShortcuts(_ id: ModuleID)
     /// The action's shortcut is set but macOS refused to register it (another app holds it).
     func gadgetActionShortcutUnavailable(_ actionID: String) -> Bool
     func gadgetRecordingChanged(_ recording: Bool)
@@ -39,33 +51,65 @@ protocol GadgetHost: AnyObject {
     func gadgetSetMonitorSettings(_ value: MonitorSettings)
     func gadgetSetDimIntensity(_ value: Double)
     func gadgetPerform(_ command: GadgetCommand)
+    func gadgetDismissHint(_ key: String)
+    func gadgetOpenDesktopSettings()
+    /// The settings window, for confirmation sheets.
+    var gadgetWindow: NSWindow? { get }
 }
 
-/// Right-hand pane of the gallery: everything about the selected gadget.
+/// The three parts of a gadget's page. Overview is for getting to know it, Settings for changing it, Shortcuts for keys.
+enum DetailTab: Int, CaseIterable {
+    case overview, settings, shortcuts
+
+    var title: String {
+        switch self {
+        case .overview: return "Overview"
+        case .settings: return "Settings"
+        case .shortcuts: return "Shortcuts"
+        }
+    }
+
+    var key: String { title.lowercased() }
+}
+
+/// Right-hand page of a gadget: header with its switch, what has to be done (a permission, a setup step, notices),
+/// then the Overview / Settings / Shortcuts tabs.
 final class GadgetDetailView: NSView {
-    static let width: CGFloat = 448
-    static let margin: CGFloat = 22
+    static let width: CGFloat = 560
+    static let margin: CGFloat = 24
     static var inner: CGFloat { width - 2 * margin }
     static let cardPadding: CGFloat = 12
     static var cardInner: CGFloat { inner - 2 * cardPadding }
 
     private weak var host: GadgetHost?
     private(set) var module: ModuleID = .menuBar
+    private(set) var tab: DetailTab = .overview
     private let stack = NSStackView()
+    /// The page changed a lot (another gadget, another tab): the window scrolls back to the top.
+    var onScrollToTop: (() -> Void)?
 
-    // Live parts, rebuilt on selection and refreshed in place.
+    // Header.
     private let stateDot = StatusDotView()
     private let stateLabel = UI.label("", style: .callout, weight: .medium, color: UI.secondaryText)
-    private let pinBox = NSButton(checkboxWithTitle: "Pin to Menu Bar", target: nil, action: nil)
-    private var attentionStack = UI.vstack([], spacing: 6)
+    private let enableSwitch = NSSwitch()
+    // What has to be done; rebuilt only when it changes.
+    private let topStack = UI.vstack([], spacing: 8)
+    private var lastTopKey = ""
+    private let tabControl = NSSegmentedControl(labels: DetailTab.allCases.map { $0.title }, trackingMode: .selectOne,
+                                                target: nil, action: nil)
+    private let tabStack = UI.vstack([], spacing: 10)
+    /// The shown tab's content (debug snapshots of one tab).
+    var tabContent: NSView { tabStack }
+
+    // Live parts of the shown tab.
     private let previewView = PreviewImageView()
     private let previewCaption = UI.label("", style: .subheadline, color: UI.secondaryText)
     private let statusLine = UI.label("", style: .callout, color: UI.secondaryText)
-    private var permissionStatus: [GadgetPermission: (label: NSTextField, button: NSButton)] = [:]
     private var shortcutFields: [String: ShortcutField] = [:]
     private var shortcutNotes: [String: NSTextField] = [:]
     private var refreshers: [() -> Void] = []
-    private var lastAttention: [String] = []
+    private var expandedGroups: Set<String> = []
+    private var previewSized = false
 
     init(host: GadgetHost) {
         self.host = host
@@ -73,7 +117,7 @@ final class GadgetDetailView: NSView {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: GadgetDetailView.margin, bottom: 24, right: GadgetDetailView.margin)
+        stack.edgeInsets = NSEdgeInsets(top: 22, left: GadgetDetailView.margin, bottom: 28, right: GadgetDetailView.margin)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -83,9 +127,13 @@ final class GadgetDetailView: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             widthAnchor.constraint(equalToConstant: GadgetDetailView.width),
         ])
-        pinBox.target = self
-        pinBox.action = #selector(pinToggled)
-        pinBox.font = UI.font(.callout)
+        enableSwitch.target = self
+        enableSwitch.action = #selector(enableToggled)
+        enableSwitch.setAccessibilityIdentifier("detail-enable")
+        tabControl.target = self
+        tabControl.action = #selector(tabChanged)
+        tabControl.setAccessibilityIdentifier("detail-tabs")
+        tabControl.setAccessibilityLabel("Page")
         previewCaption.lineBreakMode = .byWordWrapping
         previewCaption.maximumNumberOfLines = 2
         previewCaption.preferredMaxLayoutWidth = GadgetDetailView.inner
@@ -94,20 +142,20 @@ final class GadgetDetailView: NSView {
 
     override var isFlipped: Bool { true }
 
+    private var info: GadgetInfo { module.info }
+    private var enabled: Bool { host?.gadgetManager.settings.isEnabled(module) ?? false }
+    private func running(_ id: ModuleID) -> Bool { host?.gadgetManager.states[id] == .running }
+
     // MARK: building
 
-    func show(_ id: ModuleID) {
+    /// Shows a gadget. Without a tab, a gadget that is on opens on Settings, one that is off on Overview.
+    func show(_ id: ModuleID, tab requested: DetailTab? = nil) {
         module = id
+        tab = requested ?? (enabled ? .settings : .overview)
+        expandedGroups = [GadgetActions.groups(of: id).first?.title ?? ""]
         for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
-        refreshers.removeAll()
-        permissionStatus.removeAll()
-        shortcutFields.removeAll()
-        shortcutNotes.removeAll()
-        lastAttention = []
-        let info = id.info
-        let inner = GadgetDetailView.inner
+        lastTopKey = ""
 
-        // Header: icon, name, one line, the real state.
         let icon = NSImageView(image: GadgetIcon.image(for: id, size: 56))
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 56).isActive = true
@@ -115,52 +163,104 @@ final class GadgetDetailView: NSView {
         icon.setAccessibilityElement(false)
         let name = UI.label(id.displayName, style: .title2, weight: .bold)
         name.setAccessibilityIdentifier("detail-title")
-        let tagline = UI.wrapLabel(info.tagline, width: inner - 56 - 14, style: .callout)
-        let state = UI.hstack([stateDot, stateLabel], spacing: 6)
-        let titles = UI.vstack([name, tagline, state], spacing: 4)
+        let role = GadgetDetailView.role(id)
+        let roleLabel = Brand.eyebrow(role.text, size: 10.5, color: role.color)
+        let switchWidth = enableSwitch.intrinsicContentSize.width
+        // icon, titles, spacer and switch with 14 pt between each: the tagline gets what is left.
+        let tagline = UI.wrapLabel(info.tagline, width: GadgetDetailView.inner - 56 - switchWidth - 3 * 14 - 4, style: .callout)
+        let state = UI.hstack([stateDot, stateLabel], spacing: 5)
+        let titles = UI.vstack([roleLabel, name, tagline, state], spacing: 4)
+        titles.setCustomSpacing(2, after: roleLabel)
         titles.setCustomSpacing(8, after: tagline)
-        let header = UI.hstack([icon, titles], spacing: 14, alignment: .top)
+        enableSwitch.setAccessibilityLabel("Enable \(id.displayName)")
+        let header = UI.hstack([icon, titles, UI.spacer(), enableSwitch], spacing: 14, alignment: .top)
+        header.widthAnchor.constraint(equalToConstant: GadgetDetailView.inner).isActive = true
         stack.addArrangedSubview(header)
+        stack.setCustomSpacing(14, after: header)
 
-        attentionStack = UI.vstack([], spacing: 6)
-        stack.addArrangedSubview(attentionStack)
-
-        // The picture.
-        previewView.translatesAutoresizingMaskIntoConstraints = false
-        previewView.widthAnchor.constraint(equalToConstant: inner).isActive = true
-        previewView.setAccessibilityElement(true)
-        previewView.setAccessibilityRole(.image)
-        previewView.setAccessibilityLabel("\(id.displayName) preview")
-        stack.addArrangedSubview(previewView)
-        stack.setCustomSpacing(6, after: previewView)
-        stack.addArrangedSubview(previewCaption)
-        stack.setCustomSpacing(18, after: previewCaption)
-
-        addSection("Controls", rows: controlRows(for: id))
-        addSection("Features", rows: info.features.map(featureRow))
-        addSection("Shortcuts", rows: shortcutRows(for: id), footer: shortcutFooter(for: id))
-        if !info.tips.isEmpty { addSection("Keys and Gestures", rows: info.tips.map(tipRow)) }
-        addSection("Permissions", rows: permissionRows(for: info))
-        addSection("Options", rows: optionRows(for: id))
-        if !info.limits.isEmpty { addSection("Good to Know", rows: info.limits.map(limitRow)) }
-
-        refresh()
-        refreshPreview()
+        for view in topStack.arrangedSubviews { topStack.removeArrangedSubview(view); view.removeFromSuperview() }
+        stack.addArrangedSubview(topStack)
+        stack.setCustomSpacing(14, after: topStack)
+        stack.addArrangedSubview(tabControl)
+        stack.setCustomSpacing(16, after: tabControl)
+        stack.addArrangedSubview(tabStack)
+        renderTab()
+        onScrollToTop?()
     }
 
-    private func addSection(_ title: String, rows: [NSView], footer: NSView? = nil) {
-        guard !rows.isEmpty else { return }
-        let label = UI.label(title, style: .headline, weight: .semibold)
-        label.setAccessibilityRole(.staticText)
-        stack.addArrangedSubview(label)
-        stack.setCustomSpacing(6, after: label)
-        let card = GadgetDetailView.card(rows)
-        stack.addArrangedSubview(card)
-        if let footer = footer {
-            stack.setCustomSpacing(6, after: card)
-            stack.addArrangedSubview(footer)
+    func select(tab newTab: DetailTab) {
+        guard newTab != tab else { return }
+        tab = newTab
+        renderTab()
+        onScrollToTop?()
+    }
+
+    /// The gadget's place in the box (the design system's box anatomy), shown above its name.
+    static func role(_ id: ModuleID) -> (text: String, color: NSColor) {
+        switch id {
+        case .menuBar: return ("Lid · keeps the box tidy", Brand.ink2)
+        case .windowSnap: return ("Main · every day", Brand.guac)
+        case .systemMonitor: return ("Main · always in sight", Brand.guac)
+        case .fileShelf: return ("Side · when you drag", Brand.nachoInk)
+        case .captureFloat: return ("Side · for reference", Brand.nachoInk)
+        case .focusDim: return ("Sauce · set and forget", Brand.salsa)
         }
-        stack.setCustomSpacing(18, after: footer ?? card)
+    }
+
+    @objc private func tabChanged() {
+        guard let newTab = DetailTab(rawValue: tabControl.selectedSegment) else { return }
+        select(tab: newTab)
+    }
+
+    @objc private func enableToggled() { host?.gadgetSetEnabled(module, enableSwitch.state == .on) }
+
+    private func renderTab() {
+        tabControl.selectedSegment = tab.rawValue
+        for view in tabStack.arrangedSubviews { tabStack.removeArrangedSubview(view); view.removeFromSuperview() }
+        refreshers.removeAll()
+        shortcutFields.removeAll()
+        shortcutNotes.removeAll()
+        switch tab {
+        case .overview:
+            if !previewSized {
+                previewView.translatesAutoresizingMaskIntoConstraints = false
+                previewView.widthAnchor.constraint(equalToConstant: GadgetDetailView.inner).isActive = true
+                previewSized = true
+            }
+            previewView.setAccessibilityElement(true)
+            previewView.setAccessibilityRole(.image)
+            previewView.setAccessibilityLabel("\(module.displayName) preview")
+            tabStack.addArrangedSubview(previewView)
+            tabStack.setCustomSpacing(6, after: previewView)
+            tabStack.addArrangedSubview(previewCaption)
+            tabStack.setCustomSpacing(18, after: previewCaption)
+            addSection("Controls", rows: controlRows(for: module))
+            addSection("Features", rows: info.features.map(featureRow))
+            if !info.tips.isEmpty { addSection("Keys and Gestures", rows: info.tips.map(tipRow)) }
+            if !info.limits.isEmpty { addSection("Good to Know", rows: info.limits.map(limitRow)) }
+        case .settings:
+            addSection("Options", rows: optionRows(for: module))
+            addSection("Menu Bar Access", rows: menuBarAccessRows())
+            addSection(info.permissions.count > 1 ? "Permissions" : "Permission", rows: permissionRows())
+        case .shortcuts:
+            addShortcutSections()
+        }
+        refresh()
+        if tab == .overview { refreshPreview() }
+    }
+
+    private func addSection(_ title: String, rows: [NSView], footer: NSView? = nil, header: NSView? = nil) {
+        guard !rows.isEmpty else { return }
+        let label = header ?? UI.sectionTitle(title)
+        tabStack.addArrangedSubview(label)
+        tabStack.setCustomSpacing(6, after: label)
+        let card = GadgetDetailView.card(rows)
+        tabStack.addArrangedSubview(card)
+        if let footer = footer {
+            tabStack.setCustomSpacing(6, after: card)
+            tabStack.addArrangedSubview(footer)
+        }
+        tabStack.setCustomSpacing(18, after: footer ?? card)
     }
 
     /// Rows on a grouped surface with hairlines between them.
@@ -215,126 +315,89 @@ final class GadgetDetailView: NSView {
         return UI.hstack([bullet, label], spacing: 8, alignment: .top)
     }
 
-    // MARK: permissions
+    // MARK: what has to be done
 
-    private func permissionRows(for info: GadgetInfo) -> [NSView] {
-        var rows: [NSView] = []
-        if info.permissions.isEmpty || info.permissions.allSatisfy({ $0.optional }) {
-            let check = UI.symbolView("checkmark.shield", size: 15, tint: DotPalette.green)
-            let title = UI.label(info.permissions.isEmpty ? "No Permission Needed" : "No Permission Needed to Run",
-                                 style: .callout, weight: .semibold)
-            let note = UI.wrapLabel(info.permissionNote, width: GadgetDetailView.cardInner - 29, style: .subheadline)
-            rows.append(UI.hstack([check, UI.vstack([title, note], spacing: 2)], spacing: 8, alignment: .top))
+    /// The permission card, the one-time setup card and the notices, rebuilt only when what they say changes.
+    private func refreshTop() {
+        guard let host = host else { return }
+        let manager = host.gadgetManager
+        var key = ""
+        var permissionStage: PermissionStage?
+        let permission = info.requiredPermission
+        if let permission = permission, enabled, case .needsPermission = manager.states[module] ?? .off {
+            permissionStage = host.gadgetPermissionStage(permission)
+            key += "perm:\(permissionStage!.rawValue)|"
         }
-        for need in info.permissions {
-            let symbol = UI.symbolView(need.permission.symbolName, size: 15, tint: .controlAccentColor)
-            let name = UI.label(need.permission.displayName + (need.optional ? " (optional)" : ""), style: .callout,
-                                weight: .semibold)
-            let reason = UI.wrapLabel(need.reason, width: GadgetDetailView.cardInner - 29, style: .subheadline)
-            let location = UI.wrapLabel(need.permission.location, width: GadgetDetailView.cardInner - 29,
-                                        style: .footnote, color: UI.tertiaryText)
-            let status = UI.label("", style: .callout, weight: .medium)
-            let button = NSButton(title: "Open Settings", target: self, action: #selector(permissionButton(_:)))
-            button.controlSize = .small
-            button.font = UI.font(.subheadline)
-            button.identifier = NSUserInterfaceItemIdentifier(need.permission.rawValue)
-            button.setAccessibilityIdentifier("permission-\(need.permission.rawValue)")
-            permissionStatus[need.permission] = (status, button)
-            let statusRow = UI.hstack([status, UI.spacer(), button], spacing: 8)
-            statusRow.widthAnchor.constraint(equalToConstant: GadgetDetailView.cardInner - 29).isActive = true
-            let text = UI.vstack([name, reason, location, statusRow], spacing: 3)
-            text.setCustomSpacing(8, after: location)
-            rows.append(UI.hstack([symbol, text], spacing: 8, alignment: .top))
+        let allowed = permission != nil && host.gadgetRecentlyAllowed(module)
+        if allowed { key += "allowed|" }
+        let setupHint = module == .menuBar && running(.menuBar) && !manager.settings.hintDismissed("menuBarSetup")
+        if setupHint { key += "hint|" }
+        let attention = host.gadgetAttention(module)
+        key += attention.joined(separator: "|")
+        guard key != lastTopKey else { return }
+        lastTopKey = key
+
+        for view in topStack.arrangedSubviews { topStack.removeArrangedSubview(view); view.removeFromSuperview() }
+        let width = GadgetDetailView.inner
+        if let permission = permission, let stage = permissionStage {
+            topStack.addArrangedSubview(PermissionCard.make(module: module, permission: permission, stage: stage, host: host,
+                                                            width: width))
+        } else if let permission = permission, allowed {
+            topStack.addArrangedSubview(PermissionCard.allowed(module: module, permission: permission, width: width))
         }
-        return rows
+        if setupHint { topStack.addArrangedSubview(menuBarSetupCard(width: width)) }
+        for text in attention {
+            let label = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
+            label.attributedStringValue = UI.notice(text, tint: .systemOrange, style: .callout)
+            label.setAccessibilityIdentifier("attention")
+            topStack.addArrangedSubview(label)
+        }
+        topStack.isHidden = topStack.arrangedSubviews.isEmpty
     }
 
-    @objc private func permissionButton(_ sender: NSButton) {
-        guard let raw = sender.identifier?.rawValue, let permission = GadgetPermission(rawValue: raw) else { return }
-        if permission == .notifications, host?.gadgetPermissionGranted(.notifications) == nil {
-            host?.gadgetRequestPermission(.notifications)
-        } else {
-            host?.gadgetOpenPermissionSettings(permission)
+    /// Menu Bar Organizer cannot pick other apps' icons: until the user moved some left of the divider, nothing folds away.
+    private func menuBarSetupCard(width: CGFloat) -> NSView {
+        let inner = width - 24
+        let symbol = UI.symbolView("menubar.rectangle", size: 16, tint: .controlAccentColor)
+        let title = UI.label("One more step: choose what to hide", style: .callout, weight: .semibold)
+        let text = UI.wrapLabel("Hold ⌘ and drag the icons you rarely need to the left of ┊ in the menu bar. "
+                                + "Nacho Combo cannot move other apps' icons for you.", width: inner - 30, style: .subheadline)
+        let expand = UI.pushButton("Expand Now", small: true) { [weak self] in
+            if self?.host?.gadgetManager.settings.menuBarCollapsed == true { self?.host?.gadgetPerform(.toggleCollapse) }
         }
-    }
-
-    // MARK: shortcuts
-
-    private func shortcutRows(for id: ModuleID) -> [NSView] {
-        var rows: [NSView] = []
-        // The quick panel entry point first: it exists for every gadget.
-        let open = ShortcutField(placeholder: "None")
-        open.setAccessibilityLabel("\(id.displayName) open in quick panel shortcut")
-        open.onRecordingChange = { [weak self] on in self?.host?.gadgetRecordingChanged(on) }
-        open.onChange = { [weak self] shortcut, _ in
-            guard let self = self else { return }
-            self.note("open", self.host?.gadgetSetToolShortcut(id, shortcut))
+        let done = UI.pushButton("Got It", primary: true, small: true) { [weak self] in
+            self?.host?.gadgetDismissHint("menuBarSetup")
         }
-        shortcutFields["open"] = open
-        rows.append(shortcutRow(title: "Open in Quick Panel", field: open, key: "open"))
-        for action in GadgetActions.of(id) {
-            let field = ShortcutField(placeholder: "None")
-            field.defaultShortcut = action.defaultShortcut
-            field.setAccessibilityLabel("\(action.title) shortcut")
-            field.onRecordingChange = { [weak self] on in self?.host?.gadgetRecordingChanged(on) }
-            field.onChange = { [weak self] shortcut, reset in
-                guard let self = self else { return }
-                self.note(action.id, self.host?.gadgetSetActionShortcut(action.id, shortcut, reset: reset))
-            }
-            shortcutFields[action.id] = field
-            rows.append(shortcutRow(title: action.title, field: field, key: action.id))
-        }
-        return rows
-    }
-
-    private func shortcutRow(title: String, field: ShortcutField, key: String) -> NSView {
-        let label = UI.label(title, style: .callout)
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let line = row([label, UI.spacer(), field])
-        let note = UI.wrapLabel("", width: GadgetDetailView.cardInner, style: .subheadline, color: .labelColor)
-        note.isHidden = true
-        shortcutNotes[key] = note
-        return UI.vstack([line, note], spacing: 4)
-    }
-
-    private func shortcutFooter(for id: ModuleID) -> NSView {
-        UI.wrapLabel("Click a shortcut and type a new one. ⌫ removes it, ↺ brings back the default, Esc cancels. "
-                     + "Shortcuts work everywhere while the gadget is on.", width: GadgetDetailView.inner, style: .footnote,
-                     color: UI.tertiaryText)
-    }
-
-    private func note(_ key: String, _ message: String?) {
-        guard let label = shortcutNotes[key] else { return }
-        if let message = message {
-            label.attributedStringValue = UI.notice(message, tint: .systemOrange, style: .subheadline)
-            label.isHidden = false
-        } else {
-            label.isHidden = true
-        }
-        refresh()
+        done.setAccessibilityIdentifier("hint-dismiss")
+        let buttons = UI.hstack([UI.spacer(), expand, done], spacing: 8)
+        buttons.widthAnchor.constraint(equalToConstant: inner - 30).isActive = true
+        let column = UI.vstack([title, text, buttons], spacing: 4)
+        column.setCustomSpacing(8, after: text)
+        let card = TintedCardView(tone: .accent, content: UI.hstack([symbol, column], spacing: 8, alignment: .top))
+        card.widthAnchor.constraint(equalToConstant: width).isActive = true
+        card.setAccessibilityIdentifier("menubar-setup-card")
+        return card
     }
 
     // MARK: controls
 
     private func button(_ title: String, symbol: String? = nil, _ command: GadgetCommand,
                         enabled: @escaping () -> Bool = { true }) -> NSButton {
-        let b = ClosureButton(title: title) { [weak self] in self?.host?.gadgetPerform(command) }
-        b.bezelStyle = .rounded
-        b.font = UI.font(.callout)
-        if let symbol = symbol, let image = UI.symbol(symbol, size: 12, weight: .medium) {
-            b.image = image
-            b.imagePosition = .imageLeading
-        }
+        let b = UI.pushButton(title, symbol: symbol) { [weak self] in self?.host?.gadgetPerform(command) }
         refreshers.append { [weak b] in b?.isEnabled = enabled() }
         return b
     }
 
-    private func running(_ id: ModuleID) -> Bool { host?.gadgetManager.states[id] == .running }
-
     private func controlRows(for id: ModuleID) -> [NSView] {
         var rows: [NSView] = []
         statusLine.stringValue = ""
-        rows.append(row([statusLine, UI.spacer()]))
+        let turnOn = UI.pushButton("Turn On", primary: true, small: true) { [weak self] in
+            guard let self = self else { return }
+            self.host?.gadgetSetEnabled(self.module, true)
+        }
+        turnOn.setAccessibilityIdentifier("controls-turn-on")
+        refreshers.append { [weak self, weak turnOn] in turnOn?.isHidden = self?.enabled ?? true }
+        rows.append(row([statusLine, UI.spacer(), turnOn]))
         let on = { [weak self] in self?.running(id) ?? false }
         switch id {
         case .menuBar:
@@ -352,7 +415,7 @@ final class GadgetDetailView: NSView {
                 }
                 popup.menu?.addItem(menuItem)
             }
-            popup.font = UI.font(.callout)
+            popup.font = UI.controlFont(.callout)
             refreshers.append { [weak popup] in popup?.isEnabled = on() }
             rows.append(row([popup, UI.spacer()]))
         case .windowSnap:
@@ -379,7 +442,7 @@ final class GadgetDetailView: NSView {
                                   target: nil, action: nil)
             slider.isContinuous = true
             slider.translatesAutoresizingMaskIntoConstraints = false
-            slider.widthAnchor.constraint(equalToConstant: 140).isActive = true
+            slider.widthAnchor.constraint(equalToConstant: 180).isActive = true
             slider.setAccessibilityLabel("Dim strength")
             slider.setAccessibilityIdentifier("dim-intensity")
             let value = UI.label("", style: .callout)
@@ -417,16 +480,42 @@ final class GadgetDetailView: NSView {
     private func checkbox(_ title: String, get: @escaping (GadgetOptions) -> Bool,
                           set: @escaping (inout GadgetOptions, Bool) -> Void) -> NSView {
         let box = ClosureButton(checkbox: title) { _ in }
-        box.font = UI.font(.callout)
+        box.font = UI.controlFont(.callout)
         box.onToggle = { [weak self] on in self?.update { set(&$0, on) } }
         refreshers.append { [weak self, weak box] in box?.state = get(self?.options ?? .defaults) ? .on : .off }
         return row([box, UI.spacer()])
     }
 
+    /// A row with a note under it that appears only while `visible` is true: the note says what the user has to change
+    /// elsewhere for the option to work, with the button that goes there.
+    private func withNote(_ line: NSView, text: @escaping () -> String?, button: NSButton?) -> NSView {
+        let width = GadgetDetailView.cardInner - 22
+        let holder = UI.vstack([], spacing: 6)
+        let noteBox = UI.vstack([], spacing: 6)
+        noteBox.edgeInsets = NSEdgeInsets(top: 0, left: 22, bottom: 0, right: 0)
+        noteBox.isHidden = true
+        var lastText: String?
+        refreshers.append { [weak noteBox] in
+            guard let noteBox = noteBox else { return }
+            let now = text()
+            guard now != lastText else { return }
+            lastText = now
+            for view in noteBox.arrangedSubviews { noteBox.removeArrangedSubview(view); view.removeFromSuperview() }
+            if let now = now {
+                noteBox.addArrangedSubview(UI.attentionNote(now, width: width))
+                if let button = button { noteBox.addArrangedSubview(button) }
+            }
+            noteBox.isHidden = now == nil
+        }
+        holder.addArrangedSubview(line)
+        holder.addArrangedSubview(noteBox)
+        return holder
+    }
+
     private func popup<T: Equatable>(_ title: String, choices: [(String, T)], get: @escaping (GadgetOptions) -> T,
                                      set: @escaping (inout GadgetOptions, T) -> Void) -> NSView {
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
-        popup.font = UI.font(.callout)
+        popup.font = UI.controlFont(.callout)
         for (index, choice) in choices.enumerated() {
             let item = ClosureMenuItem(title: choice.0) { [weak self] in self?.update { set(&$0, choices[index].1) } }
             popup.menu?.addItem(item)
@@ -456,7 +545,7 @@ final class GadgetDetailView: NSView {
             var checks: [NSView] = []
             for item in MonitorItem.allCases {
                 let check = ClosureButton(checkbox: item.displayName) { _ in }
-                check.font = UI.font(.callout)
+                check.font = UI.controlFont(.callout)
                 check.setAccessibilityIdentifier("monitor-item-\(item.rawValue)")
                 check.onToggle = { [weak self] on in
                     guard let self = self, let host = self.host else { return }
@@ -474,7 +563,7 @@ final class GadgetDetailView: NSView {
             let secondLine = UI.hstack(Array(checks.dropFirst(3)), spacing: 12)
             rows.append(UI.vstack([label, firstLine, secondLine], spacing: 6))
             let ip = ClosureButton(checkbox: "Look up the public IP when the network panel opens") { _ in }
-            ip.font = UI.font(.callout)
+            ip.font = UI.controlFont(.callout)
             ip.setAccessibilityIdentifier("monitor-public-ip")
             ip.onToggle = { [weak self] on in
                 guard let host = self?.host else { return }
@@ -492,16 +581,35 @@ final class GadgetDetailView: NSView {
             rows.append(popup("CPU Alert", choices: GadgetOptions.cpuAlertChoices.map {
                 ($0 == 0 ? "Off" : "Above \($0)% for 30 s", $0)
             }, get: { $0.cpuAlertPercent }, set: { $0.cpuAlertPercent = $1 }))
-            rows.append(checkbox("Post a notification when an alert starts", get: { $0.alertNotifications },
-                                 set: { $0.alertNotifications = $1 }))
+            let notify = checkbox("Post a notification when an alert starts", get: { $0.alertNotifications },
+                                  set: { $0.alertNotifications = $1 })
+            let openNotifications = UI.pushButton("Open Notification Settings", small: true) { [weak self] in
+                self?.host?.gadgetOpenPermissionSettings(.notifications)
+            }
+            rows.append(withNote(notify, text: { [weak self] in
+                guard let host = self?.host, host.gadgetManager.settings.options.alertNotifications else { return nil }
+                switch host.gadgetPermissionGranted(.notifications) {
+                case false?: return "Notifications are off for Nacho Combo, so alerts only show as a badge."
+                default: return nil
+                }
+            }, button: openNotifications))
         case .windowSnap:
             rows.append(popup("Gap Between Windows", choices: GadgetOptions.gapChoices.map {
                 ($0 == 0 ? "None" : "\($0) pt", $0)
             }, get: { $0.snapGap }, set: { $0.snapGap = $1 }))
             rows.append(popup("Repeating Left / Right", choices: SnapRepeat.allCases.map { ($0.displayName, $0) },
                               get: { $0.snapRepeat }, set: { $0.snapRepeat = $1 }))
-            rows.append(checkbox("Snap windows dragged to a screen edge or corner", get: { $0.snapDragToEdges },
-                                 set: { $0.snapDragToEdges = $1 }))
+            let drag = checkbox("Snap windows dragged to a screen edge or corner", get: { $0.snapDragToEdges },
+                                set: { $0.snapDragToEdges = $1 })
+            let openDock = UI.pushButton("Open Desktop & Dock", small: true) { [weak self] in
+                self?.host?.gadgetOpenDesktopSettings()
+            }
+            openDock.setAccessibilityIdentifier("open-desktop-settings")
+            rows.append(withNote(drag, text: { [weak self] in
+                guard let options = self?.host?.gadgetManager.settings.options, options.snapDragToEdges,
+                      WindowSnapModule.systemEdgeTilingEnabled else { return nil }
+                return "macOS tiling is handling edge drags now. Turn off “Drag windows to screen edges to tile” to use these zones."
+            }, button: openDock))
             rows.append(checkbox("Restore the size when a snapped window is dragged away", get: { $0.snapRestoreOnDrag },
                                  set: { $0.snapRestoreOnDrag = $1 }))
             rows.append(checkbox("⌃⌘-drag to move, ⌃⌘-right-drag to resize", get: { $0.windowMotion },
@@ -521,74 +629,238 @@ final class GadgetDetailView: NSView {
                 ($0 == 0 ? "Off" : String(format: "%g s", $0), $0)
             }, get: { $0.dimFadeSeconds }, set: { $0.dimFadeSeconds = $1 }))
         }
-        pinBox.setAccessibilityIdentifier("pin-\(id.rawValue)")
-        pinBox.setAccessibilityHelp("A pinned icon opens this gadget's controls directly. Separate from on / off")
-        rows.append(row([pinBox, UI.spacer()]))
         return rows
     }
 
-    @objc private func pinToggled() { host?.gadgetSetPinned(module, pinBox.state == .on) }
+    // MARK: menu bar access
+
+    /// The two ways into the gadget from the menu bar, side by side: its own icon and a shortcut for its controls.
+    private func menuBarAccessRows() -> [NSView] {
+        let id = module
+        let pinTitle = UI.label("Pin to Menu Bar", style: .callout)
+        let pinNote = UI.label("A pinned icon opens \(id.displayName)'s controls directly.", style: .subheadline,
+                               color: UI.secondaryText)
+        let pin = NSSwitch()
+        pin.setAccessibilityLabel("Pin \(id.displayName) to the menu bar")
+        pin.setAccessibilityIdentifier("pin-\(id.rawValue)")
+        pin.setAccessibilityHelp("A pinned icon opens this gadget's controls directly. Separate from on / off")
+        let target = SwitchTarget { [weak self] on in self?.host?.gadgetSetPinned(id, on) }
+        pin.target = target
+        pin.action = #selector(SwitchTarget.changed(_:))
+        objc_setAssociatedObject(pin, &SwitchTarget.key, target, .OBJC_ASSOCIATION_RETAIN)
+        refreshers.append { [weak self, weak pin] in
+            pin?.state = (self?.host?.gadgetManager.settings.isPinned(id) ?? false) ? .on : .off
+        }
+        let pinRow = row([UI.vstack([pinTitle, pinNote], spacing: 2), UI.spacer(), pin])
+
+        let open = ShortcutField(placeholder: "None")
+        open.setAccessibilityLabel("\(id.displayName) open its controls shortcut")
+        open.onRecordingChange = { [weak self] on in self?.host?.gadgetRecordingChanged(on) }
+        open.onChange = { [weak self] shortcut, _ in
+            guard let self = self else { return }
+            self.note("open", self.host?.gadgetSetToolShortcut(id, shortcut))
+        }
+        shortcutFields["open"] = open
+        return [pinRow, shortcutRow(title: "Shortcut to Open Its Controls", field: open, key: "open")]
+    }
+
+    // MARK: permissions
+
+    private func permissionRows() -> [NSView] {
+        var rows: [NSView] = []
+        if info.permissions.isEmpty || info.permissions.allSatisfy({ $0.optional }) {
+            let check = UI.symbolView("checkmark.shield", size: 15, tint: DotPalette.green)
+            let title = UI.label(info.permissions.isEmpty ? "No Permission Needed" : "No Permission Needed to Run",
+                                 style: .callout, weight: .semibold)
+            let note = UI.wrapLabel(info.permissionNote, width: GadgetDetailView.cardInner - 29, style: .subheadline)
+            rows.append(UI.hstack([check, UI.vstack([title, note], spacing: 2)], spacing: 8, alignment: .top))
+        }
+        for need in info.permissions {
+            let symbol = UI.symbolView(need.permission.symbolName, size: 15, tint: .controlAccentColor)
+            let name = UI.label(need.permission.displayName + (need.optional ? " (optional)" : ""), style: .callout,
+                                weight: .semibold)
+            let textWidth = GadgetDetailView.cardInner - 29
+            let reason = UI.wrapLabel(need.reason, width: textWidth, style: .subheadline)
+            let location = UI.wrapLabel(need.permission.location, width: textWidth, style: .footnote, color: UI.tertiaryText)
+            let chip = Chip("", tone: .neutral)
+            chip.setAccessibilityIdentifier("permission-status-\(need.permission.rawValue)")
+            let button = UI.pushButton("Open Settings", small: true) { [weak self] in
+                guard let host = self?.host else { return }
+                if need.permission == .notifications, host.gadgetPermissionGranted(.notifications) == nil {
+                    host.gadgetRequestPermission(.notifications)
+                } else {
+                    host.gadgetOpenPermissionSettings(need.permission)
+                }
+            }
+            button.setAccessibilityIdentifier("permission-\(need.permission.rawValue)")
+            refreshers.append { [weak self, weak chip, weak button] in
+                guard let self = self, let host = self.host, let chip = chip, let button = button else { return }
+                switch host.gadgetPermissionGranted(need.permission) {
+                case true?:
+                    chip.title = "Allowed"; chip.tone = .success; button.title = "Open Settings"
+                case false?:
+                    chip.title = "Not allowed"
+                    chip.tone = (self.enabled && !need.optional) ? .attention : .neutral
+                    button.title = "Open Settings"
+                case nil:
+                    chip.title = "Not asked yet"; chip.tone = .neutral; button.title = "Ask"
+                }
+            }
+            let statusRow = UI.hstack([chip, UI.spacer(), button], spacing: 8)
+            statusRow.widthAnchor.constraint(equalToConstant: textWidth).isActive = true
+            let text = UI.vstack([name, reason, location, statusRow], spacing: 3)
+            text.setCustomSpacing(8, after: location)
+            rows.append(UI.hstack([symbol, text], spacing: 8, alignment: .top))
+        }
+        return rows
+    }
+
+    // MARK: shortcuts
+
+    private func addShortcutSections() {
+        let id = module
+        let actions = GadgetActions.of(id)
+        guard !actions.isEmpty else {
+            addSection("Shortcuts", rows: [UI.wrapLabel("This gadget has no global shortcuts. Its controls open from the "
+                                                        + "menu bar; see Settings ▸ Menu Bar Access.",
+                                                        width: GadgetDetailView.cardInner, style: .subheadline)])
+            return
+        }
+        // Summary: how many are set, how many another app holds, and the way back to the defaults.
+        let count = UI.label("", style: .callout, color: UI.secondaryText)
+        let taken = Chip("", tone: .attention)
+        taken.setAccessibilityIdentifier("shortcuts-taken")
+        let restore = UI.pushButton("Restore Defaults…", small: true) { [weak self] in self?.confirmRestoreDefaults() }
+        restore.setAccessibilityIdentifier("shortcuts-restore")
+        refreshers.append { [weak self, weak count, weak taken, weak restore] in
+            guard let self = self, let host = self.host else { return }
+            let settings = host.gadgetManager.settings
+            let set = actions.filter { settings.shortcut(forAction: $0.id) != nil }.count
+            count?.setLive("\(set) of \(actions.count) set")
+            let clashes = actions.filter { host.gadgetActionShortcutUnavailable($0.id) }.count
+            taken?.title = "\(clashes) taken by another app"
+            taken?.isHidden = clashes == 0
+            restore?.isEnabled = actions.contains { settings.actionShortcuts[$0.id] != nil }
+        }
+        let summary = UI.hstack([count, taken, UI.spacer(), restore], spacing: 8)
+        summary.widthAnchor.constraint(equalToConstant: GadgetDetailView.inner).isActive = true
+        tabStack.addArrangedSubview(summary)
+        tabStack.setCustomSpacing(12, after: summary)
+
+        let groups = GadgetActions.groups(of: id)
+        for group in groups {
+            var rows: [NSView] = []
+            let clashes = group.actions.filter { host?.gadgetActionShortcutUnavailable($0.id) ?? false }.count
+            if let title = group.title {
+                let open = expandedGroups.contains(title) || clashes > 0
+                rows.append(groupHeader(title, count: group.actions.count, clashes: clashes, open: open))
+                if open { rows.append(contentsOf: group.actions.map(actionRow)) }
+            } else {
+                rows.append(contentsOf: group.actions.map(actionRow))
+            }
+            let card = GadgetDetailView.card(rows)
+            tabStack.addArrangedSubview(card)
+            tabStack.setCustomSpacing(8, after: card)
+        }
+        let footer = UI.wrapLabel("Click a shortcut and type a new one. ⌫ removes it, ↺ brings back the default, Esc cancels. "
+                                  + "Shortcuts work everywhere while the gadget is on.", width: GadgetDetailView.inner,
+                                  style: .footnote, color: UI.tertiaryText)
+        tabStack.addArrangedSubview(footer)
+    }
+
+    private func groupHeader(_ title: String, count: Int, clashes: Int, open: Bool) -> NSView {
+        let button = ClosureButton(title: "") { [weak self] in
+            guard let self = self else { return }
+            if self.expandedGroups.contains(title) { self.expandedGroups.remove(title) } else { self.expandedGroups.insert(title) }
+            self.renderTab()
+        }
+        button.isBordered = false
+        // A fixed box: the two chevrons differ in width, the title must not move when a group opens.
+        if let chevron = UI.symbol(open ? "chevron.down" : "chevron.right", size: 11, weight: .semibold) {
+            button.image = NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
+                let s = chevron.size
+                chevron.draw(in: NSRect(x: (rect.width - s.width) / 2, y: (rect.height - s.height) / 2, width: s.width,
+                                        height: s.height))
+                return true
+            }
+            button.image?.isTemplate = true
+        }
+        button.imagePosition = .imageLeading
+        button.attributedTitle = NSAttributedString(string: "  " + title, attributes: [
+            .font: UI.font(.callout, weight: .semibold), .foregroundColor: NSColor.labelColor])
+        button.contentTintColor = UI.secondaryText
+        button.setAccessibilityLabel("\(title), \(count) shortcuts, \(open ? "expanded" : "collapsed")")
+        button.setAccessibilityIdentifier("shortcut-group-\(title)")
+        var views: [NSView] = [button, UI.spacer()]
+        if clashes > 0 { views.append(Chip("\(clashes) taken", tone: .attention)) }
+        views.append(UI.label("\(count)", style: .callout, color: UI.tertiaryText))
+        return row(views)
+    }
+
+    private func actionRow(_ action: GadgetAction) -> NSView {
+        let field = ShortcutField(placeholder: "None")
+        field.defaultShortcut = action.defaultShortcut
+        field.setAccessibilityLabel("\(action.title) shortcut")
+        field.onRecordingChange = { [weak self] on in self?.host?.gadgetRecordingChanged(on) }
+        field.onChange = { [weak self] shortcut, reset in
+            guard let self = self else { return }
+            self.note(action.id, self.host?.gadgetSetActionShortcut(action.id, shortcut, reset: reset))
+        }
+        shortcutFields[action.id] = field
+        return shortcutRow(title: action.title, field: field, key: action.id)
+    }
+
+    private func shortcutRow(title: String, field: ShortcutField, key: String) -> NSView {
+        let label = UI.label(title, style: .callout)
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let line = row([label, UI.spacer(), field])
+        let note = UI.wrapLabel("", width: GadgetDetailView.cardInner, style: .subheadline, color: .labelColor)
+        note.isHidden = true
+        shortcutNotes[key] = note
+        return UI.vstack([line, note], spacing: 4)
+    }
+
+    private func note(_ key: String, _ message: String?) {
+        guard let label = shortcutNotes[key] else { return }
+        if let message = message {
+            label.attributedStringValue = UI.notice(message, tint: .systemOrange, style: .subheadline)
+            label.isHidden = false
+        } else {
+            label.isHidden = true
+        }
+        refresh()
+    }
+
+    private func confirmRestoreDefaults() {
+        let id = module
+        let alert = NSAlert()
+        alert.messageText = "Restore \(id.displayName)'s default shortcuts?"
+        alert.informativeText = "Shortcuts you changed or removed for \(id.displayName) go back to their defaults. "
+            + "A default another gadget uses now stays empty."
+        alert.addButton(withTitle: "Restore")
+        alert.addButton(withTitle: "Cancel")
+        let apply: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.host?.gadgetResetActionShortcuts(id)
+            self?.renderTab()
+        }
+        if let window = host?.gadgetWindow { alert.beginSheetModal(for: window, completionHandler: apply) }
+        else { apply(alert.runModal()) }
+    }
 
     // MARK: refresh
 
-    /// Updates the live parts without rebuilding (state, notices, permissions, shortcuts, controls).
+    /// Updates the live parts without rebuilding (state, what has to be done, permissions, shortcuts, controls).
     func refresh() {
         guard let host = host else { return }
         let manager = host.gadgetManager
         let status = manager.status(of: module)
         stateDot.kind = status.dot
         stateLabel.setLive(status.stateText)
-        stateLabel.textColor = status.dot == .off ? UI.secondaryText : .labelColor
-        pinBox.state = manager.settings.isPinned(module) ? .on : .off
-
-        let attention = host.gadgetAttention(module)
-        if attention != lastAttention {
-            lastAttention = attention
-            for view in attentionStack.arrangedSubviews { attentionStack.removeArrangedSubview(view); view.removeFromSuperview() }
-            for text in attention {
-                let label = UI.wrapLabel("", width: GadgetDetailView.inner, style: .callout, color: .labelColor)
-                label.attributedStringValue = UI.notice(text, tint: .systemOrange, style: .callout)
-                label.setAccessibilityIdentifier("attention")
-                attentionStack.addArrangedSubview(label)
-            }
-            if case .needsPermission = manager.states[module] ?? .off {
-                let recheck = ClosureButton(title: "Check Again") { [weak self] in
-                    guard let self = self else { return }
-                    self.host?.gadgetRecheck(self.module)
-                }
-                recheck.bezelStyle = .rounded
-                recheck.font = UI.font(.callout)
-                var buttons: [NSView] = []
-                for need in module.info.permissions where !need.optional {
-                    let open = ClosureButton(title: "Open \(need.permission.displayName) Settings") { [weak self] in
-                        self?.host?.gadgetOpenPermissionSettings(need.permission)
-                    }
-                    open.bezelStyle = .rounded
-                    open.font = UI.font(.callout)
-                    buttons.append(open)
-                }
-                attentionStack.addArrangedSubview(UI.hstack(buttons + [recheck], spacing: 8))
-            }
-            attentionStack.isHidden = attention.isEmpty
-        }
-
-        for (permission, views) in permissionStatus {
-            let granted = host.gadgetPermissionGranted(permission)
-            switch granted {
-            case true?:
-                views.label.stringValue = "✓ Allowed"
-                views.label.textColor = DotPalette.green
-                views.button.title = "Open Settings"
-            case false?:
-                views.label.stringValue = "Not allowed"
-                views.label.textColor = .systemOrange
-                views.button.title = "Open Settings"
-            case nil:
-                views.label.stringValue = "Not asked yet"
-                views.label.textColor = UI.secondaryText
-                views.button.title = "Ask"
-            }
-        }
+        stateLabel.textColor = status.dot == .off ? UI.secondaryText
+            : (status.dot == .onNeedsSetup ? UI.attentionText : .labelColor)
+        enableSwitch.state = manager.settings.isEnabled(module) ? .on : .off
+        refreshTop()
 
         if let open = shortcutFields["open"], !open.isRecording { open.shortcut = manager.settings.shortcut(for: module) }
         for action in GadgetActions.of(module) {
@@ -596,15 +868,21 @@ final class GadgetDetailView: NSView {
             field.shortcut = manager.settings.shortcut(forAction: action.id)
             field.unavailable = host.gadgetActionShortcutUnavailable(action.id)
         }
-        let idle = manager.settings.isEnabled(module) ? "Not running yet; see the notice at the top."
-                                                      : "Off. Switch the gadget on to use these controls."
+        let idle: String
+        if !manager.settings.isEnabled(module) {
+            idle = "Off."
+        } else if case .needsPermission = manager.states[module] ?? .off, let permission = info.requiredPermission {
+            idle = "Allow \(permission.displayName) above to use these controls."
+        } else {
+            idle = "Not running; see the notice above."
+        }
         statusLine.setLive(host.gadgetStatusLine(module) ?? idle)
         refreshers.forEach { $0() }
     }
 
     /// Re-renders the picture (on selection, after an option change, and on a timer for live numbers).
     func refreshPreview() {
-        guard let host = host else { return }
+        guard let host = host, tab == .overview else { return }
         var inputs = host.gadgetPreviewInputs()
         if module == .systemMonitor { inputs.monitor = host.gadgetMonitorPreview(appearance: appearanceName) }
         let picture = GadgetPreview.picture(for: module, inputs: inputs, appearance: effectiveAppearance)
@@ -620,6 +898,13 @@ final class GadgetDetailView: NSView {
         super.viewDidChangeEffectiveAppearance()
         if window != nil { refreshPreview() }
     }
+}
+
+final class SwitchTarget: NSObject {
+    static var key = 0
+    private let handler: (Bool) -> Void
+    init(_ handler: @escaping (Bool) -> Void) { self.handler = handler }
+    @objc func changed(_ sender: NSSwitch) { handler(sender.state == .on) }
 }
 
 // MARK: - Small controls

@@ -1,5 +1,18 @@
 import Foundation
 
+/// When the settings window opens by itself at launch (opening the app again always shows it).
+public enum LaunchWindow: String, Codable, CaseIterable {
+    case always, whenNeeded, never
+
+    public var displayName: String {
+        switch self {
+        case .always: return "Always"
+        case .whenNeeded: return "When Something Needs You"
+        case .never: return "Never"
+        }
+    }
+}
+
 public struct AppSettings: Codable, Equatable {
     public static let currentVersion = 1
 
@@ -19,6 +32,18 @@ public struct AppSettings: Codable, Equatable {
     public var options: GadgetOptions
     /// Action shortcuts the user changed or removed (GadgetAction.id → binding). Absent = the default.
     public var actionShortcuts: [String: ActionBinding]
+    /// Code signature of the copy that last had each permission (GadgetPermission.rawValue → hex). An update changes the
+    /// ad-hoc signature, which tells "the update reset it" apart from "you turned it off".
+    public var permissionGrants: [String: String]
+    public var launchWindow: LaunchWindow
+    /// An orange dot on the menu bar icon while a gadget needs a permission or has an error.
+    public var menuBarAttentionDot: Bool
+    /// One-time hints the user closed ("menuBarSetup").
+    public var dismissedHints: [String: Bool]
+    /// The combo last ordered (Combo.id); the box may have changed since.
+    public var combo: String?
+    /// Combos the user made, in board order.
+    public var customCombos: [SavedCombo]
 
     /// First launch: every module is OFF, so no permission prompt or monitoring starts before opt-in.
     public static let defaults = AppSettings(
@@ -27,7 +52,16 @@ public struct AppSettings: Codable, Equatable {
     public init(version: Int, enabledModules: [String: Bool], menuBarCollapsed: Bool, monitor: MonitorSettings? = nil,
                 dimIntensity: Double = FocusDimLogic.defaultIntensity,
                 pinnedTools: [String: Bool] = [:], toolShortcuts: [String: ToolShortcut] = [:],
-                options: GadgetOptions = .defaults, actionShortcuts: [String: ActionBinding] = [:]) {
+                options: GadgetOptions = .defaults, actionShortcuts: [String: ActionBinding] = [:],
+                permissionGrants: [String: String] = [:], launchWindow: LaunchWindow = .whenNeeded,
+                menuBarAttentionDot: Bool = true, dismissedHints: [String: Bool] = [:], combo: String? = nil,
+                customCombos: [SavedCombo] = []) {
+        self.combo = combo
+        self.customCombos = customCombos
+        self.permissionGrants = permissionGrants
+        self.launchWindow = launchWindow
+        self.menuBarAttentionDot = menuBarAttentionDot
+        self.dismissedHints = dismissedHints
         self.options = options
         self.actionShortcuts = actionShortcuts
         self.pinnedTools = pinnedTools
@@ -46,7 +80,7 @@ public struct AppSettings: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case version, enabledModules, menuBarCollapsed, monitor, dimIntensity, pinnedTools, toolShortcuts, options,
-             actionShortcuts
+             actionShortcuts, permissionGrants, launchWindow, menuBarAttentionDot, dismissedHints, combo, customCombos
     }
 
     public init(from decoder: Decoder) throws {
@@ -64,7 +98,15 @@ public struct AppSettings: Codable, Equatable {
         // Each option falls back on its own; a missing section means every default.
         options = (try? c.decodeIfPresent(GadgetOptions.self, forKey: .options)) ?? .defaults
         actionShortcuts = (try? c.decodeIfPresent([String: ActionBinding].self, forKey: .actionShortcuts)) ?? [:]
+        permissionGrants = (try? c.decodeIfPresent([String: String].self, forKey: .permissionGrants)) ?? [:]
+        launchWindow = (try? c.decodeIfPresent(LaunchWindow.self, forKey: .launchWindow)) ?? .whenNeeded
+        menuBarAttentionDot = (try? c.decodeIfPresent(Bool.self, forKey: .menuBarAttentionDot)) ?? true
+        dismissedHints = (try? c.decodeIfPresent([String: Bool].self, forKey: .dismissedHints)) ?? [:]
+        combo = try? c.decodeIfPresent(String.self, forKey: .combo)
+        customCombos = (try? c.decodeIfPresent([SavedCombo].self, forKey: .customCombos)) ?? []
     }
+
+    public func hintDismissed(_ key: String) -> Bool { dismissedHints[key] ?? false }
 
     public func isPinned(_ id: ModuleID) -> Bool { pinnedTools[id.rawValue] ?? false }
     public func shortcut(for id: ModuleID) -> ToolShortcut? { toolShortcuts[id.rawValue] }

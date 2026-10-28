@@ -1,41 +1,65 @@
 import AppKit
 import NachoComboCore
 
-/// One window for every gadget: a gallery of tiles on the left (icon, live status, on / off switch) and, on the right,
-/// everything about the selected gadget: a picture of it at work, its controls, features, shortcuts, the permissions it
-/// needs and its options. A switch being on never implies "running": the state always comes from the module.
+/// One window for every gadget, laid out like the system's own settings: a sidebar (All Gadgets, General, Permissions,
+/// then each gadget with its state) and the chosen page on the right. The window can be resized; its size and the last
+/// page come back next time. A switch being on never implies "running": the state always comes from the module.
 final class SettingsWindowController: NSObject, NSWindowDelegate {
-    private weak var host: GadgetHost?
+    private weak var host: SettingsHost?
     let window: NSWindow
 
-    private let grid = GadgetGridView()
-    private let detail: GadgetDetailView
-    private let detailScroll = NSScrollView()
-    private let summaryLabel = UI.label("", style: .callout, color: UI.secondaryText)
+    private let sidebar = SidebarView()
+    private let home: HomePage
+    let combos: ComboPage
+    private let general: GeneralPage
+    private let permissions: PermissionsPage
+    let detail: GadgetDetailView
+    private let scroll = NSScrollView()
+    /// Spans the scroll view's width; the page sits centered in it.
+    private let container = FlippedView()
+    private var pageView: NSView?
     private var liveTimer: Timer?
     private var ticks = 0
-    private(set) var selected: ModuleID = .menuBar
+    private(set) var page: SettingsPage = .home
 
-    static let galleryWidth: CGFloat = GadgetGridView.gridSize.width + 2 * 24
-    static var contentWidth: CGFloat { galleryWidth + 1 + GadgetDetailView.width + 14 }
-    static let contentHeight: CGFloat = 680
+    static let minimumSize = NSSize(width: SidebarView.width + GadgetDetailView.width + 40, height: 560)
+    static let defaultSize = NSSize(width: 1000, height: 700)
+    private static let pageKey = "settingsPage"
+    private static let frameName = "NachoComboSettings"
 
     var quitApp: (() -> Void)?
 
-    init(host: GadgetHost) {
+    init(host: SettingsHost) {
         self.host = host
+        home = HomePage(host: host)
+        combos = ComboPage(host: host)
+        general = GeneralPage(host: host)
+        permissions = PermissionsPage(host: host)
         detail = GadgetDetailView(host: host)
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: SettingsWindowController.contentWidth,
-                                              height: SettingsWindowController.contentHeight),
-                          styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        window = NSWindow(contentRect: NSRect(origin: .zero, size: SettingsWindowController.defaultSize),
+                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init()
         window.title = "Nacho Combo"
         window.isReleasedWhenClosed = false   // closing the window never stops a running gadget
         window.delegate = self
+        window.contentMinSize = SettingsWindowController.minimumSize
         build()
-        grid.onSelect = { [weak self] id in self?.select(id) }
-        grid.onToggle = { [weak self] id, on in self?.host?.gadgetSetEnabled(id, on) }
-        select(.menuBar)
+        sidebar.onSelect = { [weak self] page in self?.select(page) }
+        home.onOpen = { [weak self] page in self?.select(page) }
+        permissions.onOpen = { [weak self] page in self?.select(page) }
+        combos.onOpen = { [weak self] page in self?.select(page) }
+        home.grid.onSelect = { [weak self] id in self?.select(.gadget(id)) }
+        home.grid.onAction = { [weak self] id in self?.select(.gadget(id)) }
+        home.grid.onToggle = { [weak self] id, on in self?.host?.gadgetSetEnabled(id, on) }
+        detail.onScrollToTop = { [weak self] in self?.scrollToTop() }
+        // The size and place from last time, else the default size in the middle of the screen.
+        if !window.setFrameUsingName(SettingsWindowController.frameName) {
+            window.setContentSize(SettingsWindowController.defaultSize)
+            window.center()
+        }
+        window.setFrameAutosaveName(SettingsWindowController.frameName)
+        let saved = UserDefaults.standard.string(forKey: SettingsWindowController.pageKey).flatMap(SettingsPage.init(key:))
+        select(saved ?? .home)
         refresh()
     }
 
@@ -49,11 +73,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func show() {
         refresh()
         if !window.isVisible {
-            // Fit small screens (e.g. 1280×800 with menu bar and Dock): the detail pane scrolls when it does not fit.
-            let available = (NSScreen.main?.visibleFrame.height ?? 800) - 44
-            window.setContentSize(NSSize(width: SettingsWindowController.contentWidth,
-                                         height: min(SettingsWindowController.contentHeight, max(500, available))))
-            window.center()
+            // Fit small screens (e.g. 1280×800 with menu bar and Dock): the page scrolls when it does not fit.
+            if let visible = NSScreen.main?.visibleFrame {
+                var frame = window.frame
+                frame.size.height = min(frame.height, visible.height - 20)
+                frame.size.width = min(frame.width, visible.width - 20)
+                if !visible.contains(frame) { frame.origin = NSPoint(x: visible.midX - frame.width / 2, y: visible.midY - frame.height / 2) }
+                window.setFrame(frame, display: false)
+            }
         }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
@@ -61,16 +88,46 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         detail.refreshPreview()
     }
 
-    func select(_ id: ModuleID) {
-        let changed = id != selected || detail.module != id
-        selected = id
-        grid.select(id)
-        if changed || detailScroll.documentView == nil {
-            detail.show(id)
-            detail.layoutSubtreeIfNeeded()
-            detailScroll.contentView.scroll(to: .zero)
-            detailScroll.reflectScrolledClipView(detailScroll.contentView)
+    func select(_ id: ModuleID, tab: DetailTab? = nil) {
+        select(.gadget(id), tab: tab)
+    }
+
+    func select(_ newPage: SettingsPage, tab: DetailTab? = nil) {
+        let changed = newPage != page || pageView == nil
+        page = newPage
+        sidebar.select(newPage)
+        UserDefaults.standard.set(newPage.key, forKey: SettingsWindowController.pageKey)
+        let view: NSView
+        switch newPage {
+        case .home:
+            view = home
+            if changed { home.grid.select(nil) }
+        case .combos: view = combos
+        case .general: view = general
+        case .permissions: view = permissions
+        case .gadget(let id):
+            view = detail
+            if changed || detail.module != id { detail.show(id, tab: tab) } else if let tab = tab { detail.select(tab: tab) }
         }
+        if view !== pageView {
+            pageView?.removeFromSuperview()
+            view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: container.topAnchor),
+                view.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                container.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+            pageView = view
+        }
+        refresh()
+        if changed { scrollToTop() }
+    }
+
+    private func scrollToTop() {
+        container.layoutSubtreeIfNeeded()
+        scroll.contentView.scroll(to: .zero)
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     // MARK: layout
@@ -78,69 +135,40 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private func build() {
         let content = NSView()
         window.contentView = content
-
-        // Gallery side.
-        let logo = NSImageView(image: AppIcon.artwork(height: 30))
-        logo.setAccessibilityElement(false)
-        let title = UI.label("Gadgets", style: .title2, weight: .bold)
-        summaryLabel.setAccessibilityIdentifier("settings-summary")
-        let header = UI.hstack([logo, title, UI.spacer(), summaryLabel], spacing: 8)
-        header.widthAnchor.constraint(equalToConstant: GadgetGridView.gridSize.width).isActive = true
-        let intro = UI.wrapLabel("Switch each gadget on or off. Select one to see it at work, what it can do, its shortcuts and the permissions it needs.",
-                                 width: GadgetGridView.gridSize.width, style: .callout)
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        grid.widthAnchor.constraint(equalToConstant: GadgetGridView.gridSize.width).isActive = true
-        grid.heightAnchor.constraint(equalToConstant: GadgetGridView.gridSize.height).isActive = true
-
-        let quit = NSButton(title: "Quit Nacho Combo", target: self, action: #selector(quitClicked))
-        quit.setAccessibilityIdentifier("quit-app")
-        quit.setAccessibilityHelp("Cleans up every gadget's monitoring, shortcuts and overlays and quits the app")
-        let footnote = UI.wrapLabel("Gadgets that are on keep running when this window is closed. Choices are saved automatically. "
-                                    + "Reopen it from the nacho box in the menu bar ▸ Settings….",
-                                    width: GadgetGridView.gridSize.width - 170, style: .footnote, color: UI.tertiaryText)
-        let footer = UI.hstack([footnote, UI.spacer(), quit], spacing: 12)
-        footer.widthAnchor.constraint(equalToConstant: GadgetGridView.gridSize.width).isActive = true
-
-        let gallery = UI.vstack([header, intro, grid], spacing: 6)
-        gallery.setCustomSpacing(18, after: intro)
-
-        // Detail side.
-        detailScroll.documentView = detail
-        detailScroll.hasVerticalScroller = true
-        detailScroll.drawsBackground = false
-        detailScroll.translatesAutoresizingMaskIntoConstraints = false
-        detail.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = container
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        container.translatesAutoresizingMaskIntoConstraints = false
         // A drawn line: an NSBox separator has an intrinsic height that would pull the whole window down to it.
         let divider = DividerLineView()
         divider.translatesAutoresizingMaskIntoConstraints = false
-        let detailBackground = DetailBackgroundView()
-        detailBackground.translatesAutoresizingMaskIntoConstraints = false
+        let background = DetailBackgroundView()
+        background.translatesAutoresizingMaskIntoConstraints = false
 
-        content.addSubview(gallery)
-        content.addSubview(footer)
-        content.addSubview(detailBackground)
+        content.addSubview(sidebar)
+        content.addSubview(background)
         content.addSubview(divider)
-        content.addSubview(detailScroll)
+        content.addSubview(scroll)
         NSLayoutConstraint.activate([
-            content.heightAnchor.constraint(greaterThanOrEqualToConstant: 480),
-            gallery.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
-            gallery.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
-            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
-            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -18),
+            sidebar.topAnchor.constraint(equalTo: content.topAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            sidebar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             divider.topAnchor.constraint(equalTo: content.topAnchor),
             divider.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            divider.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: SettingsWindowController.galleryWidth),
+            divider.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             divider.widthAnchor.constraint(equalToConstant: 1),
-            detailBackground.topAnchor.constraint(equalTo: content.topAnchor),
-            detailBackground.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            detailBackground.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
-            detailBackground.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            detailScroll.topAnchor.constraint(equalTo: content.topAnchor),
-            detailScroll.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            detailScroll.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
-            detailScroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            detail.topAnchor.constraint(equalTo: detailScroll.contentView.topAnchor),
-            detail.leadingAnchor.constraint(equalTo: detailScroll.contentView.leadingAnchor),
+            background.topAnchor.constraint(equalTo: content.topAnchor),
+            background.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            background.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
+            background.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: content.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            container.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+            container.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
         ])
     }
 
@@ -149,25 +177,30 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func refresh() {
         guard let host = host else { return }
         let manager = host.gadgetManager
-        var dots: [StatusDotKind] = []
         for id in ModuleID.allCases {
             let status = manager.status(of: id)
-            dots.append(status.dot)
-            grid.tiles[id]?.configure(enabled: manager.settings.isEnabled(id), subtitle: host.gadgetSubtitle(id),
-                                      badgeCount: host.gadgetAttention(id).count, stateText: status.accessibilityText)
+            sidebar.row(for: .gadget(id))?.configure(dot: status.dot, count: 0, value: status.accessibilityText)
         }
-        summaryLabel.setLive(ToolStatusPresentation.summary(of: dots))
-        detail.refresh()
+        let count = host.permissionsAttentionCount()
+        sidebar.row(for: .permissions)?.configure(dot: nil, count: count,
+                                                  value: count == 0 ? "Nothing to do" : "\(count) need attention")
+        switch page {
+        case .home: home.refresh()
+        case .combos: combos.refresh()
+        case .general: general.refresh()
+        case .permissions: permissions.refresh()
+        case .gadget: detail.refresh()
+        }
     }
 
-    /// While the window is open: tile subtitles every 2 s (monitor numbers), the monitor picture every 4 s.
+    /// While the window is open: live numbers every 2 s, the monitor picture every 4 s.
     private func startLiveUpdates() {
         guard liveTimer == nil else { return }
         let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
             guard let self = self, self.window.isVisible else { return }
             self.ticks += 1
             self.refresh()
-            if self.selected == .systemMonitor && self.ticks % 2 == 0 { self.detail.refreshPreview() }
+            if self.page == .gadget(.systemMonitor) && self.ticks % 2 == 0 { self.detail.refreshPreview() }
         }
         RunLoop.main.add(timer, forMode: .common)
         liveTimer = timer
@@ -202,7 +235,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: out)
         let rect = NSRect(origin: .zero, size: size)
-        appearance.performAsCurrentDrawingAppearance { NSColor.windowBackgroundColor.setFill() }
+        appearance.performAsCurrentDrawingAppearance { Brand.paper.setFill() }
         rect.fill()
         // NSImageRep.draw(in:) copies (alpha included); blend instead.
         rep.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
@@ -211,26 +244,36 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         return (try? data.write(to: url)) != nil
     }
 
-    /// Debug aid (`ctl settings detail <png>`): the whole detail pane, including what is scrolled out of view.
+    /// Debug aid (`ctl gallery detail <png>`): the whole page, including what is scrolled out of view.
     func writeDetailSnapshot(to url: URL) -> Bool {
-        detail.layoutSubtreeIfNeeded()
-        let bounds = detail.bounds
+        guard let page = pageView else { return false }
+        page.layoutSubtreeIfNeeded()
+        let bounds = page.bounds
         guard let rep = SettingsWindowController.retinaRep(bounds.size) else { return false }
-        detail.cacheDisplay(in: bounds, to: rep)
+        page.cacheDisplay(in: bounds, to: rep)
+        return SettingsWindowController.writeOverBackground(rep, size: bounds.size, appearance: window.effectiveAppearance,
+                                                            to: url)
+    }
+
+    /// Debug aid (`ctl gallery content <png>`): only the shown tab of a gadget's page.
+    func writeTabSnapshot(to url: URL) -> Bool {
+        let view = detail.tabContent
+        detail.layoutSubtreeIfNeeded()
+        let bounds = view.bounds
+        guard let rep = SettingsWindowController.retinaRep(bounds.size) else { return false }
+        view.cacheDisplay(in: bounds, to: rep)
         return SettingsWindowController.writeOverBackground(rep, size: bounds.size, appearance: window.effectiveAppearance,
                                                             to: url)
     }
 
     func refreshPreview() { detail.refreshPreview() }
-
-    @objc private func quitClicked() { quitApp?() }
 }
 
-/// The detail side sits one tone apart from the gallery.
+
+/// The page side: the design system's paper ground.
 final class DetailBackgroundView: NSView {
     override func draw(_ dirtyRect: NSRect) {
-        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        (dark ? NSColor(white: 1, alpha: 0.025) : NSColor(white: 0, alpha: 0.025)).setFill()
+        Brand.paper.setFill()
         bounds.fill()
     }
     override func viewDidChangeEffectiveAppearance() {
@@ -242,7 +285,7 @@ final class DetailBackgroundView: NSView {
 /// One-point vertical line in the separator color.
 final class DividerLineView: NSView {
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.separatorColor.setFill()
+        Brand.line.setFill()
         bounds.fill()
     }
     override func viewDidChangeEffectiveAppearance() {

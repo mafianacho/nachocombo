@@ -19,8 +19,7 @@ enum WindowSnapError: Error, CustomStringConvertible {
 final class WindowSnapModule: NSObject, FeatureModule, PermissionPrompting {
     var allowPermissionPrompt = false
     let id = ModuleID.windowSnap
-    static let permissionMessage =
-        "To move windows, allow Nacho Combo in System Settings ▸ Privacy & Security ▸ Accessibility (Monterey: System Preferences ▸ Security & Privacy ▸ Privacy ▸ Accessibility)."
+    static let permissionMessage = "To move windows, allow Nacho Combo in \(GadgetPermission.accessibility.location)."
 
     var optionsProvider: () -> GadgetOptions = { .defaults }
     /// The quick panel can be the frontmost app while the user clicks "apply": this tells which app's window to move.
