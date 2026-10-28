@@ -12,10 +12,15 @@ enum UI {
     /// and no view or window animates), so this only has to stay true: nothing may start moving when it is on.
     static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
-    /// System font from a Human Interface Guidelines text style (follows the user's system type settings).
+    /// The brand's text face (IBM Plex Sans) at the size of a Human Interface Guidelines text style, so it follows the
+    /// user's type settings. Falls back to the system font when the bundled fonts are missing.
     static func font(_ style: NSFont.TextStyle, weight: NSFont.Weight = .regular) -> NSFont {
-        let base = NSFont.preferredFont(forTextStyle: style)
-        return NSFont.systemFont(ofSize: base.pointSize, weight: weight)
+        Brand.body(NSFont.preferredFont(forTextStyle: style).pointSize, weight: weight)
+    }
+
+    /// The system font for native controls (buttons, pop-ups, checkboxes), which stay native.
+    static func controlFont(_ style: NSFont.TextStyle, weight: NSFont.Weight = .regular) -> NSFont {
+        NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: style).pointSize, weight: weight)
     }
 
     static func digitsFont(_ style: NSFont.TextStyle) -> NSFont {
@@ -23,7 +28,7 @@ enum UI {
     }
 
     static func label(_ text: String, style: NSFont.TextStyle = .callout, weight: NSFont.Weight = .regular,
-                      color: NSColor = .labelColor) -> NSTextField {
+                      color: NSColor = Brand.ink) -> NSTextField {
         let f = LiveLabel(labelWithString: text)
         f.font = font(style, weight: weight)
         f.textColor = color
@@ -202,7 +207,7 @@ enum UI {
         b.isBordered = false
         b.contentTintColor = color
         b.attributedTitle = NSAttributedString(string: title, attributes: [
-            .foregroundColor: color, .font: font(.callout)])
+            .foregroundColor: color, .font: font(.callout, weight: .medium)])
         if let symbol = symbol, let image = UI.symbol(symbol, size: NSFont.preferredFont(forTextStyle: .callout).pointSize,
                                                       weight: .semibold) {
             b.image = image
@@ -267,54 +272,42 @@ enum UI {
     }
 }
 
-/// Fixed status colors (sRGB, independent of appearance and vibrancy): the same green / gray / yellow / red looks the
-/// same in the popover and in the settings window, light or dark.
+/// Status colors from the design system: guac = running, nacho-deep = waiting for you, salsa = error, gray = off.
+/// The same in the popover and in the settings window; the state is always said in words too.
 enum DotPalette {
-    static let green = NSColor(srgbRed: 0.204, green: 0.780, blue: 0.349, alpha: 1)    // #34C759
-    static let gray = NSColor(srgbRed: 0.557, green: 0.557, blue: 0.576, alpha: 1)     // #8E8E93
-    static let yellow = NSColor(srgbRed: 1.000, green: 0.800, blue: 0.000, alpha: 1)   // #FFCC00
-    static let red = NSColor(srgbRed: 1.000, green: 0.231, blue: 0.188, alpha: 1)      // #FF3B30
+    static let green = Brand.guac
+    static let gray = Brand.statusOff
+    static let red = Brand.salsa
+    /// "You have to do something": a permission or a setup step. The same color as the gallery badge.
+    static let orange = Brand.nachoDeep
 }
 
-/// Status circle. Green = switched on, gray = off. A yellow (setup/permission) or red (error) circle of the same size
-/// sits half behind the green one (offset = half a diameter, no gap cut out, so the back circle reads as a circle,
-/// not a crescent). It is only a summary: the state is always repeated as text /
+/// Status circle. Gray = off, green = running, orange = switched on but waiting for a permission or setup, red = error.
+/// One circle per state (no overlapping pair), always next to words that say the same: the state is repeated as text /
 /// accessibility value elsewhere. The width is the same for every state, so names and icons line up in every row.
 final class StatusDotView: NSView {
     var kind: StatusDotKind = .off { didSet { needsDisplay = true } }
 
-    static let diameter: CGFloat = 12
-    static let overlapOffset: CGFloat = 6
+    static let diameter: CGFloat = 10
     /// The dot must show its own fixed color, never blend with what is behind it.
     override var allowsVibrancy: Bool { false }
-    static var width: CGFloat { diameter + overlapOffset + 1 }
+    static var width: CGFloat { 14 }
     override var intrinsicContentSize: NSSize { NSSize(width: StatusDotView.width, height: 14) }
     override var isFlipped: Bool { false }
 
-    override func draw(_ dirtyRect: NSRect) {
-        let kind = self.kind
-        let d = StatusDotView.diameter, offset = StatusDotView.overlapOffset
-        // Drawn into an image (resolution independent) so the gap can be cut with .clear without touching the
-        // window's own backing store.
-        let image = NSImage(size: bounds.size, flipped: false) { rect in
-            let y = (rect.height - d) / 2
-            let front = NSRect(x: 0, y: y, width: d, height: d)
-            switch kind {
-            case .off:
-                DotPalette.gray.setFill()
-                NSBezierPath(ovalIn: front).fill()
-            case .on:
-                DotPalette.green.setFill()
-                NSBezierPath(ovalIn: front).fill()
-            case .onNeedsSetup, .onError:
-                (kind == .onError ? DotPalette.red : DotPalette.yellow).setFill()
-                NSBezierPath(ovalIn: front.offsetBy(dx: offset, dy: 0)).fill()
-                DotPalette.green.setFill()
-                NSBezierPath(ovalIn: front).fill()
-            }
-            return true
+    static func color(_ kind: StatusDotKind) -> NSColor {
+        switch kind {
+        case .off: return DotPalette.gray
+        case .on: return DotPalette.green
+        case .onNeedsSetup: return DotPalette.orange
+        case .onError: return DotPalette.red
         }
-        image.draw(in: bounds)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let d = StatusDotView.diameter
+        StatusDotView.color(kind).setFill()
+        NSBezierPath(ovalIn: NSRect(x: (bounds.width - d) / 2, y: (bounds.height - d) / 2, width: d, height: d)).fill()
     }
 }
 
@@ -360,8 +353,22 @@ final class ToolRowView: NSControl {
     func configure(status: ToolStatusPresentation, pinned: Bool, shortcut: ToolShortcut?) {
         dot.kind = status.dot
         pinView.isHidden = !pinned
-        shortcutLabel.textColor = shortcut == nil ? UI.tertiaryText : UI.secondaryText
-        shortcutLabel.setLive(shortcut?.label ?? "Not set")
+        // The slot right of the name says what needs doing; otherwise the open shortcut, if one is set.
+        switch status.dot {
+        case .onNeedsSetup:
+            // The popover is narrow: the permission's name next to the orange dot; the banner above says the sentence.
+            shortcutLabel.textColor = UI.attentionText
+            shortcutLabel.font = UI.font(.subheadline, weight: .semibold)
+            shortcutLabel.setLive(status.waitingFor ?? status.stateText)
+        case .onError:
+            shortcutLabel.textColor = .systemRed
+            shortcutLabel.font = UI.font(.subheadline, weight: .semibold)
+            shortcutLabel.setLive(status.stateText)
+        default:
+            shortcutLabel.textColor = UI.secondaryText
+            shortcutLabel.font = UI.font(.subheadline)
+            shortcutLabel.setLive(shortcut?.label ?? "")
+        }
         let shortcutText = shortcut.map { "open shortcut \($0.label)" } ?? "no open shortcut"
         toolTip = "\(module.displayName) — \(status.stateText)" + (status.detail.map { "\n\($0)" } ?? "")
         setAccessibilityLabel(module.displayName)
@@ -478,24 +485,18 @@ extension UI {
     private static func isDark(_ appearance: NSAppearance) -> Bool {
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
-    static let secondaryText = NSColor(name: nil) { ap in
-        isDark(ap) ? NSColor(white: 1, alpha: 0.74) : NSColor.secondaryLabelColor
-    }
+    /// Secondary and tertiary text: the design system's ink-2 (opaque, readable in the popover and the window).
+    static let secondaryText = Brand.ink2
     static let tertiaryText = NSColor(name: nil) { ap in
-        isDark(ap) ? NSColor(white: 1, alpha: 0.64) : NSColor.tertiaryLabelColor
-    }
-    /// The accent color, lightened in dark so that it keeps its contrast on the dark popover surface.
-    static let linkText = NSColor(name: nil) { ap in
-        var result = NSColor.controlAccentColor
-        ap.performAsCurrentDrawingAppearance {
-            if isDark(ap), let c = NSColor.controlAccentColor.usingColorSpace(.sRGB) {
-                result = c.blended(withFraction: 0.35, of: .white) ?? c
-            } else if let c = NSColor.controlAccentColor.usingColorSpace(.sRGB) {
-                result = c
-            }
-        }
+        var result = Brand.ink2
+        ap.performAsCurrentDrawingAppearance { result = Brand.ink2.withAlphaComponent(isDark(ap) ? 0.8 : 0.85) }
         return result
     }
+    /// Text of "you have to do something": nacho-ink.
+    static let attentionText = Brand.nachoInk
+    static let successText = Brand.guac
+    /// Links: nacho-ink, the brand's text accent.
+    static let linkText = Brand.nachoInk
 
     /// Surface of the pin row inside the popover: one tone step from the popover itself, in light and in dark.
     static let rowSurface = NSColor(name: nil) { appearance in
@@ -524,12 +525,16 @@ final class OutlinedRow: NSStackView {
     }
 }
 
-/// Grouped surface of the settings window: a tone step from the window background, no outline, no shadow.
+/// Grouped surface of the settings window: the design system's paper-2 tint with a line hairline, no shadow.
 final class CardView: NSView {
     override var isOpaque: Bool { false }
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.controlBackgroundColor.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 10, yRadius: 10).fill()
+        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 14, yRadius: 14)
+        Brand.paper2.setFill()
+        shape.fill()
+        Brand.line.setStroke()
+        shape.lineWidth = 1
+        shape.stroke()
     }
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()

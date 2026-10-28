@@ -20,12 +20,46 @@ public enum GadgetPermission: String, CaseIterable {
         }
     }
 
-    /// Where the switch lives (macOS 13+ wording).
-    public var location: String {
+    /// The macOS major version the wording below follows.
+    public static var currentMajor: Int { ProcessInfo.processInfo.operatingSystemVersion.majorVersion }
+
+    /// The app that holds the switches: System Preferences up to macOS 12, System Settings from macOS 13.
+    public static func settingsAppName(major: Int = currentMajor) -> String {
+        major <= 12 ? "System Preferences" : "System Settings"
+    }
+
+    /// The list the switch is in, as macOS names it on that version.
+    public func paneName(major: Int = GadgetPermission.currentMajor) -> String {
         switch self {
-        case .accessibility: return "System Settings ▸ Privacy & Security ▸ Accessibility"
-        case .screenRecording: return "System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording"
-        case .notifications: return "System Settings ▸ Notifications ▸ Nacho Combo"
+        case .accessibility: return "Accessibility"
+        case .screenRecording: return major >= 15 ? "Screen & System Audio Recording" : "Screen Recording"
+        case .notifications: return "Notifications"
+        }
+    }
+
+    /// The way from the settings app to the switch ("Privacy & Security ▸ Accessibility").
+    public func path(major: Int = GadgetPermission.currentMajor) -> String {
+        switch self {
+        case .accessibility, .screenRecording:
+            return (major <= 12 ? "Security & Privacy ▸ Privacy ▸ " : "Privacy & Security ▸ ") + paneName(major: major)
+        case .notifications:
+            return (major <= 12 ? "Notifications & Focus" : "Notifications") + " ▸ Nacho Combo"
+        }
+    }
+
+    /// Where the switch lives on the running macOS, one path only.
+    public func location(major: Int = GadgetPermission.currentMajor) -> String {
+        GadgetPermission.settingsAppName(major: major) + " ▸ " + path(major: major)
+    }
+
+    public var location: String { location() }
+
+    /// The service name `tccutil reset` takes; nil when the permission is not kept in the privacy database.
+    public var tccService: String? {
+        switch self {
+        case .accessibility: return "Accessibility"
+        case .screenRecording: return "ScreenCapture"
+        case .notifications: return nil
         }
     }
 }
@@ -51,6 +85,8 @@ public struct GadgetPermissionNeed: Equatable {
     public let reason: String
     /// Optional permissions only matter for one feature the user turns on.
     public let optional: Bool
+    /// What the gadget does with it, finishing "Window Snap …" ("moves and resizes other apps' windows").
+    public let purpose: String
 }
 
 /// What the gallery's detail pane says about a gadget: one line, its features, the permissions it needs and why,
@@ -64,6 +100,9 @@ public struct GadgetInfo: Equatable {
     /// Shown when `permissions` is empty or only optional: why nothing more is needed.
     public let permissionNote: String
     public let limits: [String]
+
+    /// The permission the gadget cannot run without (optional ones only matter for one feature).
+    public var requiredPermission: GadgetPermission? { permissions.first { !$0.optional }?.permission }
 }
 
 public extension ModuleID {
@@ -125,7 +164,8 @@ public enum GadgetCatalog {
         tips: [t("", "Click an item", "Open its panel"), t("", "Rest on a card", "Open a larger chart beside the panel"),
                t("⎋", "", "Close the panel")],
         permissions: [
-            GadgetPermissionNeed(permission: .notifications, reason: "Only to post alert notifications, if you turn them on.", optional: true),
+            GadgetPermissionNeed(permission: .notifications, reason: "Only to post alert notifications, if you turn them on.", optional: true,
+                                 purpose: "posts alert notifications"),
         ],
         permissionNote: "Readings come from public system statistics; temperatures and fans are read from the SMC without root or a helper.",
         limits: [
@@ -152,7 +192,7 @@ public enum GadgetCatalog {
         permissions: [
             GadgetPermissionNeed(permission: .accessibility,
                                  reason: "To read and change the position and size of other apps' windows, and to follow ⌃⌘-drags.",
-                                 optional: false),
+                                 optional: false, purpose: "moves and resizes other apps' windows"),
         ],
         permissionNote: "",
         limits: [
@@ -201,13 +241,13 @@ public enum GadgetCatalog {
         permissions: [
             GadgetPermissionNeed(permission: .screenRecording,
                                  reason: "To read the pixels of the area you select. macOS 15 and later ask again about once a month.",
-                                 optional: false),
+                                 optional: false, purpose: "reads the pixels of the area you select"),
         ],
         permissionNote: "",
         limits: [
             "The system screenshot shortcuts (⇧⌘3, ⇧⌘4, ⇧⌘5) stay with macOS.",
             "Nothing is recorded or uploaded; captures stay in memory until you save or copy them.",
-            "After allowing Screen Recording, macOS may need the app to restart before captures work.",
+            "After allowing Screen Recording, macOS may need the app to restart before captures work; its page offers the restart.",
         ])
 
     static let dim = GadgetInfo(
@@ -226,4 +266,36 @@ public enum GadgetCatalog {
         permissions: [],
         permissionNote: "No permission needed. Window positions come from the system window list, which is available without a permission; window titles and contents are never read.",
         limits: [])
+}
+
+/// Which step of allowing a permission the gallery shows. macOS never says "the user is in System Settings right now"
+/// or "allowed, waiting for a restart", so the stage is inferred from what the user did here and what is in front.
+public enum PermissionStage: String, Equatable {
+    /// The three steps: open the list, turn on Nacho Combo, come back.
+    case notAllowed
+    /// The user opened the list from here and System Settings is in front.
+    case waiting
+    /// Back from System Settings and still not allowed: Nacho Combo may be on in the list already but not applied.
+    case stillNotAllowed
+    /// Back from Screen Recording and still not allowed: macOS applies it after Nacho Combo restarts.
+    case restartNeeded
+    /// An earlier copy of the app was allowed; this copy is new (an update changes the ad-hoc signature).
+    case updated
+    case allowed
+}
+
+public enum PermissionGuide {
+    /// - Parameters:
+    ///   - visitedSettings: the user opened the permission's list from Nacho Combo since the gadget started waiting.
+    ///   - settingsInFront: System Settings is the frontmost app.
+    ///   - grantedSignature: the code signature of the copy that last had the permission (nil: never seen allowed).
+    ///   - currentSignature: this copy's code signature.
+    public static func stage(granted: Bool, permission: GadgetPermission, visitedSettings: Bool, settingsInFront: Bool,
+                             grantedSignature: String?, currentSignature: String?) -> PermissionStage {
+        if granted { return .allowed }
+        if visitedSettings && settingsInFront { return .waiting }
+        if visitedSettings && permission == .screenRecording { return .restartNeeded }
+        if let old = grantedSignature, let now = currentSignature, old != now { return .updated }
+        return visitedSettings ? .stillNotAllowed : .notAllowed
+    }
 }

@@ -1,8 +1,8 @@
 import AppKit
 import NachoComboCore
 
-/// Orange count bubble on the corner of a gadget icon: how many things about that gadget need the user's attention
-/// (a missing permission, an error, a monitor alert). The detail pane lists them in words.
+/// Orange bubble on the corner of a gadget icon: something about that gadget needs the user (a missing permission, an
+/// error, a monitor alert). One thing shows "!" (the tile says what in words); a number appears only from two on.
 final class BadgeView: NSView {
     var count = 0 { didSet { isHidden = count <= 0; needsDisplay = true } }
     static let size: CGFloat = 22
@@ -12,13 +12,12 @@ final class BadgeView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard count > 0 else { return }
         let ring = bounds.insetBy(dx: 0.5, dy: 0.5)
-        NSColor.windowBackgroundColor.setFill()                       // a cut-out ring separates it from the icon
+        Brand.paper.setFill()                                          // a cut-out ring separates it from the icon
         NSBezierPath(ovalIn: ring).fill()
-        NSColor(srgbRed: 1, green: 0.62, blue: 0.04, alpha: 1).setFill()   // #FF9F0A
+        Brand.nachoDeep.setFill()
         NSBezierPath(ovalIn: ring.insetBy(dx: 2, dy: 2)).fill()
-        let text = count > 9 ? "9+" : "\(count)"
-        Draw.text(text, in: ring, font: NSFont.systemFont(ofSize: 11.5, weight: .bold),
-                  color: NSColor(white: 0.1, alpha: 1), align: .center)
+        let text = count == 1 ? "!" : (count > 9 ? "9+" : "\(count)")
+        Draw.text(text, in: ring, font: Brand.sign(12), color: Brand.onNacho, align: .center)
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -27,13 +26,26 @@ final class BadgeView: NSView {
     }
 }
 
-/// One gadget in the gallery: icon (with attention badge), name, a one-line live status and its on / off switch.
+/// What the status slot of a tile shows. Every kind sits in the same fixed slot, so the icon, the name and the switch
+/// keep their place whatever the state.
+enum TileStatus: Equatable {
+    /// A live line: a shortcut, a count, live numbers, "Off".
+    case text(String)
+    /// Switched on but waiting for something the user has to do: a button that says what ("Allow Accessibility…").
+    case action(String)
+    /// Off, and turning it on will ask for this permission.
+    case locked(String)
+}
+
+/// One gadget in the gallery: icon (with attention badge), name, a one-line status slot and its on / off switch.
 /// Clicking the tile shows the gadget's details; the switch alone turns it on or off.
 final class GadgetTileView: NSView {
     let module: ModuleID
     let toggle = NSSwitch()
     var onSelect: ((ModuleID) -> Void)?
     var onToggle: ((ModuleID, Bool) -> Void)?
+    /// The status slot's button was pressed (it leads to what has to be done).
+    var onAction: ((ModuleID) -> Void)?
     /// Arrow keys move the selection between tiles (dx, dy in grid cells).
     var onMove: ((ModuleID, Int, Int) -> Void)?
 
@@ -42,8 +54,12 @@ final class GadgetTileView: NSView {
 
     private let iconView = NSImageView()
     private let badge = BadgeView()
-    private let nameLabel = UI.label("", style: .headline, weight: .semibold)
+    private let nameLabel = UI.label("", style: .headline, weight: .bold)
     private let subtitleLabel = UI.label("", style: .subheadline, color: UI.secondaryText)
+    private let chip = Chip("", tone: .attention)
+    /// The status slot: subtitle, action chip and lock chip all live inside it.
+    private static let slot = NSRect(x: 6, y: 107, width: GadgetTileView.size.width - 12, height: Chip.height)
+    private var attention = false { didSet { if attention != oldValue { needsDisplay = true } } }
     private var tracking: NSTrackingArea?
     private var hover = false { didSet { needsDisplay = true } }
     var selected = false {
@@ -82,7 +98,9 @@ final class GadgetTileView: NSView {
         nameLabel.frame = NSRect(x: 6, y: 88, width: size.width - 12, height: 20)
         subtitleLabel.alignment = .center
         subtitleLabel.setAccessibilityElement(false)
-        subtitleLabel.frame = NSRect(x: 6, y: 109, width: size.width - 12, height: 17)
+        subtitleLabel.frame = GadgetTileView.slot.insetBy(dx: 0, dy: 1.5)
+        chip.isHidden = true
+        chip.setAccessibilityIdentifier("tile-action-\(module.rawValue)")
 
         toggle.target = self
         toggle.action = #selector(switched)
@@ -91,7 +109,7 @@ final class GadgetTileView: NSView {
         let switchSize = toggle.intrinsicContentSize
         toggle.frame = NSRect(x: (size.width - switchSize.width) / 2, y: 136, width: switchSize.width, height: switchSize.height)
 
-        for view in [iconView, nameLabel, subtitleLabel, toggle, badge] as [NSView] { addSubview(view) }
+        for view in [iconView, nameLabel, subtitleLabel, chip, toggle, badge] as [NSView] { addSubview(view) }
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
@@ -100,29 +118,72 @@ final class GadgetTileView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    func configure(enabled: Bool, subtitle: String, badgeCount: Int, stateText: String) {
+    func configure(enabled: Bool, status: TileStatus, badgeCount: Int, stateText: String) {
         toggle.state = enabled ? .on : .off
-        subtitleLabel.setLive(subtitle)
-        subtitleLabel.toolTip = subtitle
+        let words: String
+        switch status {
+        case .text(let text):
+            words = text
+            subtitleLabel.setLive(text)
+            subtitleLabel.toolTip = text
+            subtitleLabel.isHidden = false
+            chip.isHidden = true
+        case .action(let title):
+            words = title
+            showChip(title, tone: .attention, symbol: nil, press: true)
+        case .locked(let permission):
+            words = "Turning it on asks for \(permission)"
+            showChip(permission, tone: .neutral, symbol: "lock.fill", press: false)
+            chip.toolTip = "Turning it on asks for \(permission)"
+        }
+        attention = { if case .action = status { return true } else { return false } }()
         badge.count = badgeCount
-        let attention = badgeCount > 0 ? ", \(badgeCount) item\(badgeCount == 1 ? "" : "s") need attention" : ""
-        setAccessibilityValue("\(stateText), \(subtitle)\(attention)")
+        let needs = badgeCount > 0 ? ", \(badgeCount) item\(badgeCount == 1 ? "" : "s") need attention" : ""
+        setAccessibilityValue("\(stateText), \(words)\(needs)")
         toolTip = "\(module.displayName) — \(stateText)" + (badgeCount > 0 ? " · \(badgeCount) need attention" : "")
+    }
+
+    private func showChip(_ title: String, tone: Chip.Tone, symbol: String?, press: Bool) {
+        subtitleLabel.isHidden = true
+        chip.title = title
+        chip.tone = tone
+        chip.symbol = symbol
+        chip.onPress = press ? { [weak self] in
+            guard let self = self else { return }
+            self.onSelect?(self.module)
+            self.onAction?(self.module)
+        } : nil
+        chip.toolTip = nil
+        let slot = GadgetTileView.slot
+        let width = min(chip.intrinsicContentSize.width, slot.width)
+        chip.frame = NSRect(x: slot.midX - width / 2, y: slot.minY, width: width, height: slot.height)
+        chip.isHidden = false
+        chip.needsDisplay = true
     }
 
     // MARK: drawing
 
     override func draw(_ dirtyRect: NSRect) {
         let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 14, yRadius: 14)
-        if selected {
-            NSColor.controlAccentColor.withAlphaComponent(0.16).setFill()
+        if attention {
+            // Waiting for the user: a nacho-deep surface, with the keyboard highlight on top when selected.
+            Brand.nachoDeep.withAlphaComponent(selected ? 0.2 : 0.12).setFill()
             shape.fill()
-            NSColor.controlAccentColor.withAlphaComponent(0.85).setStroke()
-            shape.lineWidth = 1.5
+            (selected ? Brand.nachoInk : Brand.nachoDeep.withAlphaComponent(0.65)).setStroke()
+            shape.lineWidth = selected ? 2 : 1.5
+            shape.stroke()
+        } else if selected {
+            Brand.nacho.withAlphaComponent(0.2).setFill()
+            shape.fill()
+            Brand.nachoInk.setStroke()
+            shape.lineWidth = 2
             shape.stroke()
         } else if hover {
-            NSColor.labelColor.withAlphaComponent(0.05).setFill()
+            Brand.paper2.setFill()
             shape.fill()
+            Brand.line.setStroke()
+            shape.lineWidth = 1
+            shape.stroke()
         }
     }
 
@@ -150,10 +211,12 @@ final class GadgetTileView: NSView {
     override func mouseEntered(with event: NSEvent) { hover = true }
     override func mouseExited(with event: NSEvent) { hover = false }
 
+    /// A click opens the gadget's page.
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         onSelect?(module)
     }
+
 
     override func keyDown(with event: NSEvent) {
         if focusRingType != .exterior { focusRingType = .exterior; noteFocusRingMaskChanged() }
@@ -172,13 +235,13 @@ final class GadgetTileView: NSView {
 
     override func accessibilityPerformPress() -> Bool { onSelect?(module); return true }
 
+    /// Flipping the switch stays on the gallery (several gadgets are often switched in a row).
     @objc private func switched() {
-        onSelect?(module)
         onToggle?(module, toggle.state == .on)
     }
 }
 
-/// The gallery: every gadget as a tile, three per row.
+/// The gallery: every gadget as a tile, three per row. The keyboard moves a highlight between tiles; Return opens one.
 final class GadgetGridView: NSView {
     static let columns = 3
     static let spacing: CGFloat = 8
@@ -187,6 +250,7 @@ final class GadgetGridView: NSView {
 
     var onSelect: ((ModuleID) -> Void)? { didSet { tiles.values.forEach { $0.onSelect = onSelect } } }
     var onToggle: ((ModuleID, Bool) -> Void)? { didSet { tiles.values.forEach { $0.onToggle = onToggle } } }
+    var onAction: ((ModuleID) -> Void)? { didSet { tiles.values.forEach { $0.onAction = onAction } } }
 
     static var gridSize: NSSize {
         let rows = (ModuleID.allCases.count + columns - 1) / columns
@@ -215,7 +279,8 @@ final class GadgetGridView: NSView {
     override var isFlipped: Bool { true }
     override var intrinsicContentSize: NSSize { GadgetGridView.gridSize }
 
-    func select(_ id: ModuleID) {
+    /// The keyboard highlight (nil: none, e.g. when the gallery opens).
+    func select(_ id: ModuleID?) {
         for (tileID, tile) in tiles { tile.selected = tileID == id }
     }
 
@@ -224,6 +289,6 @@ final class GadgetGridView: NSView {
         let target = index + dx + dy * GadgetGridView.columns
         guard order.indices.contains(target), let tile = tiles[order[target]] else { return }
         window?.makeFirstResponder(tile)
-        onSelect?(order[target])
+        select(order[target])
     }
 }

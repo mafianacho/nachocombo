@@ -3,19 +3,20 @@
 # Nacho Combo
 
 One macOS menu bar app with six gadgets, each switched on or off on its own: a menu bar organizer, a system monitor,
-window snapping, a file shelf, floating screen captures and focus dimming. No third-party apps, code or brands are used.
+window snapping, a file shelf, floating screen captures and focus dimming. Order them one by one or as a combo. No
+third-party apps, code or brands are used; the brand fonts are open-licensed ([Brand](#brand)).
 
-<img src="docs/images/gallery-dark.png" width="100%" alt="The gadget gallery: six tiles on the left, the System Monitor detail pane on the right">
+<img src="docs/images/gallery-dark.png" width="100%" alt="The settings window: a sidebar with All Gadgets, General, Permissions and the six gadgets, and the gadget gallery with six tiles">
 
-The app lives in the menu bar as its nacho box icon and has no Dock icon. Opening the app shows the **gadget gallery**
-above: every gadget as a tile, and everything about the selected one on the right.
+The app lives in the menu bar as its nacho box icon and has no Dock icon. Opening the app shows the **settings window**
+above: a sidebar on the left and, first, the **gadget gallery** with every gadget as a tile and its switch.
 
 > The screenshots are rendered by the app itself (`scripts/screenshots.sh`). Where a gadget works on other apps'
 > windows, the desktop around it is drawn; System Monitor pictures use sample numbers.
 
 ## Contents
 - [Usage](#usage)
-- [The gadget gallery](#the-gadget-gallery)
+- [The settings window](#the-settings-window) · [Combos](#combos) · [Permissions](#permissions) · [Brand](#brand)
 - [Gadgets](#gadgets): [Menu Bar Organizer](#menu-bar-organizer) · [System Monitor](#system-monitor) ·
   [Window Snap](#window-snap) · [File Shelf](#file-shelf) · [Capture Float](#capture-float) · [Focus Dim](#focus-dim)
 - [Shortcuts](#shortcuts)
@@ -24,40 +25,53 @@ above: every gadget as a tile, and everything about the selected one on the righ
 
 ## Usage
 1. Double-click `NachoCombo.app` (it is ad-hoc signed and not notarized, so the first launch may need right-click ▸ Open).
-2. The gadget gallery opens. Switch on the gadgets you want; select a tile to read about it.
-3. Gadgets that need a permission (Window Snap = Accessibility, Capture Float = Screen Recording) show the OS consent
-   dialog **only at the moment you switch them on yourself**. If you deny it, the detail pane shows the reason and an
-   open-settings button. Re-signing (rebuilding) can invalidate an earlier grant, so you may have to allow it again.
+2. The first launch opens the combo menu ("What's your order?"): order a combo, or switch gadgets on one by one in
+   the gadget gallery. Click a tile to open a gadget's page.
+3. Gadgets that need a permission (Window Snap = Accessibility, Capture Float = Screen Recording) say so on their tile
+   while they are off, explain it in a short sheet when you switch them on, and only then let macOS show its own dialog.
+   Until it is allowed, the gadget's page shows the steps and notices by itself when you have allowed it
+   ([Permissions](#permissions)).
 4. Closing the window keeps the gadgets that are on running. Right-clicking the nacho box in the menu bar ▸ `Settings…`,
-   `Settings…` in its panel, or opening the app again brings it back. `Quit Nacho Combo` cleans up all monitoring,
-   shortcuts and overlays.
-5. Choices are saved automatically and restored on the next launch (no login item is registered).
+   `Settings…` in its panel, or opening the app again brings it back. `Quit Nacho Combo` (General, the panel or the
+   menu) cleans up all monitoring, shortcuts and overlays.
+5. Choices are saved automatically and restored on the next launch. General ▸ Open at Login adds Nacho Combo to Login
+   Items (macOS 13 and later); Show This Window at Launch chooses when the window opens by itself.
 
-## The gadget gallery
+## The settings window
 
-<img src="docs/images/gallery-light.png" width="100%" alt="The gallery in light mode with the File Shelf selected">
+<img src="docs/images/gallery-light.png" width="100%" alt="The Window Snap page in light mode: the header with its switch, the permission card with three steps, and the Settings tab">
 
-**Tiles (left).** Each tile shows the gadget's icon, its name, one live line and its own on / off switch. The line is
-what matters most for that gadget: its main shortcut (`⌃⌥S · Empty`, `⇧⌘2`), live numbers (`CPU 18% · Memory 85%`),
-or its state (`Off`, `Needs Permission`). An orange badge on the icon counts what needs attention: a missing
-permission, an error, a shortcut another app already holds, or a System Monitor alert. The header sums it up
-(`2 on · 1 needs permission`). Arrow keys move between tiles, Space flips the switch.
+The window can be resized; its size and the last page come back next time.
 
-**Detail pane (right).** Selecting a tile shows, from top to bottom:
+**Sidebar.** All Gadgets (the gallery), Combos, General, Permissions (with a count when something needs you), then every gadget
+with its state: green = running, orange = switched on but waiting for you (a permission), red = error, nothing = off.
+↑ / ↓ move between entries.
+
+**All Gadgets.** The yellow lid on top shows what runs, what waits for you and which combo the box is (`Your box: Desk`,
+or `Start from a combo`). Each tile shows the gadget's icon, its name, one status slot and its own on / off switch. The slot holds
+what matters most: its main shortcut (`⌃⌥S · Empty`, `⇧⌘2`), live numbers (`CPU 18% · Memory 85%`), `Off`, a lock with
+the permission it will ask for (`Accessibility`, while off), or, while it waits for one, an orange **Allow
+Accessibility…** button that opens its page. Every state uses the same slot, so the icon, the name and the switch never
+move. An orange badge on the icon says something needs attention (`!` for one thing, a number from two). The header
+counts what runs (`2 running`) and names what waits (`1 needs Accessibility ›`, which opens it). Click a tile to open
+its page; arrow keys move a highlight, Return opens, Space flips the switch.
+
+**A gadget's page.** From top to bottom:
 
 <table>
 <tr>
-<td width="50%" valign="top"><img src="docs/images/detail-window-snap-top.png" alt="Window Snap detail: header, permission notice, preview and the snap layout grid"></td>
+<td width="50%" valign="top"><img src="docs/images/detail-window-snap-top.png" alt="Window Snap page: header with switch, permission card, Settings tab with options"></td>
 <td width="50%" valign="top">
 
-- **Header:** icon, name, one sentence and the real state (`Running`, `Off`, `Needs Permission`).
-- **Notices:** what needs attention, in words, with the buttons that fix it (here: Open Accessibility Settings,
-  Check Again).
-- **Picture:** the gadget at work, drawn by the gadget's own views and following your settings (dim strength, gaps,
-  shortcuts, the shelf's items, live System Monitor numbers once it runs).
-- **Controls:** use it right away. Window Snap offers a grid of 18 layouts applied to the window of the app you used
-  last; the other gadgets have their own buttons and sliders.
-- **Features:** what it can do, one line each.
+- **Header:** icon, name, one sentence, the real state (`Running`, `Off`, `Needs Accessibility`) and its switch.
+- **What to do:** the permission card ([Permissions](#permissions)), a one-time setup step (Menu Bar Organizer:
+  ⌘-drag the icons to hide left of `┊`), and notices (errors, a shortcut another app holds, System Monitor alerts).
+- **Overview:** the gadget at work, drawn by its own views and following your settings; Controls to use it right away
+  (Window Snap's grid of 18 layouts, buttons, sliders; `Turn On` while it is off); Features; Keys and Gestures; Good to
+  Know (what macOS does not allow).
+- **Settings:** its Options (saved at once, with a note when a system setting stands in the way), Menu Bar Access (pin
+  it to the menu bar, a shortcut that opens its controls) and the state of each permission it uses. A gadget that is on
+  opens here; one that is off opens on Overview.
 
 </td>
 </tr>
@@ -65,27 +79,83 @@ permission, an error, a shortcut another app already holds, or a System Monitor 
 
 <table>
 <tr>
-<td width="50%" valign="top"><img src="docs/images/detail-window-snap-shortcuts.png" alt="Shortcut list with key caps"></td>
-<td width="50%" valign="top"><img src="docs/images/detail-window-snap-permissions.png" alt="Keys and gestures, permissions with state, and options"></td>
+<td width="50%" valign="top"><img src="docs/images/detail-window-snap-shortcuts.png" alt="Shortcuts tab: summary, Restore Defaults and groups of key caps"></td>
+<td width="50%" valign="top"><img src="docs/images/permissions.png" alt="The Permissions page: Accessibility, Screen Recording, Notifications and Desktop & Dock tiling with their state"></td>
 </tr>
 <tr>
 <td valign="top">
 
-- **Shortcuts:** every global shortcut of the gadget as key caps. Click one and type a new combination; ⌫ removes it,
-  ↺ brings back the default, Esc cancels. A combination macOS reserves, another action uses, or another app already
-  holds is refused with the reason. "Open in Quick Panel" opens the gadget's screen in the menu bar panel.
+- **Shortcuts:** how many are set, how many another app holds, and `Restore Defaults…` for this gadget. Window Snap's
+  24 are grouped (Halves, Quarters, Thirds, Two Thirds, Size and Position, Displays); a group with a clash opens by
+  itself. Click a key cap field and type a new combination; ⌫ removes it, ↺ brings back the default, Esc cancels. A
+  combination macOS reserves, another action uses, or another app already holds is refused with the reason.
 
 </td>
 <td valign="top">
 
-- **Keys and Gestures:** what works inside the gadget (⌃⌘-drag, Space while selecting, ⌘C on a float...).
-- **Permissions:** each permission it needs, why, where it lives in System Settings and whether it is allowed now;
-  gadgets that need none say why.
-- **Options:** the gadget's choices, saved at once. **Good to Know:** what macOS does not allow.
+- **Permissions:** everything macOS asks you to allow, who uses it and why, its state and the one thing to do; plus
+  the system setting Window Snap depends on (Desktop & Dock tiling, macOS 15 and later).
+- **General:** Open at Login, Show This Window at Launch (Always / When Something Needs You / Never), the dot on the
+  menu bar icon, the settings file, Reset All Settings, the version and Quit.
 
 </td>
 </tr>
 </table>
+
+## Combos
+
+<img src="docs/images/combos.png" width="560" alt="The Combos page: five numbered combos on a dark menu board, and Desk chosen: its tray, what gets easier, what changes in your box and what it asks for">
+
+A combo switches on a few gadgets together and tunes a few options for one way of working. Before you order, the board
+shows what it lights up, what gets easier (with your own shortcuts), what changes in your box and which permissions it
+asks for. Afterwards every gadget is still its own switch; a combo never changes shortcuts.
+
+| Combo | Gadgets | Tunes | Asks for |
+|---|---|---|---|
+| No.1 Starter | Menu Bar Organizer, File Shelf, Focus Dim | Dim strength 40% | Nothing |
+| No.2 Desk | Window Snap, File Shelf, Capture Float | Gap between windows 8 pt | Accessibility, Screen Recording |
+| No.3 Builder | System Monitor, Window Snap, Menu Bar Organizer | Menu bar items: CPU, Memory, Network | Accessibility |
+| No.4 Focus | Focus Dim, Menu Bar Organizer | Dim 60% on every display, collapse after 5 s | Nothing |
+| No.5 Full Combo | All six | Nothing | Accessibility, Screen Recording |
+
+Ordering never raises a system dialog: a gadget whose permission is missing waits under "To finish" with its own
+`Allow …` button, which shows the usual explanation sheet and then macOS's dialog. Right after an order, `Undo` puts
+the box back as it was (switches and settings), for a few minutes or until the next order.
+
+**Your own combos.** Up to five, numbered on from No.6 under "Your combos". `New Combo` starts from the gadgets that are
+on now; `Make Your Own from Desk` starts from a preset. Name it, tap the gadgets in the tray to put them in or take them
+out, and choose the settings it brings for the gadgets in it (gap between windows, dim strength and other displays,
+collapse delay, System Monitor's menu bar items; "Keep as it is" leaves yours alone). What gets easier and what it asks
+for update as you go. A combo of your own can be edited or deleted later; deleting it leaves the gadgets as they are.
+
+**From the menu bar.** The tool list starts with a `Combo` row (which combo the box is). It opens the combo screen: pick
+one to see what it turns on and off and which settings it changes, then `Order`; `Undo` and `Make Your Own…` are there
+too. Right-clicking the nacho box has a `Combo` submenu that orders a combo directly (the current one is checked); a combo
+that still needs a permission continues on the Combos page.
+
+## Permissions
+
+Only two gadgets need a permission, and nothing is asked before you switch one on: Window Snap (Accessibility) and
+Capture Float (Screen Recording). Notifications are optional, for System Monitor alerts.
+
+1. **Before:** a tile that will ask shows a lock and the permission's name while it is off. Switching it on shows a
+   short sheet (what it needs and why, what macOS will show next); `Continue` lets macOS show its own dialog, `Not Now`
+   leaves the gadget off.
+2. **Steps:** until it is allowed, the gadget's page starts with one card: open the list (`Open System Settings` goes
+   straight there; only the path of the running macOS is shown), turn on Nacho Combo (or add it with +), come back.
+   While System Settings is in front the card waits for you.
+3. **Noticed by itself:** while a gadget waits, Nacho Combo checks once a second (for up to 10 minutes at a time) and
+   starts it as soon as macOS allows it; the card says `Accessibility allowed. Window Snap is running.` and, if you came
+   from the card, the window comes back.
+4. **Screen Recording:** macOS often applies it only after the app restarts. Back from System Settings and still not
+   allowed, the card offers `Restart Nacho Combo` (gadgets that are on come back on; floats on screen close).
+5. **After an update:** the app is ad-hoc signed, so macOS treats every build as a new app and the old entry no longer
+   counts, even if its switch still looks on. Nacho Combo remembers which copy had the permission and says so;
+   `Ask Again` removes the old entry (`tccutil reset <service> com.mafianacho.nachocombo`, no administrator needed for
+   its own entry) and asks macOS again.
+
+The menu bar shows it too: an orange dot on the nacho box (General can turn it off), and a line at the top of the tool
+list (`Window Snap needs Accessibility  Allow…`).
 
 ## Gadgets
 
@@ -112,7 +182,7 @@ across `┊`.
 - **Always-hidden section:** a second divider; icons left of it stay hidden even when expanded (opt-in).
 - **Shortcuts** for expand / collapse and for the always-hidden icons (none by default).
 - No permission: the gadget only owns its own items, a divider that grows to push the icons on its left out of view. It
-  never reads, records or moves other apps' icons. If macOS refuses to let the divider grow, the gallery says so and the
+  never reads, records or moves other apps' icons. If macOS refuses to let the divider grow, its page says so and the
   bar stays expanded. Details: [docs/MENUBAR-CONSTRAINTS.md](docs/MENUBAR-CONSTRAINTS.md).
 
 ### System Monitor
@@ -190,7 +260,7 @@ charts memory pressure (or usage) over the chosen period.
     `IOKit/storage/nvme/NVMeSMARTLibExternal.h` (no permission needed). Health = 100 − endurance used. It is read only
     while the disk panel is open, once a minute.
   - The public IP is an external request (`https://www.cloudflare.com/cdn-cgi/trace`), so it is OFF by default. It is
-    requested only from the panel's "Look Up" button or when auto lookup is turned on in the gallery.
+    requested only from the panel's "Look Up" button or when auto lookup is turned on in its Settings.
   - Fan speeds are shown but not controlled (that needs a privileged helper).
 
 ### Window Snap
@@ -235,17 +305,17 @@ A floating shelf to park things while you move between apps. Drop on it, drag ou
 
 Capture part of the screen and keep it floating above your work as a reference.
 
-- **Capture:** ⇧⌘2 then drag an area (the size is shown while you drag); press Space to pick a window instead. The gallery
+- **Capture:** ⇧⌘2 then drag an area (the size is shown while you drag); press Space to pick a window instead. Its page
   and the quick panel also capture the whole screen or the previous area again.
 - **Floats** stay on top on every Space and over full-screen apps, with close ✕, pin 📌, share ⇪ (drag the picture into
   another app) and a resize grip.
 - **Opacity:** scroll over a float to fade it and compare it with what is underneath.
-- **Lock:** make all floats click-through; unlock them from the gallery, the quick panel or a shortcut.
+- **Lock:** make all floats click-through; unlock them from its page, the quick panel or a shortcut.
 - **Copy Text:** recognises text and QR codes in a float (on this Mac, with Vision) and copies them.
 - Needs **Screen Recording**, to read the pixels of the area you select. macOS 15 and later ask again about once a month.
   The system screenshot shortcuts (⇧⌘3, ⇧⌘4, ⇧⌘5) stay with macOS. Nothing is recorded or uploaded.
 
-<img src="docs/images/detail-capture-float-keys.png" width="400" alt="Capture Float detail: keys and gestures, permission state, options and limits">
+<img src="docs/images/detail-capture-float-keys.png" width="400" alt="Capture Float page, Overview: keys and gestures and what macOS does not allow">
 
 ### Focus Dim
 
@@ -254,7 +324,7 @@ Capture part of the screen and keep it floating above your work as a reference.
 Everything behind the window you are working in darkens, so it stands out. The menu bar and Dock stay clear and the
 shade never catches a click; clicking the desktop shows everything.
 
-- **Strength** 10–90 % (slider in the gallery and the quick panel).
+- **Strength** 10–90 % (slider on its page and in the quick panel).
 - **Pause:** ⌃⌥⌘H pauses and resumes dimming without switching the gadget off.
 - **Keep bright:** only the front window, or every window of the active app.
 - **Displays:** dim the other displays too, or only the one you are working on.
@@ -262,7 +332,7 @@ shade never catches a click; clicking the desktop shows everything.
 - No permission: window positions come from the system window list; titles and contents are never read.
 
 ## Shortcuts
-Defaults; every one can be changed or removed in the gallery.
+Defaults; every one can be changed or removed on the gadget's page ▸ Shortcuts.
 
 | Gadget | Default shortcuts |
 |---|---|
@@ -270,41 +340,54 @@ Defaults; every one can be changed or removed in the gallery.
 | File Shelf | ⌃⌥S show / hide (add clipboard: none) |
 | Capture Float | ⇧⌘2 capture area (previous area, window, screen, copy text, lock, hide all, close all: none) |
 | Focus Dim | ⌃⌥⌘H pause / resume |
-| Menu Bar Organizer, System Monitor | none (expand / collapse, show always-hidden, open a panel: assign in the gallery) |
+| Menu Bar Organizer, System Monitor | none (expand / collapse, show always-hidden, open a panel: assign on the gadget's page) |
 
 Shortcuts are registered only while their gadget runs. A shortcut must use two modifiers (one with a function key), must
 not be a macOS combination (⇧⌘3 / 4 / 5, ⌘Space, ⌃↑...) and must not be in use by another action or open shortcut.
-When another app already holds a combination, the gallery says so and keeps the previous shortcut.
+When another app already holds a combination, the gadget's page says so and keeps the previous shortcut.
 
 ## Quick panel (menu bar)
 
 <table>
 <tr>
-<td width="50%" valign="top"><img src="docs/images/quick-panel.png" alt="The tool list in the menu bar panel"></td>
-<td width="50%" valign="top"><img src="docs/images/quick-panel-capture-float.png" alt="The Capture Float screen in the menu bar panel"></td>
+<td width="33%" valign="top"><img src="docs/images/quick-panel.png" alt="The tool list in the menu bar panel, with the Combo row first"></td>
+<td width="33%" valign="top"><img src="docs/images/quick-panel-combos.png" alt="The combo screen in the menu bar panel: the combos, what the picked one changes and its Order button"></td>
+<td width="33%" valign="top"><img src="docs/images/quick-panel-capture-float.png" alt="The Capture Float screen in the menu bar panel"></td>
 </tr>
 </table>
 
-- Clicking the nacho box in the menu bar opens the **tool list** (left). Each row shows a status dot, the tool's symbol
-  and name, its open-screen shortcut (`Not set` when there is none) and `›`. Clicking a tool switches the same popover to
+- Clicking the nacho box in the menu bar opens the **tool list** (left). Its first row, `Combo`, opens the combo
+  screen (middle, [Combos](#combos)). Each tool row shows a status dot, the tool's symbol
+  and name, its open-screen shortcut (only when one is set) and `›`. Clicking a tool switches the same popover to
   its **control screen** (right); `‹ All Tools` or Esc goes back.
-- Status dot: green = switched on by you, gray = off. When a tool is on but needs a permission or more setup, a yellow
-  dot half overlaps the green one (red for an error). The control screen always says it in words as well
-  (`Running / Needs Permission / Error`).
+- Status dot: green = running, gray = off, orange = switched on but waiting for a permission, red = error. The row
+  names what it waits for (`Accessibility`), a line at the top of the list says it in a sentence with an `Allow…`
+  button, and the control screen says it in words as well (`Running / Needs Accessibility / Error`).
 - Control screens: Menu Bar Organizer (collapse / expand, show always-hidden), System Monitor (CPU, memory and network
   figures), Window Snap (the layout grid), File Shelf (open / close, add clipboard, item count), Capture Float (area,
-  window, screen, previous area, lock, close all), Focus Dim (strength, pause). `Settings…` opens the gallery on that
+  window, screen, previous area, lock, close all), Focus Dim (strength, pause). `Settings…` opens the settings window on that
   gadget.
 - **Pin to the menu bar** per tool: a pinned tool gets its own menu bar icon that opens its control screen directly.
   Pinning is separate from on / off and never asks for a permission.
-- **Open-screen shortcut** per tool (set in the gallery): it only opens the tool's control screen. It needs at least two
+- **Open-screen shortcut** per tool (set on its page ▸ Settings ▸ Menu Bar Access): it only opens the tool's control screen. It needs at least two
   modifiers including ⌃ or ⌥ (one for F-keys) and must not clash with an action shortcut or a macOS combination.
+
+## Brand
+
+The look follows the Nacho Combo design system: the box yellow and brown ink of the app icon, a dark menu board for
+combos, guac green for running, nacho orange for "you have to do something" and salsa red for errors, all in light and
+dark. Type: Anton for the brand's loud lines (the name, combo names and numbers), IBM Plex Sans for text, IBM Plex Mono
+for labels. Native controls (switches, pop-ups, checkboxes, text fields) keep the system font. The fonts ship in
+`Resources/Fonts` under the SIL Open Font License 1.1 (`Anton-OFL.txt`, `IBMPlex-OFL.txt`) and are registered at launch;
+without them the system font is used.
 
 ## Settings and the OFF contract
 - Target: macOS 12 (Monterey) or later, Swift 5.5+ (Package.swift `platforms: .macOS(.v12)`).
 - Settings: `~/Library/Application Support/NachoCombo/settings.json` (everything is OFF by default; includes the dim
-  strength `dimIntensity`, the gadget `options`, `pinnedTools`, `toolShortcuts` and `actionShortcuts`). Settings files
-  from earlier versions still load.
+  strength `dimIntensity`, the gadget `options`, `pinnedTools`, `toolShortcuts`, `actionShortcuts`, `launchWindow`,
+  `menuBarAttentionDot`, `dismissedHints`, `combo` (the combo last ordered), `customCombos` (your own combos) and
+  `permissionGrants`, the code signature of the copy that last had each permission). Settings files from earlier versions still load. The window's size and last page are kept in the app's
+  user defaults.
 - OFF contract: a gadget's `stop()` releases all of its timers, monitors, event taps and status items, and its action
   shortcuts are unregistered. Counters for checking this are written to `state.json` in the same folder.
 
@@ -333,10 +416,15 @@ When another app already holds a combination, the gallery says so and keeps the 
   `ctl capture select|window|screen|previous|text|lock|hide|closeall|rect x y w h`,
   `ctl float pin|unpin|close|copy|text|lock|unlock|width|opacity|save <i> [arg]`, `ctl dim intensity <0.1-0.9>|pause|refresh`,
   `ctl pin <module> on|off`, `ctl shortcut <module> <keyCode> <carbonMods>|clear`, `ctl panel list|tool <module>|back|close`,
-  `ctl appearance dark|light|system`, `ctl dump`, `ctl quit`. Prints the state JSON (the `ui` section holds the panel,
+  `ctl appearance dark|light|system`, `ctl relaunch`, `ctl dump`, `ctl quit`. Prints the state JSON (the `ui` section holds the panel,
   gallery, pin and shortcut state). Not meant for release use.
-  - Gallery: `ctl gallery select <module>`, `ctl gallery sample on|off` (pictures with sample data),
-    `ctl gallery detail <file.png>` (the whole detail pane), `ctl gallery preview <module> <file.png> [light]`,
+  - Settings window: `ctl gallery select <module>`, `ctl gallery page home|general|permissions|<module>`,
+    `ctl gallery tab overview|settings|shortcuts`, `ctl gallery page combos`, `ctl combo select|order|edit <id>`,
+    `ctl combo new [preset]`, `ctl combo save`, `ctl combo undo`, `ctl combo welcome on|off`, `ctl panel combos`, `ctl gallery sample on|off` (pictures with sample data),
+    `ctl gallery detail <file.png>` (the whole page), `ctl gallery content <file.png>` (the shown tab only),
+    `ctl gallery preview <module> <file.png> [light]`,
+    `ctl permstage accessibility|screenRecording <notAllowed|waiting|stillNotAllowed|restartNeeded|updated|auto>`
+    (shows a permission card stage), `ctl allowed <module>` (the "allowed" confirmation),
     `ctl settings snapshot <file.png>`, `ctl snapshot panel <file.png>`.
   - System Monitor: `ctl monitor show cpu|memory|disk|network|sensors|battery`, `ctl monitor hide`,
     `ctl monitor items cpu,network`, `ctl monitor range <cpu|disk|network|power|battery|flyout.*> <600|3600|10800|86400>`,

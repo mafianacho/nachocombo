@@ -11,8 +11,8 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
 
     var allowPermissionPrompt = false
     let id = ModuleID.captureFloat
-    static let permissionMessage =
-        "To capture the screen, allow Nacho Combo in System Settings ▸ Privacy & Security ▸ Screen Recording (Monterey: System Preferences ▸ Security & Privacy ▸ Screen Recording). The app may need a restart before it applies."
+    static let permissionMessage = "To capture the screen, allow Nacho Combo in "
+        + "\(GadgetPermission.screenRecording.location). macOS may need Nacho Combo to restart before it applies."
 
     var optionsProvider: () -> GadgetOptions = { .defaults }
     private(set) var floats: [FloatingCaptureWindow] = []
