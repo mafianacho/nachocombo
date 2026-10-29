@@ -18,14 +18,16 @@ public struct ComboTuning: Equatable, Codable {
     public var autoCollapseSeconds: Int?
     public var dimOtherDisplays: Bool?
     public var monitorItems: [MonitorItem]?
+    public var keepAwakeDisplay: Bool?
 
     public init(dimIntensity: Double? = nil, snapGap: Int? = nil, autoCollapseSeconds: Int? = nil,
-                dimOtherDisplays: Bool? = nil, monitorItems: [MonitorItem]? = nil) {
+                dimOtherDisplays: Bool? = nil, monitorItems: [MonitorItem]? = nil, keepAwakeDisplay: Bool? = nil) {
         self.dimIntensity = dimIntensity
         self.snapGap = snapGap
         self.autoCollapseSeconds = autoCollapseSeconds
         self.dimOtherDisplays = dimOtherDisplays
         self.monitorItems = monitorItems
+        self.keepAwakeDisplay = keepAwakeDisplay
     }
 
     /// Writes the tuned values into the settings.
@@ -34,6 +36,7 @@ public struct ComboTuning: Equatable, Codable {
         if let v = snapGap { settings.options.snapGap = v }
         if let v = autoCollapseSeconds { settings.options.autoCollapseSeconds = v }
         if let v = dimOtherDisplays { settings.options.dimOtherDisplays = v }
+        if let v = keepAwakeDisplay { settings.options.keepAwakeDisplay = v }
         if let items = monitorItems {
             var monitor = settings.monitorSettings
             for item in MonitorItem.allCases { monitor.setShown(item, items.contains(item)) }
@@ -59,6 +62,9 @@ public struct ComboTuning: Equatable, Codable {
         if let v = dimOtherDisplays, settings.options.dimOtherDisplays != v {
             lines.append(v ? "Dim the other displays too" : "Dim only the display you work on")
         }
+        if let v = keepAwakeDisplay, settings.options.keepAwakeDisplay != v {
+            lines.append(v ? "Keep Awake keeps the display on too" : "Keep Awake lets the display sleep")
+        }
         if let items = monitorItems, settings.monitorSettings.shownItems != MonitorItem.allCases.filter({ items.contains($0) }) {
             lines.append("Menu bar items: " + items.map { $0.displayName }.joined(separator: ", "))
         }
@@ -78,7 +84,7 @@ public struct Combo: Equatable {
     public let gadgets: [ModuleID]
     public let moments: [ComboMoment]
     public let tuning: ComboTuning
-    /// Made by the user (it can be edited and deleted); the five numbered presets are not.
+    /// Made by the user (it can be edited and deleted); the numbered presets are not.
     public let isCustom: Bool
 
     public init(id: String, number: Int, name: String, line: String, who: String, gadgets: [ModuleID],
@@ -94,9 +100,13 @@ public struct Combo: Equatable {
         self.isCustom = isCustom
     }
 
-    /// The permissions ordering will ask for (in gadget order), one per gadget that needs one.
+    /// The permissions ordering will ask for, in gadget order, each once (several gadgets can share one).
     public var permissions: [GadgetPermission] {
-        gadgets.compactMap { $0.info.requiredPermission }
+        var seen: [GadgetPermission] = []
+        for permission in gadgets.compactMap({ $0.info.requiredPermission }) where !seen.contains(permission) {
+            seen.append(permission)
+        }
+        return seen
     }
 }
 
@@ -124,7 +134,7 @@ public enum ComboCatalog {
         ComboMoment(module: module, actions: actions, gesture: gesture, result: result)
     }
 
-    /// The five numbered combos that come with the app.
+    /// The numbered combos that come with the app.
     public static let presets: [Combo] = [
         Combo(id: "starter", number: 1, name: "Starter", line: "Try the box without allowing anything.",
               who: "For a first taste: three gadgets that need no permission.",
@@ -155,7 +165,21 @@ public enum ComboCatalog {
                         m(.focusDim, ["dim.toggle"], "", "Pause dimming for a moment"),
                         m(.menuBar, [], "Leave the menu bar", "Its icons fold away after 5 seconds")],
               tuning: ComboTuning(dimIntensity: 0.6, autoCollapseSeconds: 5, dimOtherDisplays: true)),
-        Combo(id: "full", number: 5, name: "Full Combo", line: "Everything in the box.",
+        Combo(id: "meeting", number: 5, name: "Meeting", line: "Ready for the call before it starts.",
+              who: "For days full of video calls: the meeting, the mic and the screen in one place.",
+              gadgets: [.calendarClock, .deviceControl, .keepAwake],
+              moments: [m(.calendarClock, [], "Click Join", "Open the next meeting's link from the menu bar"),
+                        m(.deviceControl, ["device.micMute"], "", "Mute the microphone from any app"),
+                        m(.keepAwake, [], "Click the cup", "The screen stays on while you talk")],
+              tuning: ComboTuning(keepAwakeDisplay: true)),
+        Combo(id: "presenter", number: 6, name: "Presenter", line: "A clean screen to share.",
+              who: "For demos and talks: no clutter, no sleep, all eyes on one window.",
+              gadgets: [.menuBar, .focusDim, .keepAwake],
+              moments: [m(.menuBar, [], "Click ‹", "Hide the menu bar clutter before you share"),
+                        m(.keepAwake, [], "Click the cup", "No sleep in the middle of a demo"),
+                        m(.focusDim, [], "Switch windows", "Only the window you show stays bright")],
+              tuning: ComboTuning(dimIntensity: 0.7, autoCollapseSeconds: 0, dimOtherDisplays: true)),
+        Combo(id: "full", number: 7, name: "Full Combo", line: "Everything in the box.",
               who: "For anyone who installs all of these on every new Mac.",
               gadgets: ModuleID.allCases,
               moments: [m(.windowSnap, [GadgetActions.snapID(.left)], "", "Put the front window on the left half"),
@@ -166,7 +190,7 @@ public enum ComboCatalog {
 
     public static func combo(_ id: String) -> Combo? { presets.first { $0.id == id } }
 
-    /// Every combo the user can order: the presets, then their own (numbered on from No.6).
+    /// Every combo the user can order: the presets, then their own (numbered on after the presets).
     public static func combos(_ settings: AppSettings) -> [Combo] {
         presets + settings.customCombos.enumerated().map { custom($1, index: $0) }
     }
@@ -193,10 +217,16 @@ public enum ComboCatalog {
     /// What gets easier with each gadget when the user makes their own combo, most telling first.
     private static let defaultMoments: [ComboMoment] = [
         m(.windowSnap, [GadgetActions.snapID(.left)], "", "Put the front window on the left half"),
+        m(.clipboard, ["clipboard.show"], "", "Paste something you copied an hour ago"),
         m(.captureFloat, ["capture.area"], "", "Float a piece of the screen above your work"),
+        m(.appSwitch, ["appSwitch.next"], "", "Jump to any window, not only to apps"),
         m(.fileShelf, [], "Shake while dragging", "A tray opens under the pointer"),
+        m(.deviceControl, ["device.micMute"], "", "Mute the microphone from any app"),
+        m(.calendarClock, [], "Click Join", "Open the next meeting's link from the menu bar"),
         m(.systemMonitor, [], "Glance at the menu bar", "CPU, memory and network, live"),
+        m(.keepAwake, [], "Click the cup", "The Mac stays awake until you say so"),
         m(.focusDim, [], "Switch windows", "Everything behind the active window dims"),
+        m(.mouseTune, [], "Turn the wheel", "Smooth scrolling, in the direction you like"),
         m(.menuBar, [], "Click ‹", "Fold away the menu bar icons you rarely need"),
     ]
 

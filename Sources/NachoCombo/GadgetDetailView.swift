@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import NachoComboCore
 
 /// Live controls the detail pane offers (they act right away, they are not settings).
@@ -8,7 +9,15 @@ enum GadgetCommand: Equatable {
     case snap(SnapAction)
     case toggleShelf, pasteToShelf, clearShelf
     case captureArea, captureWindow, captureScreen, capturePrevious, lockFloats, hideFloats, closeFloats
-    case toggleDimPause
+    case toggleDimPause, toggleFocusSession
+    case saveLayout, restoreLayout
+    case toggleRecording, pickColor, liveWindow
+    case toggleKeepAwake, keepAwakeFor(Int)
+    case showClipboard, clearClipboard
+    case toggleMic, nextOutput, selectOutput(String), selectInput(String), setVolume(Double), setBrightness(Int, Int)
+    case hideOtherApps
+    case toggleMouseReverse
+    case showCalendar, joinNextMeeting
 }
 
 /// What the gallery needs from the app: live state of every gadget and the actions behind its controls.
@@ -55,6 +64,12 @@ protocol GadgetHost: AnyObject {
     func gadgetOpenDesktopSettings()
     /// The settings window, for confirmation sheets.
     var gadgetWindow: NSWindow? { get }
+    /// Device Control's devices and displays, for its controls (empty while it is off).
+    func gadgetDevices() -> DeviceSnapshot
+    /// Whether a toggle is on now (awake, muted, recording, in a session) and whether the command can run now.
+    func gadgetCommandState(_ command: GadgetCommand) -> (on: Bool, enabled: Bool)
+    /// Gives an app (App Switch) a shortcut, or removes it; returns an error message when refused.
+    func gadgetSetAppShortcut(_ bundleID: String, _ shortcut: ToolShortcut?) -> String?
 }
 
 /// The three parts of a gadget's page. Overview is for getting to know it, Settings for changing it, Shortcuts for keys.
@@ -204,6 +219,12 @@ final class GadgetDetailView: NSView {
         case .fileShelf: return ("Side · when you drag", Brand.nachoInk)
         case .captureFloat: return ("Side · for reference", Brand.nachoInk)
         case .focusDim: return ("Sauce · set and forget", Brand.salsa)
+        case .clipboard: return ("Main · every day", Brand.guac)
+        case .appSwitch: return ("Main · every day", Brand.guac)
+        case .calendarClock: return ("Main · always in sight", Brand.guac)
+        case .keepAwake: return ("Side · for long tasks", Brand.nachoInk)
+        case .deviceControl: return ("Side · for calls", Brand.nachoInk)
+        case .mouseTune: return ("Sauce · set and forget", Brand.salsa)
         }
     }
 
@@ -388,6 +409,25 @@ final class GadgetDetailView: NSView {
         return b
     }
 
+    /// A button for a command that is on or off (Keep Awake, mute, record…): its title follows the state.
+    private func toggleButton(_ off: String, _ on: String, symbol: String? = nil, _ command: GadgetCommand) -> NSButton {
+        let b = UI.pushButton(off, symbol: symbol) { [weak self] in self?.host?.gadgetPerform(command) }
+        refreshers.append { [weak self, weak b] in
+            guard let self = self, let host = self.host, let b = b else { return }
+            let state = host.gadgetCommandState(command)
+            b.title = state.on ? on : off
+            b.isEnabled = self.running(self.module) && state.enabled
+        }
+        return b
+    }
+
+    private func commandButton(_ title: String, symbol: String? = nil, _ command: GadgetCommand) -> NSButton {
+        button(title, symbol: symbol, command) { [weak self] in
+            guard let self = self, let host = self.host else { return false }
+            return self.running(self.module) && host.gadgetCommandState(command).enabled
+        }
+    }
+
     private func controlRows(for id: ModuleID) -> [NSView] {
         var rows: [NSView] = []
         statusLine.stringValue = ""
@@ -424,6 +464,8 @@ final class GadgetDetailView: NSView {
             rows.append(row([grid, UI.spacer()]))
             rows.append(UI.wrapLabel("Applies to the front window of the app you used last.", width: GadgetDetailView.cardInner,
                                      style: .subheadline))
+            rows.append(row([commandButton("Save Layout", symbol: "square.and.arrow.down", .saveLayout),
+                             commandButton("Restore Layout", symbol: "arrow.uturn.backward", .restoreLayout), UI.spacer()]))
         case .fileShelf:
             rows.append(row([button("Show / Hide Shelf", symbol: "tray", .toggleShelf, enabled: on),
                              button("Add Clipboard", symbol: "doc.on.clipboard", .pasteToShelf, enabled: on),
@@ -436,6 +478,9 @@ final class GadgetDetailView: NSView {
             rows.append(row([button("Lock / Unlock", symbol: "lock", .lockFloats, enabled: on),
                              button("Hide / Show", symbol: "eye.slash", .hideFloats, enabled: on),
                              button("Close All", symbol: "xmark", .closeFloats, enabled: on), UI.spacer()]))
+            rows.append(row([toggleButton("Record", "Stop Recording", symbol: "record.circle", .toggleRecording),
+                             button("Pick a Color", symbol: "eyedropper", .pickColor, enabled: on),
+                             button("Live Window", symbol: "play.rectangle", .liveWindow, enabled: on), UI.spacer()]))
         case .focusDim:
             let slider = NSSlider(value: host?.gadgetManager.settings.dimIntensity ?? FocusDimLogic.defaultIntensity,
                                   minValue: FocusDimLogic.minimumIntensity, maxValue: FocusDimLogic.maximumIntensity,
@@ -462,6 +507,123 @@ final class GadgetDetailView: NSView {
             value.setContentCompressionResistancePriority(.required, for: .horizontal)
             rows.append(row([strength, slider, value, UI.spacer(),
                              button("Pause", symbol: "pause.circle", .toggleDimPause, enabled: on)]))
+            rows.append(row([toggleButton("Start Focus Session", "Stop Focus Session", symbol: "timer", .toggleFocusSession),
+                             UI.spacer()]))
+        case .keepAwake:
+            let duration = NSPopUpButton(frame: .zero, pullsDown: true)
+            duration.addItem(withTitle: "Keep Awake For…")
+            for minutes in GadgetOptions.keepAwakeChoices {
+                duration.menu?.addItem(ClosureMenuItem(title: KeepAwakePolicy.durationName(minutes)) { [weak self] in
+                    self?.host?.gadgetPerform(.keepAwakeFor(minutes))
+                })
+            }
+            duration.font = UI.controlFont(.callout)
+            refreshers.append { [weak duration] in duration?.isEnabled = on() }
+            rows.append(row([toggleButton("Keep Awake", "Let It Sleep", symbol: "cup.and.saucer", .toggleKeepAwake), duration,
+                             UI.spacer()]))
+        case .clipboard:
+            rows.append(row([button("Show History", symbol: "list.bullet.rectangle", .showClipboard, enabled: on),
+                             button("Clear History", symbol: "trash", .clearClipboard, enabled: on), UI.spacer()]))
+            rows.append(UI.wrapLabel("Pinned items stay when you clear the history or quit.", width: GadgetDetailView.cardInner,
+                                     style: .subheadline))
+        case .deviceControl:
+            rows.append(contentsOf: deviceRows())
+        case .appSwitch:
+            rows.append(row([button("Hide Other Apps", symbol: "eye.slash", .hideOtherApps, enabled: on), UI.spacer()]))
+            let keys = host?.gadgetManager.settings.shortcut(forAction: "appSwitch.next")?.label ?? "the switcher shortcut"
+            rows.append(UI.wrapLabel("Hold \(keys.replacingOccurrences(of: "Tab", with: "")) and press Tab to go through your windows; "
+                                     + "let go to switch. Give apps their own shortcuts on the Shortcuts tab.",
+                                     width: GadgetDetailView.cardInner, style: .subheadline))
+        case .mouseTune:
+            rows.append(row([toggleButton("Reverse the Wheel", "Natural Wheel", symbol: "arrow.up.arrow.down", .toggleMouseReverse),
+                             UI.spacer()]))
+            rows.append(UI.wrapLabel("Only wheel mice change; trackpads and Magic Mouse keep the system settings.",
+                                     width: GadgetDetailView.cardInner, style: .subheadline))
+        case .calendarClock:
+            rows.append(row([button("Show Calendar", symbol: "calendar", .showCalendar, enabled: on),
+                             commandButton("Join Next Call", symbol: "video", .joinNextMeeting), UI.spacer()]))
+        }
+        return rows
+    }
+
+    /// Output and input devices, the microphone switch and one brightness slider per external display.
+    private func deviceRows() -> [NSView] {
+        var rows: [NSView] = []
+        let devices = host?.gadgetDevices() ?? DeviceSnapshot()
+        let output = NSPopUpButton(frame: .zero, pullsDown: false)
+        let input = NSPopUpButton(frame: .zero, pullsDown: false)
+        for popup in [output, input] {
+            popup.font = UI.controlFont(.callout)
+            popup.translatesAutoresizingMaskIntoConstraints = false
+            popup.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        }
+        output.setAccessibilityLabel("Sound output")
+        input.setAccessibilityLabel("Microphone")
+        var shownOutputs: [String] = [], shownInputs: [String] = []
+        let volume = NSSlider(value: devices.volume ?? 0.5, minValue: 0, maxValue: 1, target: nil, action: nil)
+        volume.isContinuous = true
+        volume.translatesAutoresizingMaskIntoConstraints = false
+        volume.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        volume.setAccessibilityLabel("Volume")
+        let volumeTarget = SliderTarget { [weak self] v in self?.host?.gadgetPerform(.setVolume(v)) }
+        volume.target = volumeTarget
+        volume.action = #selector(SliderTarget.changed(_:))
+        objc_setAssociatedObject(volume, &SliderTarget.key, volumeTarget, .OBJC_ASSOCIATION_RETAIN)
+        refreshers.append { [weak self, weak output, weak input, weak volume] in
+            guard let self = self, let host = self.host, let output = output, let input = input else { return }
+            let now = host.gadgetDevices()
+            func fill(_ popup: NSPopUpButton, _ list: [(uid: String, name: String)], _ shown: inout [String],
+                      _ make: @escaping (String) -> GadgetCommand) {
+                if shown != list.map({ $0.uid }) {
+                    shown = list.map { $0.uid }
+                    popup.removeAllItems()
+                    for device in list {
+                        popup.menu?.addItem(ClosureMenuItem(title: device.name) { [weak self] in
+                            self?.host?.gadgetPerform(make(device.uid))
+                        })
+                    }
+                    if list.isEmpty { popup.addItem(withTitle: "None") }
+                }
+            }
+            fill(output, now.outputs, &shownOutputs) { .selectOutput($0) }
+            fill(input, now.inputs, &shownInputs) { .selectInput($0) }
+            if let index = now.outputs.firstIndex(where: { $0.uid == now.output }) { output.selectItem(at: index) }
+            if let index = now.inputs.firstIndex(where: { $0.uid == now.input }) { input.selectItem(at: index) }
+            let on = self.running(.deviceControl)
+            output.isEnabled = on && !now.outputs.isEmpty
+            input.isEnabled = on && !now.inputs.isEmpty
+            volume?.isEnabled = on && now.volume != nil
+            if let v = now.volume, NSApp.currentEvent?.type != .leftMouseDragged { volume?.doubleValue = v }
+        }
+        let outputLabel = UI.label("Sound Output", style: .callout)
+        rows.append(row([outputLabel, UI.spacer(), output]))
+        rows.append(row([UI.label("Volume", style: .callout), UI.spacer(), volume]))
+        rows.append(row([UI.label("Microphone", style: .callout), UI.spacer(), input]))
+        rows.append(row([toggleButton("Mute Microphone", "Unmute Microphone", symbol: "mic.slash", .toggleMic),
+                         commandButton("Next Output", symbol: "hifispeaker", .nextOutput), UI.spacer()]))
+        if devices.displays.isEmpty {
+            rows.append(UI.wrapLabel(running(.deviceControl)
+                                     ? "No external display answers brightness commands. Monitors that accept DDC/CI show here."
+                                     : "External display brightness shows here while Device Control is on.",
+                                     width: GadgetDetailView.cardInner, style: .subheadline))
+        }
+        for display in devices.displays {
+            let slider = NSSlider(value: Double(display.brightness), minValue: 0, maxValue: 100, target: nil, action: nil)
+            slider.isContinuous = false
+            slider.translatesAutoresizingMaskIntoConstraints = false
+            slider.widthAnchor.constraint(equalToConstant: 160).isActive = true
+            slider.setAccessibilityLabel("\(display.name) brightness")
+            let target = SliderTarget { [weak self] v in self?.host?.gadgetPerform(.setBrightness(display.index, Int(v.rounded()))) }
+            slider.target = target
+            slider.action = #selector(SliderTarget.changed(_:))
+            objc_setAssociatedObject(slider, &SliderTarget.key, target, .OBJC_ASSOCIATION_RETAIN)
+            refreshers.append { [weak self, weak slider] in
+                guard let now = self?.host?.gadgetDevices().displays.first(where: { $0.index == display.index }) else { return }
+                if NSApp.currentEvent?.type != .leftMouseDragged { slider?.doubleValue = Double(now.brightness) }
+            }
+            let name = UI.label(display.name, style: .callout)
+            name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            rows.append(row([UI.symbolView("sun.max", size: 13, tint: UI.secondaryText), name, UI.spacer(), slider]))
         }
         return rows
     }
@@ -628,8 +790,169 @@ final class GadgetDetailView: NSView {
             rows.append(popup("Fade", choices: GadgetOptions.fadeChoices.map {
                 ($0 == 0 ? "Off" : String(format: "%g s", $0), $0)
             }, get: { $0.dimFadeSeconds }, set: { $0.dimFadeSeconds = $1 }))
+            rows.append(popup("Focus Session", choices: GadgetOptions.focusChoices.map { ("\($0) Minutes", $0) },
+                              get: { $0.focusMinutes }, set: { $0.focusMinutes = $1 }))
+            rows.append(popup("Break After It", choices: GadgetOptions.breakChoices.map { ($0 == 0 ? "None" : "\($0) Minutes", $0) },
+                              get: { $0.breakMinutes }, set: { $0.breakMinutes = $1 }))
+            rows.append(checkbox("Dim only during a focus session", get: { $0.dimOnlyInSession },
+                                 set: { $0.dimOnlyInSession = $1 }))
+            rows.append(shortcutPicker("Run a Shortcut When It Starts", get: { $0.sessionStartShortcut },
+                                       set: { $0.sessionStartShortcut = $1 }))
+            rows.append(shortcutPicker("Run a Shortcut When It Ends", get: { $0.sessionEndShortcut },
+                                       set: { $0.sessionEndShortcut = $1 }))
+        case .keepAwake:
+            rows.append(popup("A Click Keeps It Awake", choices: GadgetOptions.keepAwakeChoices.map {
+                (KeepAwakePolicy.durationName($0), $0)
+            }, get: { $0.keepAwakeMinutes }, set: { $0.keepAwakeMinutes = $1 }))
+            rows.append(checkbox("Keep the display on too", get: { $0.keepAwakeDisplay }, set: { $0.keepAwakeDisplay = $1 }))
+            rows.append(checkbox("Only while on the power adapter", get: { $0.keepAwakePowerOnly },
+                                 set: { $0.keepAwakePowerOnly = $1 }))
+            rows.append(popup("Battery Guard", choices: GadgetOptions.batteryFloorChoices.map {
+                ($0 == 0 ? "Off" : "Sleep Below \($0)%", $0)
+            }, get: { $0.keepAwakeBatteryFloor }, set: { $0.keepAwakeBatteryFloor = $1 }))
+            rows.append(appList("Stay Awake While These Apps Run", ids: options.keepAwakeApps) { list, options in
+                options.keepAwakeApps = list
+            })
+        case .clipboard:
+            rows.append(popup("Remember", choices: GadgetOptions.clipboardLimitChoices.map { ("\($0) Items", $0) },
+                              get: { $0.clipboardLimit }, set: { $0.clipboardLimit = $1 }))
+            rows.append(checkbox("Keep images too", get: { $0.clipboardImages }, set: { $0.clipboardImages = $1 }))
+            let paste = checkbox("Paste into the app you were in", get: { $0.clipboardPasteDirectly },
+                                 set: { $0.clipboardPasteDirectly = $1 })
+            let allow = UI.pushButton("Allow Accessibility…", small: true) { [weak self] in
+                self?.host?.gadgetRequestPermission(.accessibility)
+            }
+            rows.append(withNote(paste, text: { [weak self] in
+                guard let host = self?.host, host.gadgetManager.settings.options.clipboardPasteDirectly,
+                      host.gadgetPermissionGranted(.accessibility) != true else { return nil }
+                return "Without Accessibility the item is only copied, and you press ⌘V yourself."
+            }, button: allow))
+        case .deviceControl:
+            let devices = host?.gadgetDevices() ?? DeviceSnapshot()
+            func choices(_ list: [(uid: String, name: String)], current: String) -> [(String, String)] {
+                var result = [("None", "")] + list.map { ($0.name, $0.uid) }
+                if !current.isEmpty, !list.contains(where: { $0.uid == current }) { result.append(("Saved Device (not connected)", current)) }
+                return result
+            }
+            rows.append(popup("When It Connects, Use This Output", choices: choices(devices.outputs, current: options.preferredOutput),
+                              get: { $0.preferredOutput }, set: { $0.preferredOutput = $1 }))
+            rows.append(popup("When It Connects, Use This Microphone", choices: choices(devices.inputs, current: options.preferredInput),
+                              get: { $0.preferredInput }, set: { $0.preferredInput = $1 }))
+            rows.append(checkbox("A red microphone in the menu bar while muted", get: { $0.micIndicator },
+                                 set: { $0.micIndicator = $1 }))
+        case .appSwitch:
+            rows.append(checkbox("Pressing an app's shortcut while it is in front hides it", get: { $0.appHideOnRepeat },
+                                 set: { $0.appHideOnRepeat = $1 }))
+        case .mouseTune:
+            rows.append(checkbox("Reverse the wheel (the trackpad stays as it is)", get: { $0.mouseReverse },
+                                 set: { $0.mouseReverse = $1 }))
+            rows.append(checkbox("Smooth scrolling", get: { $0.mouseSmooth }, set: { $0.mouseSmooth = $1 }))
+            rows.append(popup("Scroll Speed", choices: GadgetOptions.mouseSpeedChoices.map { (String(format: "%g×", $0), $0) },
+                              get: { $0.mouseSpeed }, set: { $0.mouseSpeed = $1 }))
+            rows.append(checkbox("Side buttons go back and forward", get: { $0.mouseSideButtons },
+                                 set: { $0.mouseSideButtons = $1 }))
+            rows.append(popup("Middle Button", choices: MiddleButton.allCases.map { ($0.displayName, $0) },
+                              get: { $0.mouseMiddle }, set: { $0.mouseMiddle = $1 }))
+        case .calendarClock:
+            rows.append(checkbox("Show the date", get: { $0.clockDate }, set: { $0.clockDate = $1 }))
+            rows.append(checkbox("Show the weekday", get: { $0.clockWeekday }, set: { $0.clockWeekday = $1 }))
+            rows.append(checkbox("Show seconds", get: { $0.clockSeconds }, set: { $0.clockSeconds = $1 }))
+            rows.append(popup("Hours", choices: ClockHours.allCases.map { ($0.displayName, $0) },
+                              get: { $0.clockHours }, set: { $0.clockHours = $1 }))
+            let next = checkbox("Show the next event and a Join button", get: { $0.clockNextEvent },
+                                set: { $0.clockNextEvent = $1 })
+            let allow = UI.pushButton("Allow Calendars…", small: true) { [weak self] in
+                self?.host?.gadgetRequestPermission(.calendars)
+            }
+            allow.setAccessibilityIdentifier("allow-calendars")
+            rows.append(withNote(next, text: { [weak self] in
+                guard let host = self?.host, host.gadgetManager.settings.options.clockNextEvent else { return nil }
+                switch host.gadgetPermissionGranted(.calendars) {
+                case nil: return "Allow Calendars to see your events and join calls from the menu bar."
+                case false?: return "Calendars is not allowed for Nacho Combo, so events do not show."
+                default: return nil
+                }
+            }, button: allow))
+            rows.append(worldClockRows())
+        }
+        switch id {
+        case .windowSnap:
+            rows.append(checkbox("Put a saved layout back when the same displays connect", get: { $0.autoApplyLayouts },
+                                 set: { $0.autoApplyLayouts = $1 }))
+        case .captureFloat:
+            rows.append(checkbox("Also make a GIF of each recording (the first 15 seconds)", get: { $0.recordGIF },
+                                 set: { $0.recordGIF = $1 }))
+        default: break
         }
         return rows
+    }
+
+    /// A list of apps with Remove buttons and Add App….
+    private func appList(_ title: String, ids: [String], set: @escaping ([String], inout GadgetOptions) -> Void) -> NSView {
+        var lines: [NSView] = [UI.label(title, style: .callout)]
+        for id in ids {
+            let app = AppInfo(bundleID: id)
+            let icon = NSImageView(image: app.icon)
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            icon.widthAnchor.constraint(equalToConstant: 18).isActive = true
+            icon.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            let remove = UI.pushButton("Remove", small: true) { [weak self] in
+                self?.update { set(ids.filter { $0 != id }, &$0) }
+                self?.renderTab()
+            }
+            lines.append(row([icon, UI.label(app.name, style: .callout), UI.spacer(), remove]))
+        }
+        let add = UI.pushButton("Add App…", small: true) { [weak self] in
+            guard let picked = AppInfo.choose(), !ids.contains(picked) else { return }
+            self?.update { set(ids + [picked], &$0) }
+            self?.renderTab()
+        }
+        lines.append(row([add, UI.spacer()]))
+        return UI.vstack(lines, spacing: 6)
+    }
+
+    /// The user's Shortcuts by name (loaded once in the background).
+    private func shortcutPicker(_ title: String, get: @escaping (GadgetOptions) -> String,
+                                set: @escaping (inout GadgetOptions, String) -> Void) -> NSView {
+        let names = FocusSessionController.shortcutNames
+        if names.isEmpty {
+            FocusSessionController.loadShortcutNames { [weak self] in
+                guard let self = self, self.module == .focusDim, self.tab == .settings,
+                      !FocusSessionController.shortcutNames.isEmpty else { return }
+                self.renderTab()
+            }
+        }
+        var choices = [("None", "")] + names.map { ($0, $0) }
+        let current = get(options)
+        if !current.isEmpty, !names.contains(current) { choices.append((current, current)) }
+        return popup(title, choices: choices, get: get, set: set)
+    }
+
+    private func worldClockRows() -> NSView {
+        let zones = options.worldClocks
+        var lines: [NSView] = [UI.label("World Clocks", style: .callout)]
+        for identifier in zones {
+            guard let zone = TimeZone(identifier: identifier) else { continue }
+            let offset = UI.label(WorldClock.offset(zone, from: .current, at: Date()), style: .subheadline, color: UI.secondaryText)
+            let remove = UI.pushButton("Remove", small: true) { [weak self] in
+                self?.update { $0.worldClocks.removeAll { $0 == identifier } }
+                self?.renderTab()
+            }
+            lines.append(row([UI.label(WorldClock.city(identifier), style: .callout), offset, UI.spacer(), remove]))
+        }
+        let add = NSPopUpButton(frame: .zero, pullsDown: true)
+        add.addItem(withTitle: "Add a City")
+        add.font = UI.controlFont(.callout)
+        for identifier in WorldClock.suggestions where !zones.contains(identifier) {
+            guard let zone = TimeZone(identifier: identifier) else { continue }
+            add.menu?.addItem(ClosureMenuItem(title: "\(WorldClock.city(identifier))  (\(WorldClock.offset(zone, from: .current, at: Date())))") {
+                [weak self] in
+                self?.update { $0.worldClocks.append(identifier) }
+                self?.renderTab()
+            })
+        }
+        lines.append(row([add, UI.spacer()]))
+        return UI.vstack(lines, spacing: 6)
     }
 
     // MARK: menu bar access
@@ -686,8 +1009,9 @@ final class GadgetDetailView: NSView {
             chip.setAccessibilityIdentifier("permission-status-\(need.permission.rawValue)")
             let button = UI.pushButton("Open Settings", small: true) { [weak self] in
                 guard let host = self?.host else { return }
-                if need.permission == .notifications, host.gadgetPermissionGranted(.notifications) == nil {
-                    host.gadgetRequestPermission(.notifications)
+                if need.permission == .notifications || need.permission == .calendars,
+                   host.gadgetPermissionGranted(need.permission) == nil {
+                    host.gadgetRequestPermission(need.permission)
                 } else {
                     host.gadgetOpenPermissionSettings(need.permission)
                 }
@@ -762,10 +1086,64 @@ final class GadgetDetailView: NSView {
             tabStack.addArrangedSubview(card)
             tabStack.setCustomSpacing(8, after: card)
         }
+        if id == .appSwitch { addAppShortcutSection() }
         let footer = UI.wrapLabel("Click a shortcut and type a new one. ⌫ removes it, ↺ brings back the default, Esc cancels. "
                                   + "Shortcuts work everywhere while the gadget is on.", width: GadgetDetailView.inner,
                                   style: .footnote, color: UI.tertiaryText)
         tabStack.addArrangedSubview(footer)
+    }
+
+    /// App Switch: one row per app with its own shortcut, and Add App….
+    private func addAppShortcutSection() {
+        let label = UI.sectionTitle("App Shortcuts")
+        tabStack.addArrangedSubview(label)
+        tabStack.setCustomSpacing(6, after: label)
+        var rows: [NSView] = []
+        let list = options.appShortcuts
+        for hotKey in list {
+            let app = AppInfo(bundleID: hotKey.bundleID)
+            let icon = NSImageView(image: app.icon)
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            icon.widthAnchor.constraint(equalToConstant: 18).isActive = true
+            icon.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            let field = ShortcutField(placeholder: "None")
+            field.setAccessibilityLabel("\(hotKey.name) shortcut")
+            field.onRecordingChange = { [weak self] on in self?.host?.gadgetRecordingChanged(on) }
+            let key = "app:\(hotKey.bundleID)"
+            field.onChange = { [weak self] shortcut, _ in
+                guard let self = self else { return }
+                self.note(key, self.host?.gadgetSetAppShortcut(hotKey.bundleID, shortcut))
+            }
+            refreshers.append { [weak self, weak field] in
+                guard let field = field, !field.isRecording else { return }
+                field.shortcut = self?.options.appShortcuts.first { $0.bundleID == hotKey.bundleID }?.shortcut
+            }
+            let remove = UI.pushButton("Remove", small: true) { [weak self] in
+                self?.update { $0.appShortcuts.removeAll { $0.bundleID == hotKey.bundleID } }
+                self?.renderTab()
+            }
+            let name = UI.label(hotKey.name, style: .callout)
+            name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let line = row([icon, name, UI.spacer(), field, remove])
+            let note = UI.wrapLabel("", width: GadgetDetailView.cardInner, style: .subheadline, color: .labelColor)
+            note.isHidden = true
+            shortcutNotes[key] = note
+            rows.append(UI.vstack([line, note], spacing: 4))
+        }
+        let add = UI.pushButton("Add App…", small: true) { [weak self] in
+            guard let self = self, let picked = AppInfo.choose(),
+                  !self.options.appShortcuts.contains(where: { $0.bundleID == picked }) else { return }
+            self.update { $0.appShortcuts.append(AppHotKey(bundleID: picked, name: AppInfo(bundleID: picked).name, shortcut: nil)) }
+            self.renderTab()
+        }
+        add.setAccessibilityIdentifier("app-shortcut-add")
+        let explain = UI.wrapLabel(list.isEmpty ? "Add an app, then give it a shortcut: it opens the app, brings it to the front, "
+                                   + "or hides it when it is already in front." : "Shortcuts need two modifier keys, like ⌃⌥.",
+                                   width: GadgetDetailView.cardInner - 100, style: .subheadline)
+        rows.append(row([explain, UI.spacer(), add]))
+        let card = GadgetDetailView.card(rows)
+        tabStack.addArrangedSubview(card)
+        tabStack.setCustomSpacing(8, after: card)
     }
 
     private func groupHeader(_ title: String, count: Int, clashes: Int, open: Bool) -> NSView {
@@ -1179,5 +1557,36 @@ final class ShortcutField: NSView {
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         if newWindow == nil { stop() }
         super.viewWillMove(toWindow: newWindow)
+    }
+}
+
+/// An installed app by bundle identifier: its name and icon, and a picker for /Applications.
+struct AppInfo {
+    let bundleID: String
+    let name: String
+    let icon: NSImage
+
+    init(bundleID: String) {
+        self.bundleID = bundleID
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            name = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+            icon = NSWorkspace.shared.icon(forFile: url.path)
+        } else {
+            name = bundleID
+            icon = NSWorkspace.shared.icon(for: .application)
+        }
+    }
+
+    /// Asks for an app in /Applications; returns its bundle identifier.
+    static func choose() -> String? {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        return Bundle(url: url)?.bundleIdentifier
     }
 }

@@ -10,6 +10,12 @@ public extension ModuleID {
         case .fileShelf: return "tray"
         case .captureFloat: return "viewfinder"
         case .focusDim: return "circle.lefthalf.filled"
+        case .keepAwake: return "cup.and.saucer"
+        case .clipboard: return "doc.on.clipboard"
+        case .deviceControl: return "speaker.wave.2"
+        case .appSwitch: return "rectangle.stack"
+        case .mouseTune: return "computermouse"
+        case .calendarClock: return "calendar"
         }
     }
 
@@ -21,6 +27,12 @@ public extension ModuleID {
         case .fileShelf: return "Holds files, images, links and text for a moment so you can drag them out again."
         case .captureFloat: return "Captures an area, a window or the screen and floats it above other windows."
         case .focusDim: return "Keeps the active window bright and dims the rest."
+        case .keepAwake: return "Keeps the Mac awake for a while, while an app runs, or until you turn it off."
+        case .clipboard: return "Remembers what you copy so you can find it and paste it again."
+        case .deviceControl: return "Switches sound devices, mutes the microphone and sets external display brightness."
+        case .appSwitch: return "Opens apps from your own shortcuts and switches between windows with ⌥Tab."
+        case .mouseTune: return "Fixes a wheel mouse: its own scroll direction, smooth scrolling and back / forward buttons."
+        case .calendarClock: return "A clock with a calendar, your next meeting and world clocks in the menu bar."
         }
     }
 }

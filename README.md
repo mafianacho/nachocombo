@@ -2,11 +2,13 @@
 
 # Nacho Combo
 
-One macOS menu bar app with six gadgets, each switched on or off on its own: a menu bar organizer, a system monitor,
-window snapping, a file shelf, floating screen captures and focus dimming. Order them one by one or as a combo. No
-third-party apps, code or brands are used; the brand fonts are open-licensed ([Brand](#brand)).
+One macOS menu bar app with twelve gadgets, each switched on or off on its own: a menu bar organizer, a system monitor,
+window snapping, a file shelf, floating screen captures, focus dimming, keep awake, clipboard history, device control
+(sound, microphone, external display brightness), app and window switching, mouse tuning and a calendar clock. Order
+them one by one or as a combo. No third-party apps, code or brands are used; the brand fonts are open-licensed
+([Brand](#brand)).
 
-<img src="docs/images/gallery-dark.png" width="100%" alt="The settings window: a sidebar with All Gadgets, General, Permissions and the six gadgets, and the gadget gallery with six tiles">
+<img src="docs/images/gallery-dark.png" width="100%" alt="The settings window: a sidebar with All Gadgets, Combos, General, Permissions and the gadgets, and the gadget gallery with a tile per gadget">
 
 The app lives in the menu bar as its nacho box icon and has no Dock icon. Opening the app shows the **settings window**
 above: a sidebar on the left and, first, the **gadget gallery** with every gadget as a tile and its switch.
@@ -18,7 +20,9 @@ above: a sidebar on the left and, first, the **gadget gallery** with every gadge
 - [Usage](#usage)
 - [The settings window](#the-settings-window) · [Combos](#combos) · [Permissions](#permissions) · [Brand](#brand)
 - [Gadgets](#gadgets): [Menu Bar Organizer](#menu-bar-organizer) · [System Monitor](#system-monitor) ·
-  [Window Snap](#window-snap) · [File Shelf](#file-shelf) · [Capture Float](#capture-float) · [Focus Dim](#focus-dim)
+  [Window Snap](#window-snap) · [File Shelf](#file-shelf) · [Capture Float](#capture-float) · [Focus Dim](#focus-dim) ·
+  [Keep Awake](#keep-awake) · [Clipboard History](#clipboard-history) · [Device Control](#device-control) ·
+  [App Switch](#app-switch) · [Mouse Tune](#mouse-tune) · [Calendar Clock](#calendar-clock)
 - [Shortcuts](#shortcuts)
 - [Quick panel](#quick-panel-menu-bar)
 - [Install](#install-release) · [Build / test](#build--test) · [License](#license)
@@ -27,7 +31,8 @@ above: a sidebar on the left and, first, the **gadget gallery** with every gadge
 1. Double-click `NachoCombo.app` (it is ad-hoc signed and not notarized, so the first launch may need right-click ▸ Open).
 2. The first launch opens the combo menu ("What's your order?"): order a combo, or switch gadgets on one by one in
    the gadget gallery. Click a tile to open a gadget's page.
-3. Gadgets that need a permission (Window Snap = Accessibility, Capture Float = Screen Recording) say so on their tile
+3. Gadgets that need a permission (Window Snap, App Switch and Mouse Tune = Accessibility, Capture Float = Screen
+   Recording) say so on their tile
    while they are off, explain it in a short sheet when you switch them on, and only then let macOS show its own dialog.
    Until it is allowed, the gadget's page shows the steps and notices by itself when you have allowed it
    ([Permissions](#permissions)).
@@ -104,7 +109,7 @@ its page; arrow keys move a highlight, Return opens, Space flips the switch.
 
 ## Combos
 
-<img src="docs/images/combos.png" width="560" alt="The Combos page: five numbered combos on a dark menu board, and Desk chosen: its tray, what gets easier, what changes in your box and what it asks for">
+<img src="docs/images/combos.png" width="560" alt="The Combos page: seven numbered combos on a dark menu board, and Desk chosen: its tray, what gets easier, what changes in your box and what it asks for">
 
 A combo switches on a few gadgets together and tunes a few options for one way of working. Before you order, the board
 shows what it lights up, what gets easier (with your own shortcuts), what changes in your box and which permissions it
@@ -116,13 +121,15 @@ asks for. Afterwards every gadget is still its own switch; a combo never changes
 | No.2 Desk | Window Snap, File Shelf, Capture Float | Gap between windows 8 pt | Accessibility, Screen Recording |
 | No.3 Builder | System Monitor, Window Snap, Menu Bar Organizer | Menu bar items: CPU, Memory, Network | Accessibility |
 | No.4 Focus | Focus Dim, Menu Bar Organizer | Dim 60% on every display, collapse after 5 s | Nothing |
-| No.5 Full Combo | All six | Nothing | Accessibility, Screen Recording |
+| No.5 Meeting | Calendar Clock, Device Control, Keep Awake | Keep Awake keeps the display on | Nothing |
+| No.6 Presenter | Menu Bar Organizer, Focus Dim, Keep Awake | Dim 70% on every display, no auto-collapse | Nothing |
+| No.7 Full Combo | All twelve | Nothing | Accessibility, Screen Recording |
 
 Ordering never raises a system dialog: a gadget whose permission is missing waits under "To finish" with its own
 `Allow …` button, which shows the usual explanation sheet and then macOS's dialog. Right after an order, `Undo` puts
 the box back as it was (switches and settings), for a few minutes or until the next order.
 
-**Your own combos.** Up to five, numbered on from No.6 under "Your combos". `New Combo` starts from the gadgets that are
+**Your own combos.** Up to five, numbered on from No.8 under "Your combos". `New Combo` starts from the gadgets that are
 on now; `Make Your Own from Desk` starts from a preset. Name it, tap the gadgets in the tray to put them in or take them
 out, and choose the settings it brings for the gadgets in it (gap between windows, dim strength and other displays,
 collapse delay, System Monitor's menu bar items; "Keep as it is" leaves yours alone). What gets easier and what it asks
@@ -135,8 +142,10 @@ that still needs a permission continues on the Combos page.
 
 ## Permissions
 
-Only two gadgets need a permission, and nothing is asked before you switch one on: Window Snap (Accessibility) and
-Capture Float (Screen Recording). Notifications are optional, for System Monitor alerts.
+Four gadgets need a permission, and nothing is asked before you switch one on: Window Snap, App Switch and Mouse Tune
+(Accessibility) and Capture Float (Screen Recording). Three are optional: Accessibility lets Clipboard History paste
+into the app you were in (otherwise it copies), Calendars lets Calendar Clock show your events, and Notifications are
+for System Monitor alerts.
 
 1. **Before:** a tile that will ask shows a lock and the permission's name while it is off. Switching it on shows a
    short sheet (what it needs and why, what macOS will show next); `Continue` lets macOS show its own dialog, `Not Now`
@@ -166,7 +175,13 @@ list (`Window Snap needs Accessibility  Allow…`).
 | [Window Snap](#window-snap) | 24 window commands from the keyboard, drag to snap, restore, gaps, ⌃⌘-drag to move or resize | Accessibility |
 | [File Shelf](#file-shelf) | A floating shelf for files, images, links and text that opens when you shake a drag | None |
 | [Capture Float](#capture-float) | Captures an area, a window or the screen and keeps it floating above other windows | Screen Recording |
-| [Focus Dim](#focus-dim) | Keeps the active window bright and dims everything behind it | None |
+| [Focus Dim](#focus-dim) | Keeps the active window bright and dims everything behind it; focus sessions with a countdown | None |
+| [Keep Awake](#keep-awake) | Keeps the Mac (and the display) awake by hand, for a while or while chosen apps run | None |
+| [Clipboard History](#clipboard-history) | Remembers copies; search, pin and paste them again, or send them to File Shelf | None (Accessibility to paste directly) |
+| [Device Control](#device-control) | Sound output and volume, microphone mute, preferred devices, external display brightness | None |
+| [App Switch](#app-switch) | Shortcuts that open, bring forward or hide apps, and an ⌥Tab switcher for every window | Accessibility |
+| [Mouse Tune](#mouse-tune) | A wheel mouse's own scroll direction, smooth scrolling, speed and back / forward buttons | Accessibility |
+| [Calendar Clock](#calendar-clock) | A clock your way with a month calendar, the next meeting's Join button and world clocks | None (Calendars for events) |
 
 ### Menu Bar Organizer
 
@@ -280,6 +295,9 @@ to the right edge shows where it will land).
 - **Restore:** a snapped window dragged away gets its earlier size back; ⌃⌥⌫ restores it too.
 - **Window motion:** ⌃⌘-drag anywhere inside a window moves it; ⌃⌘-right-drag resizes it from the nearest corner.
 - **Gaps** of 4–24 pt between windows and screen edges (option).
+- **Layouts:** `Save Layout` remembers where every app's windows are, for the displays connected now; `Restore Layout`
+  puts them back, and (an option) it happens by itself when the same displays are connected again. Windows are matched
+  by app and order, never by title. Saved in `window-layouts.json` next to the settings.
 - Needs **Accessibility**, to read and change other apps' window frames and to follow ⌃⌘-drags. Windows cannot be moved
   between Spaces (no public API).
 
@@ -312,6 +330,11 @@ Capture part of the screen and keep it floating above your work as a reference.
 - **Opacity:** scroll over a float to fade it and compare it with what is underneath.
 - **Lock:** make all floats click-through; unlock them from its page, the quick panel or a shortcut.
 - **Copy Text:** recognises text and QR codes in a float (on this Mac, with Vision) and copies them.
+- **Mark Up:** ✎ on a float, then drag for an arrow or ⌥-drag for a box (⌘Z undoes); copies, saves and drags include it.
+- **Live Window:** pick a window and its float keeps updating, like picture in picture for any app (marked LIVE).
+- **Record:** drag over an area (or press Space for a window) and it is recorded to `Recording … .mp4` on the Desktop,
+  with an optional GIF of the first 15 seconds; a red item in the menu bar shows the time and stops it (macOS 12.3+).
+- **Pick a Color:** the system loupe; the color's hex code is copied.
 - Needs **Screen Recording**, to read the pixels of the area you select. macOS 15 and later ask again about once a month.
   The system screenshot shortcuts (⇧⌘3, ⇧⌘4, ⇧⌘5) stay with macOS. Nothing is recorded or uploaded.
 
@@ -329,7 +352,70 @@ shade never catches a click; clicking the desktop shows everything.
 - **Keep bright:** only the front window, or every window of the active app.
 - **Displays:** dim the other displays too, or only the one you are working on.
 - **Fade** 0–1 s between windows (instant while Reduce Motion is on).
+- **Focus sessions:** 15–90 minutes of focus, then an optional break, with a countdown in the menu bar while it runs.
+  It can dim only during the focus part, and run one of your Shortcuts when it starts and when it ends.
 - No permission: window positions come from the system window list; titles and contents are never read.
+
+### Keep Awake
+
+<img src="docs/images/keep-awake.png" width="400" alt="A cup in the menu bar with 45m left, and its menu with the durations">
+
+- **One click** on the cup keeps the Mac awake; another lets it sleep. Right-click it for 15 minutes to 5 hours or until
+  turned off; the minutes left show next to the cup.
+- **While an app runs:** choose apps (a download manager, a video call) that keep the Mac awake while they are open.
+- **Display too**, or only the Mac; **battery guard** lets it sleep below a charge you choose, or only stays awake on power.
+- No permission: it holds a power assertion (as video players do) and releases it when it stops.
+
+### Clipboard History
+
+<img src="docs/images/clipboard-history.png" width="400" alt="The history at the pointer over a message: a search field and copies with pins, apps and ages">
+
+- **⌃⌥V** opens the list at the pointer: type to search, ↩ pastes into the app you were in, ⌥↩ pastes plain text,
+  ⌘1…9 paste one of the first nine.
+- **Pins** (⌘P) stay at the top and are kept after a restart; ⌫ removes, ⌘S sends an item to File Shelf.
+- Text keeps its formatting, links, images (up to 8 MB) and files are kept too; copies password managers mark as secret
+  are skipped. The history lives in memory (pins in `clipboard-pins.json`).
+- Accessibility is optional: with it the item is pasted for you, without it it is copied and you press ⌘V.
+
+### Device Control
+
+<img src="docs/images/device-control.png" width="400" alt="A muted microphone in the menu bar and a panel with the output, its volume and external display brightness">
+
+- **Sound output** and its volume, **microphone** choice, **⌃⌥M** mutes the microphone everywhere (a red microphone in the
+  menu bar unmutes it), and a shortcut moves the sound to the next output.
+- **Preferred devices:** headphones or a microphone you choose are used as soon as they connect.
+- **External displays:** a brightness slider for each monitor that accepts DDC/CI (Apple silicon), and shortcuts that
+  brighten or darken them all.
+- No permission: devices are switched through Core Audio; nothing is recorded.
+
+### App Switch
+
+<img src="docs/images/app-switch.png" width="400" alt="The window switcher over two windows, with the second window picked">
+
+- **App shortcuts:** give any app a shortcut; it opens it, brings it to the front, or hides it if it is already in front.
+- **Window switcher:** hold ⌥ and press Tab (⌥⇧Tab goes back) to go through every window, minimized ones too; let go to
+  switch, Esc cancels. ⌘Tab stays with macOS.
+- **Hide Others:** one shortcut hides every app but the one in front.
+- Needs **Accessibility**, to list and raise other apps' windows.
+
+### Mouse Tune
+
+<img src="docs/images/mouse-tune.png" width="400" alt="A wheel mouse beside a page that scrolls smoothly">
+
+- **Own direction:** reverse a wheel mouse while the trackpad keeps natural scrolling.
+- **Smooth scrolling** and **speed** (0.5–3× per notch); **side buttons** go back and forward (⌘[ / ⌘]); the **middle
+  button** can open Mission Control.
+- Trackpads and Magic Mouse are left alone. Needs **Accessibility**, to change the mouse's events; keystrokes are never read.
+
+### Calendar Clock
+
+<img src="docs/images/calendar-clock.png" width="400" alt="The clock in the menu bar and its calendar: the month, a meeting with Join and two world clocks">
+
+- **Your clock:** date, weekday, seconds and 12 / 24 hours as you like, in your language's order.
+- **Click it** for the month, the chosen day's events and **Join** for video call links; 15 minutes before a meeting its
+  name and a countdown show next to the clock.
+- **World clocks:** cities you add, with the time and how far ahead or behind they are.
+- Calendars is optional and only for events; they are read on this Mac and never sent anywhere.
 
 ## Shortcuts
 Defaults; every one can be changed or removed on the gadget's page ▸ Shortcuts.
@@ -339,10 +425,14 @@ Defaults; every one can be changed or removed on the gadget's page ▸ Shortcuts
 | Window Snap | ⌃⌥← → ↑ ↓ halves · ⌃⌥U I J K quarters · ⌃⌥D F G thirds · ⌃⌥E R T two thirds · ⌃⌥↩ maximize · ⌃⌥⇧↑ maximize height · ⌃⌥C center · ⌃⌥- / = smaller / larger · ⌃⌥⌫ restore · ⌃⌥⌘← / → previous / next display. Center half and almost maximize have none |
 | File Shelf | ⌃⌥S show / hide (add clipboard: none) |
 | Capture Float | ⇧⌘2 capture area (previous area, window, screen, copy text, lock, hide all, close all: none) |
-| Focus Dim | ⌃⌥⌘H pause / resume |
-| Menu Bar Organizer, System Monitor | none (expand / collapse, show always-hidden, open a panel: assign on the gadget's page) |
+| Focus Dim | ⌃⌥⌘H pause / resume (focus session: none) |
+| Clipboard History | ⌃⌥V show the history (paste the last copy as plain text: none) |
+| Device Control | ⌃⌥M mute / unmute the microphone (next output, brighter, darker: none) |
+| App Switch | ⌥Tab / ⌥⇧Tab switch windows; app shortcuts and Hide Others: none until you set them |
+| Menu Bar Organizer, System Monitor, Keep Awake, Mouse Tune, Calendar Clock | none (assign on the gadget's page) |
 
-Shortcuts are registered only while their gadget runs. A shortcut must use two modifiers (one with a function key), must
+Shortcuts are registered only while their gadget runs. A shortcut must use two modifiers (one with a function key, and
+⌥Tab / ⌥⇧Tab for the window switcher), must
 not be a macOS combination (⇧⌘3 / 4 / 5, ⌘Space, ⌃↑...) and must not be in use by another action or open shortcut.
 When another app already holds a combination, the gadget's page says so and keeps the previous shortcut.
 
@@ -386,7 +476,8 @@ without them the system font is used.
 - Settings: `~/Library/Application Support/NachoCombo/settings.json` (everything is OFF by default; includes the dim
   strength `dimIntensity`, the gadget `options`, `pinnedTools`, `toolShortcuts`, `actionShortcuts`, `launchWindow`,
   `menuBarAttentionDot`, `dismissedHints`, `combo` (the combo last ordered), `customCombos` (your own combos) and
-  `permissionGrants`, the code signature of the copy that last had each permission). Settings files from earlier versions still load. The window's size and last page are kept in the app's
+  `permissionGrants`, the code signature of the copy that last had each permission). Settings files from earlier versions still load.
+  Pinned clipboard items (`clipboard-pins.json`) and window layouts (`window-layouts.json`) have files of their own. The window's size and last page are kept in the app's
   user defaults.
 - OFF contract: a gadget's `stop()` releases all of its timers, monitors, event taps and status items, and its action
   shortcuts are unregistered. Counters for checking this are written to `state.json` in the same folder.

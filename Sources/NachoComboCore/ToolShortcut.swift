@@ -92,6 +92,7 @@ public enum ShortcutPolicy {
             ("Screenshot ⌃⇧⌘3", 20, ct | s | c), ("Screenshot ⌃⇧⌘4", 21, ct | s | c), ("Screenshot ⌃⇧⌘5", 23, ct | s | c),
             ("Switch Space ⌃⌥Space", 49, ct | o), ("Spotlight ⌘Space", 49, c), ("Input Source ⌃Space", 49, ct),
             ("Mission Control ⌃↑", 126, ct), ("App Windows ⌃↓", 125, ct),
+            ("App Switcher ⌘Tab", 48, c), ("App Switcher ⌘⇧Tab", 48, c | s),
         ]
     }()
 
@@ -131,15 +132,52 @@ public enum ShortcutPolicy {
         guard KeyNames.name(forKeyCode: shortcut.keyCode) != nil, shortcut.keyCode != 53 else { return .unsupportedKey }
         let count = [ToolShortcut.command, ToolShortcut.shift, ToolShortcut.option, ToolShortcut.control]
             .filter { mods & $0 != 0 }.count
-        let enough = KeyNames.isFunctionKey(shortcut.keyCode) ? count >= 1 : count >= 2
+        // Tab with ⌥ (or ⌥⇧) is held to switch windows, like ⌘Tab: one modifier is enough there.
+        let holdToSwitch = shortcut.keyCode == 48 && (mods == ToolShortcut.option || mods == ToolShortcut.option | ToolShortcut.shift)
+        let enough = KeyNames.isFunctionKey(shortcut.keyCode) ? count >= 1 : (count >= 2 || holdToSwitch)
         guard enough else { return .needsMoreModifiers }
         if let hit = reserved.first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
             return .reservedBySystem(hit.name)
+        }
+        if let hit = settings.options.appShortcuts.first(where: {
+            $0.shortcut?.keyCode == shortcut.keyCode && ($0.shortcut?.modifiers ?? 0) & ToolShortcut.allModifiers == mods
+        }) {
+            return .conflictsWithAction("\(hit.name) (App Switch)")
         }
         if let hit = settings.effectiveActionShortcuts.first(where: {
             $0.id != actionID && $0.keyCode == shortcut.keyCode && $0.modifiers == mods
         }) {
             return .conflictsWithAction(hit.name)
+        }
+        for id in ModuleID.allCases {
+            if let s = settings.toolShortcuts[id.rawValue], s.keyCode == shortcut.keyCode,
+               s.modifiers & ToolShortcut.allModifiers == mods {
+                return .conflictsWithTool(id)
+            }
+        }
+        return nil
+    }
+}
+
+public extension ShortcutPolicy {
+    /// An app shortcut (App Switch): two modifiers, not a macOS combination, not another action, tool or app shortcut.
+    static func validateAppShortcut(_ shortcut: ToolShortcut, bundleID: String, settings: AppSettings) -> ShortcutIssue? {
+        let mods = shortcut.modifiers & ToolShortcut.allModifiers
+        guard KeyNames.name(forKeyCode: shortcut.keyCode) != nil, shortcut.keyCode != 53 else { return .unsupportedKey }
+        let count = [ToolShortcut.command, ToolShortcut.shift, ToolShortcut.option, ToolShortcut.control]
+            .filter { mods & $0 != 0 }.count
+        guard KeyNames.isFunctionKey(shortcut.keyCode) ? count >= 1 : count >= 2 else { return .needsMoreModifiers }
+        if let hit = reserved.first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
+            return .reservedBySystem(hit.name)
+        }
+        if let hit = settings.effectiveActionShortcuts.first(where: { $0.keyCode == shortcut.keyCode && $0.modifiers == mods }) {
+            return .conflictsWithAction(hit.name)
+        }
+        if let hit = settings.options.appShortcuts.first(where: {
+            $0.bundleID != bundleID && $0.shortcut?.keyCode == shortcut.keyCode
+                && ($0.shortcut?.modifiers ?? 0) & ToolShortcut.allModifiers == mods
+        }) {
+            return .conflictsWithAction("\(hit.name) (App Switch)")
         }
         for id in ModuleID.allCases {
             if let s = settings.toolShortcuts[id.rawValue], s.keyCode == shortcut.keyCode,

@@ -24,6 +24,8 @@ final class FocusDimModule: NSObject, FeatureModule {
     private(set) var reorderCount = 0
     private var lastFrontApp = "-"
     var onPauseChange: (() -> Void)?
+    /// Focus sessions (timer, break, countdown in the menu bar).
+    let sessions = FocusSessionController()
 
     var isRunning: Bool { !overlays.isEmpty }
     private var allWindows: [NSWindow] { overlays.flatMap { [$0.current, $0.spare] } }
@@ -60,6 +62,7 @@ final class FocusDimModule: NSObject, FeatureModule {
     }
 
     func stop() {
+        sessions.cancel()
         timer?.invalidate()
         timer = nil
         let workspace = NSWorkspace.shared.notificationCenter
@@ -78,6 +81,12 @@ final class FocusDimModule: NSObject, FeatureModule {
     }
 
     /// Hides the shade (or brings it back) without switching the gadget off.
+    /// Starts a focus session, or ends the one that runs.
+    func toggleSession() {
+        guard isRunning else { return }
+        sessions.toggle()
+    }
+
     func togglePause() {
         guard isRunning else { return }
         paused.toggle()
@@ -123,6 +132,8 @@ final class FocusDimModule: NSObject, FeatureModule {
     func refresh() {
         refreshCount += 1
         guard !overlays.isEmpty, !paused else { return }
+        // "Dim only during a focus session": no shade outside the focus part of a session.
+        if optionsProvider().dimOnlyInSession && sessions.phase != .focus { hideAll(); activeNumber = nil; return }
         guard let front = NSWorkspace.shared.frontmostApplication else { hideAll(); activeNumber = nil; return }
         lastFrontApp = front.localizedName ?? "pid:\(front.processIdentifier)"
         let own = Set(allWindows.map { $0.windowNumber })
@@ -199,6 +210,12 @@ final class FocusDimModule: NSObject, FeatureModule {
     }
 
     var diagnostics: [String: String] {
+        sessionDiagnostics.merging(shadeDiagnostics) { a, _ in a }
+    }
+
+    private var sessionDiagnostics: [String: String] { sessions.diagnostics }
+
+    private var shadeDiagnostics: [String: String] {
         let shades = overlays.map { $0.current }
         var below = "n/a"
         if let active = activeNumber, !overlays.isEmpty {

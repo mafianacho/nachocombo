@@ -151,11 +151,17 @@ final class TraySlotView: NSView {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 26).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 26).isActive = true
-        let name = NSTextField(labelWithString: module.displayName)
-        name.font = Brand.body(11.5, weight: .semibold)
+        // Two lines for every name, so the slots of a row line up whatever their names.
+        let name = NSTextField(wrappingLabelWithString: module.displayName)
+        name.font = Brand.body(11, weight: .semibold)
         name.textColor = Brand.boardInk
         name.alignment = .center
-        name.lineBreakMode = .byTruncatingTail
+        name.maximumNumberOfLines = 2
+        name.lineBreakMode = .byWordWrapping
+        name.isSelectable = false
+        name.translatesAutoresizingMaskIntoConstraints = false
+        name.heightAnchor.constraint(equalToConstant: ceil(Brand.body(11, weight: .semibold).boundingRectForFont.height * 2) + 2)
+            .isActive = true
         let lockLabel = NSTextField(labelWithString: lock ?? " ")
         lockLabel.font = Brand.mono(9.5)
         lockLabel.textColor = Brand.nacho
@@ -167,7 +173,7 @@ final class TraySlotView: NSView {
             column.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             column.topAnchor.constraint(equalTo: topAnchor, constant: 9),
             column.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
-            name.widthAnchor.constraint(lessThanOrEqualTo: column.widthAnchor),
+            name.widthAnchor.constraint(equalTo: column.widthAnchor),
         ])
         alphaValue = lit ? 1 : 0.38
     }
@@ -409,7 +415,12 @@ final class ComboPage: NSView, NSTextFieldDelegate {
             button.widthAnchor.constraint(equalToConstant: tileWidth).isActive = true
             return button
         }
-        var rows: [NSView] = [UI.hstack(ComboCatalog.presets.map(tile), spacing: 8, alignment: .top)]
+        // Five tiles to a row, like the board's columns.
+        let presetTiles = ComboCatalog.presets.map(tile)
+        let presetLines = stride(from: 0, to: presetTiles.count, by: 5).map {
+            UI.hstack(Array(presetTiles[$0..<min($0 + 5, presetTiles.count)]), spacing: 8, alignment: .top) as NSView
+        }
+        var rows: [NSView] = [UI.vstack(presetLines, spacing: 8)]
         let customs = ComboCatalog.combos(settings).filter { $0.isCustom }
         var ownTiles = customs.map(tile)
         if customs.count < ComboCatalog.maxCustom {
@@ -463,7 +474,8 @@ final class ComboPage: NSView, NSTextFieldDelegate {
     private func tray(_ gadgets: [ModuleID], editing: Bool) -> NSView {
         guard let host = host else { return NSView() }
         let width = ComboPage.orderInner
-        let slotWidth = floor((width - 2 * 8) / 3)
+        let columns = 4
+        let slotWidth = floor((width - CGFloat(columns - 1) * 8) / CGFloat(columns))
         var slots: [NSView] = []
         for id in ModuleID.allCases {
             let lit = gadgets.contains(id)
@@ -480,8 +492,10 @@ final class ComboPage: NSView, NSTextFieldDelegate {
             slot.widthAnchor.constraint(equalToConstant: slotWidth).isActive = true
             slots.append(slot)
         }
-        return UI.vstack([UI.hstack(Array(slots.prefix(3)), spacing: 8, alignment: .top),
-                          UI.hstack(Array(slots.dropFirst(3)), spacing: 8, alignment: .top)], spacing: 8)
+        let lines = stride(from: 0, to: slots.count, by: columns).map {
+            UI.hstack(Array(slots[$0..<min($0 + columns, slots.count)]), spacing: 8, alignment: .top) as NSView
+        }
+        return UI.vstack(lines, spacing: 8)
     }
 
     private func momentViews(_ moments: [ComboMoment]) -> [NSView] {
@@ -502,10 +516,13 @@ final class ComboPage: NSView, NSTextFieldDelegate {
 
     private func asksText(_ gadgets: [ModuleID]) -> String {
         guard let host = host else { return "" }
-        let needs = gadgets.compactMap { $0.info.requiredPermission }
-        let missing = gadgets.compactMap { id -> String? in
-            guard let permission = id.info.requiredPermission, host.gadgetPermissionGranted(permission) != true else { return nil }
-            return "\(permission.displayName) for \(id.displayName)"
+        let needs = Array(Set(gadgets.compactMap { $0.info.requiredPermission })).sorted { $0.rawValue < $1.rawValue }
+        // One entry per permission: "Accessibility for Window Snap, App Switch and Mouse Tune".
+        var missing: [String] = []
+        for permission in needs where host.gadgetPermissionGranted(permission) != true {
+            let names = gadgets.filter { $0.info.requiredPermission == permission }.map { $0.displayName }
+            let list = names.count > 1 ? names.dropLast().joined(separator: ", ") + " and " + names.last! : names.joined()
+            missing.append("\(permission.displayName) for \(list)")
         }
         if needs.isEmpty { return "Nothing. These gadgets need no permission." }
         if missing.isEmpty { return "Nothing new: " + needs.map { $0.displayName }.joined(separator: " and ") + " already allowed." }

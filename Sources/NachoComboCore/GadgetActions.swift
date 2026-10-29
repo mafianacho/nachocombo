@@ -58,6 +58,28 @@ public enum GadgetActions {
             GadgetAction(id: "monitor.network", module: .systemMonitor, title: "Open Network Panel", defaultShortcut: nil),
             GadgetAction(id: "monitor.sensors", module: .systemMonitor, title: "Open Sensors Panel", defaultShortcut: nil),
             GadgetAction(id: "monitor.battery", module: .systemMonitor, title: "Open Battery Panel", defaultShortcut: nil),
+            GadgetAction(id: "layout.save", module: .windowSnap, title: "Save Window Layout", defaultShortcut: nil),
+            GadgetAction(id: "layout.restore", module: .windowSnap, title: "Restore Window Layout", defaultShortcut: nil),
+            GadgetAction(id: "capture.record", module: .captureFloat, title: "Start / Stop Recording", defaultShortcut: nil),
+            GadgetAction(id: "capture.color", module: .captureFloat, title: "Pick a Color", defaultShortcut: nil),
+            GadgetAction(id: "capture.live", module: .captureFloat, title: "Float a Live Window", defaultShortcut: nil),
+            GadgetAction(id: "dim.session", module: .focusDim, title: "Start / Stop Focus Session", defaultShortcut: nil),
+            GadgetAction(id: "keepAwake.toggle", module: .keepAwake, title: "Keep Awake On / Off", defaultShortcut: nil),
+            GadgetAction(id: "clipboard.show", module: .clipboard, title: "Show Clipboard History",
+                         defaultShortcut: key(9, co)),
+            GadgetAction(id: "clipboard.plain", module: .clipboard, title: "Paste Last Copy as Plain Text", defaultShortcut: nil),
+            GadgetAction(id: "device.micMute", module: .deviceControl, title: "Mute / Unmute Microphone",
+                         defaultShortcut: key(46, co)),
+            GadgetAction(id: "device.nextOutput", module: .deviceControl, title: "Next Sound Output", defaultShortcut: nil),
+            GadgetAction(id: "device.brighter", module: .deviceControl, title: "Brighten External Displays", defaultShortcut: nil),
+            GadgetAction(id: "device.dimmer", module: .deviceControl, title: "Darken External Displays", defaultShortcut: nil),
+            GadgetAction(id: "appSwitch.next", module: .appSwitch, title: "Switch Windows",
+                         defaultShortcut: key(48, ToolShortcut.option)),
+            GadgetAction(id: "appSwitch.previous", module: .appSwitch, title: "Switch Windows Backward",
+                         defaultShortcut: key(48, ToolShortcut.option | ToolShortcut.shift)),
+            GadgetAction(id: "appSwitch.hideOthers", module: .appSwitch, title: "Hide Other Apps", defaultShortcut: nil),
+            GadgetAction(id: "mouseTune.reverse", module: .mouseTune, title: "Reverse Mouse Scrolling On / Off", defaultShortcut: nil),
+            GadgetAction(id: "calendarClock.show", module: .calendarClock, title: "Show Calendar", defaultShortcut: nil),
         ]
     }()
 
@@ -77,6 +99,7 @@ public enum GadgetActions {
     public static func groups(of module: ModuleID) -> [(title: String?, actions: [GadgetAction])] {
         guard module == .windowSnap else { return [(nil, of(module))] }
         return snapGroups.map { group in (group.title, group.actions.compactMap { action(snapID($0)) }) }
+            + [("Layouts", ["layout.save", "layout.restore"].compactMap { action($0) })]
     }
 
     public static func of(_ module: ModuleID) -> [GadgetAction] { all.filter { $0.module == module } }

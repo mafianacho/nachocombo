@@ -11,6 +11,9 @@ struct GadgetPreviewInputs {
     var dimIntensity = FocusDimLogic.defaultIntensity
     var snapGap: CGFloat = 0
     var keys: [String: String] = [:]
+    var clockText = ""
+    var worldClocks: [String] = []
+    var keepAwakeMinutes = 0
 }
 
 /// Pictures of each gadget at work for the gallery's detail pane. Wherever the gadget has its own interface the
@@ -36,6 +39,12 @@ enum GadgetPreview {
             case .fileShelf: picture = shelf(inputs, dark: dark, appearance: appearance)
             case .captureFloat: picture = capture(inputs, dark: dark, appearance: appearance)
             case .focusDim: picture = dim(inputs, dark: dark)
+            case .keepAwake: picture = keepAwake(inputs, dark: dark)
+            case .clipboard: picture = clipboard(inputs, dark: dark)
+            case .deviceControl: picture = devices(inputs, dark: dark)
+            case .appSwitch: picture = appSwitch(inputs, dark: dark)
+            case .mouseTune: picture = mouse(inputs, dark: dark)
+            case .calendarClock: picture = calendar(inputs, dark: dark)
             }
         }
         return picture
@@ -229,6 +238,259 @@ enum GadgetPreview {
             }
         }
         return Picture(image: image, caption: "The active window stays bright; the windows behind it dim at your strength.")
+    }
+
+    /// A menu drawn like the system's: rounded, translucent, one line per entry (`nil` = a separator).
+    private static func menu(_ rect: NSRect, dark: Bool, lines: [(String, Bool)?]) {
+        Stage.shadowed(rect, radius: 8) {
+            (dark ? NSColor(white: 0.17, alpha: 0.96) : NSColor(white: 0.98, alpha: 0.96)).setFill()
+            NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
+        }
+        let ink = dark ? NSColor(white: 1, alpha: 0.9) : NSColor(white: 0, alpha: 0.85)
+        var y = rect.minY + 8
+        for line in lines {
+            guard let (text, checked) = line else {
+                (dark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.1)).setFill()
+                NSRect(x: rect.minX + 10, y: y + 3, width: rect.width - 20, height: 1).fill()
+                y += 8
+                continue
+            }
+            if checked { Stage.text("✓", at: NSPoint(x: rect.minX + 9, y: y + 9), font: .systemFont(ofSize: 11, weight: .bold), color: ink) }
+            Stage.text(text, at: NSPoint(x: rect.minX + 24, y: y + 9), font: .systemFont(ofSize: 12), color: ink)
+            y += 19
+        }
+    }
+
+    private static func keepAwake(_ inputs: GadgetPreviewInputs, dark: Bool) -> Picture {
+        let size = NSSize(width: width, height: 230)
+        let image = canvas(size) { rect in
+            Stage.wallpaper(rect, dark: dark)
+            Stage.window(NSRect(x: 18, y: 44, width: 200, height: 160), dark: dark, title: "Downloads", style: .files)
+            Stage.menuBar(NSRect(x: 0, y: 0, width: rect.width, height: 22), dark: dark, app: "Finder", menus: ["File", "Edit"],
+                          items: [.text("9:41"), .text("45m"), .symbol("cup.and.saucer.fill"), .symbol("wifi")], rounded: false)
+            let choices = GadgetOptions.keepAwakeChoices.map { (KeepAwakePolicy.durationName($0), false) }
+            menu(NSRect(x: rect.width - 196, y: 26, width: 176, height: 176), dark: dark,
+                 lines: [("Awake for 45m more", false), nil] + choices.map { Optional($0) } + [nil, ("Keep the Display On", true)])
+            let click = KeepAwakePolicy.durationName(inputs.keepAwakeMinutes)
+            Stage.caption("A click: \(click.lowercased())", at: NSPoint(x: 24, y: 208), small: true)
+        }
+        return Picture(image: image, caption: "Click the cup to stay awake; right-click it to choose for how long.")
+    }
+
+    private static func clipboard(_ inputs: GadgetPreviewInputs, dark: Bool) -> Picture {
+        let size = NSSize(width: width, height: 250)
+        let image = canvas(size) { rect in
+            Stage.wallpaper(rect, dark: dark)
+            Stage.menuBar(NSRect(x: 0, y: 0, width: rect.width, height: 20), dark: dark, app: "Mail", menus: ["File", "Edit"],
+                          items: [.text("9:41")], rounded: false)
+            Stage.window(NSRect(x: 14, y: 30, width: 190, height: 200), dark: dark, title: "New Message", style: .text)
+            let list = NSRect(x: 170, y: 40, width: 214, height: 196)
+            Stage.shadowed(list, radius: 10) {
+                (dark ? NSColor(white: 0.16, alpha: 0.97) : NSColor(white: 0.99, alpha: 0.97)).setFill()
+                NSBezierPath(roundedRect: list, xRadius: 10, yRadius: 10).fill()
+            }
+            let ink = dark ? NSColor(white: 1, alpha: 0.9) : NSColor(white: 0, alpha: 0.85)
+            let soft = dark ? NSColor(white: 1, alpha: 0.5) : NSColor(white: 0, alpha: 0.45)
+            (dark ? NSColor(white: 1, alpha: 0.08) : NSColor(white: 0, alpha: 0.05)).setFill()
+            NSBezierPath(roundedRect: NSRect(x: list.minX + 10, y: list.minY + 10, width: list.width - 20, height: 22),
+                         xRadius: 6, yRadius: 6).fill()
+            Stage.text("Search what you copied", at: NSPoint(x: list.minX + 20, y: list.minY + 21), font: .systemFont(ofSize: 11),
+                       color: soft)
+            let rows: [(String, String, String)] = [("Main Street 12, Springfield", "Pinned · Notes", "pin.fill"),
+                                                    ("https://example.com/report", "Browser · 2 min ago", "link"),
+                                                    ("Quarterly numbers are up 12%", "Numbers · 5 min ago", "text.alignleft"),
+                                                    ("Screenshot", "Image · 12 min ago", "photo"),
+                                                    ("Invoice-October.pdf", "Finder · 1 h ago", "doc")]
+            for (index, row) in rows.enumerated() {
+                let y = list.minY + 40 + CGFloat(index) * 30
+                if index == 1 {
+                    NSColor.controlAccentColor.withAlphaComponent(0.85).setFill()
+                    NSBezierPath(roundedRect: NSRect(x: list.minX + 6, y: y, width: list.width - 12, height: 28), xRadius: 6,
+                                 yRadius: 6).fill()
+                }
+                let color = index == 1 ? NSColor.white : ink
+                if let symbol = NSImage(systemSymbolName: row.2, accessibilityDescription: nil)?.withSymbolConfiguration(
+                    NSImage.SymbolConfiguration(pointSize: 11, weight: .medium).applying(.init(paletteColors: [color]))) {
+                    symbol.draw(in: NSRect(x: list.minX + 14, y: y + 8, width: symbol.size.width, height: symbol.size.height),
+                                from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                }
+                Draw.text(row.0, in: NSRect(x: list.minX + 34, y: y + 2, width: list.width - 74, height: 14),
+                          font: .systemFont(ofSize: 11, weight: .medium), color: color)
+                Stage.text(row.1, at: NSPoint(x: list.minX + 34, y: y + 21), font: .systemFont(ofSize: 9),
+                           color: index == 1 ? NSColor.white.withAlphaComponent(0.8) : soft)
+                Stage.text("⌘\(index + 1)", at: NSPoint(x: list.maxX - 30, y: y + 14), font: .systemFont(ofSize: 9), color: soft)
+            }
+            if let keys = inputs.keys["clipboard.show"] {
+                KeyCaps.draw(keys, at: NSPoint(x: 24, y: 196), height: 20, dark: dark, flipped: true)
+            }
+        }
+        return Picture(image: image, caption: "The history opens at the pointer: type to search, Return pastes into the message.")
+    }
+
+    private static func devices(_ inputs: GadgetPreviewInputs, dark: Bool) -> Picture {
+        let size = NSSize(width: width, height: 230)
+        let image = canvas(size) { rect in
+            Stage.wallpaper(rect, dark: dark)
+            Stage.window(NSRect(x: 16, y: 40, width: 180, height: 150), dark: dark, title: "Video Call", style: .chart)
+            Stage.menuBar(NSRect(x: 0, y: 0, width: rect.width, height: 22), dark: dark, app: "Calls", menus: ["File"],
+                          items: [.text("9:41"), .symbol("mic.slash.fill"), .symbol("speaker.wave.2")], rounded: false)
+            let panel = NSRect(x: rect.width - 200, y: 30, width: 186, height: 180)
+            Stage.shadowed(panel, radius: 10) {
+                (dark ? NSColor(white: 0.16, alpha: 0.97) : NSColor(white: 0.99, alpha: 0.97)).setFill()
+                NSBezierPath(roundedRect: panel, xRadius: 10, yRadius: 10).fill()
+            }
+            let ink = dark ? NSColor(white: 1, alpha: 0.9) : NSColor(white: 0, alpha: 0.85)
+            let soft = dark ? NSColor(white: 1, alpha: 0.5) : NSColor(white: 0, alpha: 0.45)
+            func slider(_ y: CGFloat, _ value: CGFloat) {
+                (dark ? NSColor(white: 1, alpha: 0.18) : NSColor(white: 0, alpha: 0.12)).setFill()
+                NSBezierPath(roundedRect: NSRect(x: panel.minX + 14, y: y, width: panel.width - 28, height: 4), xRadius: 2, yRadius: 2).fill()
+                NSColor.controlAccentColor.setFill()
+                NSBezierPath(roundedRect: NSRect(x: panel.minX + 14, y: y, width: (panel.width - 28) * value, height: 4),
+                             xRadius: 2, yRadius: 2).fill()
+                NSColor.white.setFill()
+                NSBezierPath(ovalIn: NSRect(x: panel.minX + 14 + (panel.width - 28) * value - 6, y: y - 4, width: 12, height: 12)).fill()
+            }
+            Stage.text("Output", at: NSPoint(x: panel.minX + 14, y: panel.minY + 16), font: .systemFont(ofSize: 10, weight: .semibold), color: soft)
+            Stage.text("Headphones", at: NSPoint(x: panel.minX + 14, y: panel.minY + 32), font: .systemFont(ofSize: 12, weight: .medium), color: ink)
+            slider(panel.minY + 46, 0.6)
+            Stage.text("Microphone", at: NSPoint(x: panel.minX + 14, y: panel.minY + 72), font: .systemFont(ofSize: 10, weight: .semibold), color: soft)
+            Stage.text("Built-in · Muted", at: NSPoint(x: panel.minX + 14, y: panel.minY + 88), font: .systemFont(ofSize: 12, weight: .medium),
+                       color: NSColor.systemRed)
+            Stage.text("External Display", at: NSPoint(x: panel.minX + 14, y: panel.minY + 116), font: .systemFont(ofSize: 10, weight: .semibold),
+                       color: soft)
+            slider(panel.minY + 134, 0.75)
+            if let keys = inputs.keys["device.micMute"] {
+                KeyCaps.draw(keys, at: NSPoint(x: panel.minX + 14, y: panel.minY + 150), height: 18, dark: dark, flipped: true)
+            }
+        }
+        return Picture(image: image, caption: "Sound output, microphone mute and external display brightness in one place.")
+    }
+
+    private static func appSwitch(_ inputs: GadgetPreviewInputs, dark: Bool) -> Picture {
+        let size = NSSize(width: width, height: 230)
+        let image = canvas(size) { rect in
+            Stage.wallpaper(rect, dark: dark)
+            Stage.menuBar(NSRect(x: 0, y: 0, width: rect.width, height: 20), dark: dark, app: "Notes", menus: ["File", "Edit"],
+                          items: [.text("9:41")], rounded: false)
+            Stage.window(NSRect(x: 16, y: 34, width: 170, height: 130), dark: dark, title: "Notes", style: .text)
+            Stage.window(NSRect(x: 214, y: 54, width: 170, height: 130), dark: dark, title: "Report", style: .chart)
+            let panel = NSRect(x: 80, y: 46, width: 240, height: 150)
+            Stage.shadowed(panel, radius: 12) {
+                NSColor(white: 0.12, alpha: 0.88).setFill()
+                NSBezierPath(roundedRect: panel, xRadius: 12, yRadius: 12).fill()
+            }
+            let rows: [(String, String, NSColor)] = [("Meeting notes", "Notes", .systemYellow), ("Q3 Report.numbers", "Numbers", .systemGreen),
+                                                     ("Inbox", "Mail", .systemBlue), ("Design review", "Browser", .systemOrange)]
+            for (index, row) in rows.enumerated() {
+                let y = panel.minY + 10 + CGFloat(index) * 34
+                if index == 1 {
+                    NSColor.controlAccentColor.withAlphaComponent(0.9).setFill()
+                    NSBezierPath(roundedRect: NSRect(x: panel.minX + 8, y: y, width: panel.width - 16, height: 32), xRadius: 7,
+                                 yRadius: 7).fill()
+                }
+                row.2.setFill()
+                NSBezierPath(roundedRect: NSRect(x: panel.minX + 16, y: y + 6, width: 20, height: 20), xRadius: 5, yRadius: 5).fill()
+                Stage.text(row.0, at: NSPoint(x: panel.minX + 46, y: y + 11), font: .systemFont(ofSize: 11, weight: .semibold), color: .white)
+                Stage.text(row.1, at: NSPoint(x: panel.minX + 46, y: y + 24), font: .systemFont(ofSize: 9),
+                           color: NSColor.white.withAlphaComponent(0.7))
+            }
+            let keys = inputs.keys["appSwitch.next"] ?? "⌥Tab"
+            KeyCaps.draw(keys, at: NSPoint(x: 160, y: 204), height: 20, dark: true, flipped: true)
+        }
+        return Picture(image: image, caption: "Hold ⌥ and press Tab: every window, not only apps; let go to switch.")
+    }
+
+    private static func mouse(_ inputs: GadgetPreviewInputs, dark: Bool) -> Picture {
+        let size = NSSize(width: width, height: 220)
+        let image = canvas(size) { rect in
+            Stage.wallpaper(rect, dark: dark)
+            Stage.window(NSRect(x: 16, y: 20, width: 230, height: 184), dark: dark, title: "Article", style: .text)
+            let body = NSRect(x: 290, y: 56, width: 64, height: 108)
+            Stage.shadowed(body, radius: 32) {
+                NSColor(white: 0.97, alpha: 1).setFill()
+                NSBezierPath(roundedRect: body, xRadius: 32, yRadius: 32).fill()
+            }
+            NSColor(white: 0.75, alpha: 1).setFill()
+            NSRect(x: body.minX, y: body.minY + 42, width: body.width, height: 1.2).fill()
+            NSRect(x: body.midX - 0.6, y: body.minY, width: 1.2, height: 42).fill()
+            NSColor.controlAccentColor.setFill()
+            NSBezierPath(roundedRect: NSRect(x: body.midX - 5, y: body.minY + 12, width: 10, height: 20), xRadius: 5, yRadius: 5).fill()
+            for (y, symbol) in [(CGFloat(34), "arrow.up"), (CGFloat(172), "arrow.down")] {
+                if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(
+                    NSImage.SymbolConfiguration(pointSize: 14, weight: .bold).applying(.init(paletteColors: [.white]))) {
+                    image.draw(in: NSRect(x: body.midX - image.size.width / 2, y: y, width: image.size.width, height: image.size.height),
+                               from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                }
+            }
+            Stage.caption("Smooth, in your direction", at: NSPoint(x: 262, y: 12), small: true)
+            Stage.caption("Side buttons: back · forward", at: NSPoint(x: 258, y: 194), small: true)
+            // A glide: the page moves in small steps instead of jumps.
+            for i in 0..<6 {
+                NSColor.controlAccentColor.withAlphaComponent(0.15 + 0.12 * CGFloat(i)).setFill()
+                NSBezierPath(roundedRect: NSRect(x: 258, y: 60 + CGFloat(i) * 16, width: 6, height: 10), xRadius: 3, yRadius: 3).fill()
+            }
+        }
+        return Picture(image: image, caption: "A wheel mouse scrolls smoothly in its own direction; the trackpad stays natural.")
+    }
+
+    private static func calendar(_ inputs: GadgetPreviewInputs, dark: Bool) -> Picture {
+        let size = NSSize(width: width, height: 272)
+        let image = canvas(size) { rect in
+            Stage.wallpaper(rect, dark: dark)
+            let clock = inputs.clockText.isEmpty ? "Thu 29 Oct 9:41" : inputs.clockText
+            Stage.menuBar(NSRect(x: 0, y: 0, width: rect.width, height: 22), dark: dark, app: "Finder", menus: ["File"],
+                          items: [.text(clock), .symbol("wifi")], rounded: false)
+            let panel = NSRect(x: rect.width - 238, y: 28, width: 224, height: 236)
+            Stage.shadowed(panel, radius: 10) {
+                (dark ? NSColor(white: 0.16, alpha: 0.97) : NSColor(white: 0.99, alpha: 0.97)).setFill()
+                NSBezierPath(roundedRect: panel, xRadius: 10, yRadius: 10).fill()
+            }
+            let ink = dark ? NSColor(white: 1, alpha: 0.9) : NSColor(white: 0, alpha: 0.85)
+            let soft = dark ? NSColor(white: 1, alpha: 0.5) : NSColor(white: 0, alpha: 0.45)
+            Stage.text("October 2026", at: NSPoint(x: panel.minX + 12, y: panel.minY + 16), font: .systemFont(ofSize: 12, weight: .bold), color: ink)
+            let cell = (panel.width - 24) / 7
+            for column in 0..<7 {
+                for row in 0..<5 {
+                    let day = row * 7 + column - 3
+                    guard day >= 1, day <= 31 else { continue }
+                    let x = panel.minX + 12 + CGFloat(column) * cell, y = panel.minY + 34 + CGFloat(row) * 18
+                    if day == 29 {
+                        Brand.nacho.setFill()
+                        NSBezierPath(ovalIn: NSRect(x: x + cell / 2 - 8, y: y - 1, width: 16, height: 16)).fill()
+                    }
+                    let text = "\(day)"
+                    let font = NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: day == 29 ? .bold : .regular)
+                    let w = Draw.width(text, font)
+                    Stage.text(text, at: NSPoint(x: x + cell / 2 - w / 2, y: y + 7), font: font, color: day == 29 ? Brand.onNacho : ink)
+                }
+            }
+            let event = NSRect(x: panel.minX + 12, y: panel.minY + 130, width: panel.width - 24, height: 34)
+            NSColor.systemBlue.setFill()
+            NSBezierPath(roundedRect: NSRect(x: event.minX, y: event.minY + 2, width: 4, height: 30), xRadius: 2, yRadius: 2).fill()
+            Stage.text("Design review", at: NSPoint(x: event.minX + 12, y: event.minY + 11), font: .systemFont(ofSize: 11, weight: .semibold), color: ink)
+            Stage.text("10:00 – 10:30 · in 5 min", at: NSPoint(x: event.minX + 12, y: event.minY + 25), font: .systemFont(ofSize: 9), color: soft)
+            let join = NSRect(x: event.maxX - 44, y: event.minY + 7, width: 42, height: 20)
+            Brand.nacho.setFill()
+            NSBezierPath(roundedRect: join, xRadius: 6, yRadius: 6).fill()
+            Stage.text("Join", at: NSPoint(x: join.minX + 10, y: join.midY), font: .systemFont(ofSize: 10, weight: .bold), color: Brand.onNacho)
+            let cities = inputs.worldClocks.isEmpty ? ["Europe/London", "Asia/Tokyo"] : Array(inputs.worldClocks.prefix(2))
+            for (index, identifier) in cities.enumerated() {
+                let y = panel.minY + 182 + CGFloat(index) * 20
+                Stage.text(WorldClock.city(identifier), at: NSPoint(x: panel.minX + 12, y: y), font: .systemFont(ofSize: 11), color: ink)
+                if let zone = TimeZone(identifier: identifier) {
+                    Stage.text(WorldClock.offset(zone, from: .current, at: Date()), at: NSPoint(x: panel.minX + 100, y: y),
+                               font: .systemFont(ofSize: 9), color: soft)
+                    let time = DateFormatter()
+                    time.timeZone = zone
+                    time.locale = Locale(identifier: "en_US")   // the sample picture is in English throughout
+                    time.setLocalizedDateFormatFromTemplate("jmm")
+                    let text = time.string(from: Date())
+                    let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+                    Stage.text(text, at: NSPoint(x: panel.maxX - 12 - Draw.width(text, font), y: y), font: font, color: ink)
+                }
+            }
+        }
+        return Picture(image: image, caption: "Click the clock: the month, the day's events with Join, and your world clocks.")
     }
 
     // MARK: real views

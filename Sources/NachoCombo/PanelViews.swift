@@ -357,8 +357,39 @@ final class ToolDetailView: NSView {
             pauseButton.action = #selector(pauseClicked)
             pauseButton.setAccessibilityIdentifier("panel-dim-pause")
             controls.append(pauseButton)
-            return [row, UI.hstack([pauseButton, statusLine], spacing: 8)]
+            let session = commandButton("Focus Session", "panel-dim-session", .toggleFocusSession)
+            return [row, UI.hstack([pauseButton, session], spacing: 8), statusLine]
+        case .keepAwake:
+            let toggle = commandButton("Keep Awake On / Off", "panel-keepawake-toggle", .toggleKeepAwake)
+            let hour = commandButton("1 Hour", "panel-keepawake-hour", .keepAwakeFor(60))
+            return [UI.hstack([toggle, hour], spacing: 8), statusLine]
+        case .clipboard:
+            let show = commandButton("Show History", "panel-clipboard-show", .showClipboard)
+            return [UI.hstack([show], spacing: 8), statusLine]
+        case .deviceControl:
+            let mute = commandButton("Mute / Unmute", "panel-device-mute", .toggleMic)
+            let next = commandButton("Next Output", "panel-device-output", .nextOutput)
+            return [UI.hstack([mute, next], spacing: 8), statusLine]
+        case .appSwitch:
+            let hide = commandButton("Hide Other Apps", "panel-appswitch-hide", .hideOtherApps)
+            let note = UI.wrapLabel("Hold ⌥ and press Tab to switch windows.", width: inner)
+            return [UI.hstack([hide], spacing: 8), note]
+        case .mouseTune:
+            let reverse = commandButton("Reverse On / Off", "panel-mouse-reverse", .toggleMouseReverse)
+            return [UI.hstack([reverse], spacing: 8), statusLine]
+        case .calendarClock:
+            let show = commandButton("Show Calendar", "panel-calendar-show", .showCalendar)
+            let join = commandButton("Join Next Call", "panel-calendar-join", .joinNextMeeting)
+            return [UI.hstack([show, join], spacing: 8), statusLine]
         }
+    }
+
+    private func commandButton(_ title: String, _ id: String, _ command: GadgetCommand) -> NSButton {
+        let b = ClosureButton(title: title) { [weak self] in self?.host?.panelPerform(command) }
+        b.bezelStyle = .rounded
+        b.setAccessibilityIdentifier(id)
+        controls.append(b)
+        return b
     }
 
     // MARK: state

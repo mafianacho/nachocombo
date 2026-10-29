@@ -60,6 +60,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>LSUIElement</key><true/>
+<key>NSCalendarsUsageDescription</key><string>Calendar Clock shows your events and meeting links. Events are read on this Mac and never sent anywhere.</string>
+<key>NSCalendarsFullAccessUsageDescription</key><string>Calendar Clock shows your events and meeting links. Events are read on this Mac and never sent anywhere.</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>
 PLIST

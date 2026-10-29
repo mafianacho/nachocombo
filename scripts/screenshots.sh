@@ -25,7 +25,9 @@ crop() {
 ctl appearance dark
 ctl gallery sample on
 for pair in menuBar:menu-bar-organizer systemMonitor:system-monitor windowSnap:window-snap \
-            fileShelf:file-shelf captureFloat:capture-float focusDim:focus-dim; do
+            fileShelf:file-shelf captureFloat:capture-float focusDim:focus-dim keepAwake:keep-awake \
+            clipboard:clipboard-history deviceControl:device-control appSwitch:app-switch mouseTune:mouse-tune \
+            calendarClock:calendar-clock; do
   ctl gallery preview "${pair%%:*}" "$PWD/$OUT/${pair##*:}.png"
 done
 ctl monitor menubar "$PWD/$OUT/monitor-menu-bar.png" sample

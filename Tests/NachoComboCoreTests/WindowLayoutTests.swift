@@ -163,7 +163,7 @@ final class GadgetCatalogTests: XCTestCase {
         XCTAssertTrue(ModuleID.menuBar.info.permissions.isEmpty)
         XCTAssertTrue(ModuleID.focusDim.info.permissions.isEmpty)
         XCTAssertTrue(ModuleID.fileShelf.info.permissions.isEmpty)
-        XCTAssertEqual(GadgetActions.of(.windowSnap).count, SnapAction.allCases.count)
+        XCTAssertEqual(GadgetActions.of(.windowSnap).filter { $0.id.hasPrefix("snap.") }.count, SnapAction.allCases.count)
     }
 
     func testActionShortcutsDefaultsAreUniqueAndOverridable() throws {

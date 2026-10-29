@@ -14,6 +14,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private var shelf: ShelfModule!
     private var capture: CaptureFloatModule!
     private var dim: FocusDimModule!
+    private var keepAwake: KeepAwakeModule!
+    private var clipboard: ClipboardModule!
+    private var devices: DeviceControlModule!
+    private var appSwitch: AppSwitchModule!
+    private var mouse: MouseTuneModule!
+    private var clock: CalendarClockModule!
     private var mainItem: NSStatusItem!
     private var settingsWindow: SettingsWindowController!
     private var panel: PanelController!
@@ -56,7 +62,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         capture = CaptureFloatModule()
         dim = FocusDimModule()
         dim.setIntensity(store.load().dimIntensity)
-        manager = ModuleManager(store: store, modules: [organizer, monitor, snap, shelf, capture, dim])
+        keepAwake = KeepAwakeModule()
+        clipboard = ClipboardModule()
+        devices = DeviceControlModule()
+        appSwitch = AppSwitchModule()
+        mouse = MouseTuneModule()
+        clock = CalendarClockModule()
+        manager = ModuleManager(store: store, modules: [organizer, monitor, snap, shelf, capture, dim, keepAwake, clipboard,
+                                                        devices, appSwitch, mouse, clock])
         panel = PanelController(host: self)
 
         // Created first, so it is the right-most item and never swallowed by the divider.
@@ -76,7 +89,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         shelf.optionsProvider = options
         capture.optionsProvider = options
         dim.optionsProvider = options
+        dim.sessions.optionsProvider = options
         monitor.optionsProvider = options
+        keepAwake.optionsProvider = options
+        clipboard.optionsProvider = options
+        devices.optionsProvider = options
+        appSwitch.optionsProvider = options
+        mouse.optionsProvider = options
+        clock.optionsProvider = options
 
         settingsWindow = SettingsWindowController(host: self)
 
@@ -97,6 +117,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             self?.manager.report(.windowSnap, state: .needsPermission(WindowSnapModule.permissionMessage))
         }
         snap.targetAppProvider = { [weak self] in self?.windowTargetApp() }
+        snap.layouts.onChange = { [weak self] in self?.stateChanged() }
+        // Items that come and go (recording, focus countdown, muted microphone) must not land on the hidden side.
+        let rebuildBar: () -> Void = { [weak self] in self?.organizer.rebuild() }
+        capture.onStatusItemsChanged = rebuildBar
+        dim.sessions.onStatusItemsChanged = rebuildBar
+        devices.onStatusItemsChanged = rebuildBar
+        dim.sessions.onPhaseChange = { [weak self] in
+            self?.dim.refresh()
+            self?.stateChanged()
+        }
+        dim.sessions.openSettings = { [weak self] in self?.showSettings(.focusDim) }
+        keepAwake.onChange = { [weak self] in self?.stateChanged() }
+        keepAwake.openSettings = { [weak self] in self?.showSettings(.keepAwake) }
+        keepAwake.setOptions = { [weak self] value in self?.gadgetSetOptions(value) }
+        clipboard.onChange = { [weak self] in self?.stateChanged() }
+        clipboard.sendToShelf = { [weak self] item in self?.shelve(item) ?? false }
+        devices.onChange = { [weak self] in self?.stateChanged() }
+        appSwitch.switcherShortcutProvider = { [weak self] in self?.manager.settings.shortcut(forAction: "appSwitch.next") }
+        appSwitch.onChange = { [weak self] in self?.refreshPinnedItems() }
+        mouse.onPermissionLost = { [weak self] in
+            self?.manager.report(.mouseTune, state: .needsPermission(MouseTuneModule.permissionMessage))
+        }
+        clock.onChange = { [weak self] in self?.stateChanged() }
+        clock.openSettings = { [weak self] in self?.showSettings(.calendarClock) }
         manager.onStarted = { [weak self] id in
             // Items created after the divider would land on its hidden side: re-create the pair.
             if id != .menuBar && id.createsStatusItem { self?.organizer.rebuild() }
@@ -231,7 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     /// user came here from the permission card the window comes back to show it.
     private func recheckPermissions() {
         var started: [ModuleID] = []
-        for id in [ModuleID.windowSnap, .captureFloat] where manager.settings.isEnabled(id) {
+        for id in permissionGadgets where manager.settings.isEnabled(id) {
             guard case .needsPermission = manager.states[id] ?? .off else { continue }
             manager.retry(id)
             if manager.states[id] == .running { started.append(id) }
@@ -248,6 +292,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         stateChanged()
     }
 
+    /// The gadgets that cannot run without a permission.
+    private var permissionGadgets: [ModuleID] { ModuleID.allCases.filter { $0.info.requiredPermission != nil } }
+
     /// Remembers which copy of the app had each permission, so a later copy can tell an update from a revocation.
     private func notePermissionGrants() {
         guard let signature = CodeSignature.current else { return }
@@ -261,7 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     /// Polls once a second while a switched-on gadget waits for a permission, for at most 10 minutes at a time (opening
     /// the window, the panel or System Settings from here starts it again). Stops by itself when nothing waits.
     private func startPermissionWatchIfNeeded(restart: Bool = false) {
-        let waiting = [ModuleID.windowSnap, .captureFloat].contains { id in
+        let waiting = permissionGadgets.contains { id in
             guard manager.settings.isEnabled(id), case .needsPermission = manager.states[id] ?? .off else { return false }
             return true
         }
@@ -281,7 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             permissionWatch = nil
             return
         }
-        let ready = [ModuleID.windowSnap, .captureFloat].contains { id in
+        let ready = permissionGadgets.contains { id in
             guard manager.settings.isEnabled(id), case .needsPermission = manager.states[id] ?? .off,
                   let permission = id.info.requiredPermission else { return false }
             return gadgetPermissionGranted(permission) == true
@@ -300,9 +347,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             alert.informativeText = "To read the area you select, Nacho Combo needs your OK in \(app). Next, macOS shows "
                 + "its own message: choose Open \(app), then turn on Nacho Combo.\n\nNothing is recorded or uploaded."
         default:
-            alert.informativeText = "To move and resize other apps' windows, Nacho Combo needs your OK in \(app). Next, "
-                + "macOS shows its own message: choose Open \(app), then turn on Nacho Combo.\n\nWindow titles and "
-                + "contents are never read."
+            let purpose = id.info.permissions.first { $0.permission == permission }?.purpose ?? "needs it"
+            let privacy: String
+            switch id {
+            case .windowSnap: privacy = "\n\nWindow titles and contents are never read."
+            case .appSwitch: privacy = "\n\nWindow titles are read only to show them in the switcher, and never kept."
+            case .mouseTune: privacy = "\n\nOnly the mouse's scrolling and buttons change; keystrokes are never read."
+            default: privacy = ""
+            }
+            alert.informativeText = "\(id.displayName) \(purpose). For that, Nacho Combo needs your OK in \(app). Next, "
+                + "macOS shows its own message: choose Open \(app), then turn on Nacho Combo." + privacy
         }
         alert.icon = GadgetIcon.image(for: id, size: 64)
         alert.addButton(withTitle: "Continue")
@@ -370,6 +424,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             case "capture.hide": capture.toggleHidden()
             case "capture.closeAll": capture.closeAll()
             case "dim.toggle": dim.togglePause()
+            case "dim.session": dim.toggleSession()
+            case "layout.save": snap.layouts.save()
+            case "layout.restore": snap.layouts.restore()
+            case "capture.record": capture.toggleRecording()
+            case "capture.color": capture.pickColor()
+            case "capture.live": capture.beginLiveWindow()
+            case "keepAwake.toggle": keepAwake.toggle()
+            case "clipboard.show": clipboard.showPanel()
+            case "clipboard.plain": clipboard.pastePlainLast()
+            case "device.micMute": devices.toggleMic()
+            case "device.nextOutput": devices.nextOutput()
+            case "device.brighter": devices.changeBrightness(by: 10)
+            case "device.dimmer": devices.changeBrightness(by: -10)
+            case "appSwitch.next": appSwitch.cycle(forward: true); return
+            case "appSwitch.previous": appSwitch.cycle(forward: false); return
+            case "appSwitch.hideOthers": appSwitch.hideOthers()
+            case "mouseTune.reverse": toggleMouseReverse()
+            case "calendarClock.show": clock.togglePopover()
             default: return
             }
         }
@@ -657,9 +729,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             let key = actionLabel("capture.area") ?? "On"
             return n == 0 ? key : "\(key) · \(n) floating"
         case .focusDim:
+            if dim.sessions.isActive { return dim.sessions.statusText }
             if dim.paused { return "Paused" }
             let strength = "\(Int((manager.settings.dimIntensity * 100).rounded()))%"
             return actionLabel("dim.toggle").map { "\($0) · \(strength)" } ?? strength
+        case .keepAwake:
+            guard keepAwake.decision.holds else { return "Sleeps as usual" }
+            return keepAwake.until.map { "Awake · " + KeepAwakePolicy.remainingText(until: $0, now: Date()) } ?? "Awake"
+        case .clipboard:
+            let n = clipboard.history.items.count
+            let items = n == 1 ? "1 item" : "\(n) items"
+            return actionLabel("clipboard.show").map { "\($0) · \(items)" } ?? items
+        case .deviceControl:
+            if devices.micMuted { return "Microphone muted" }
+            return devices.currentOutput?.name ?? "No sound output"
+        case .appSwitch:
+            let apps = manager.settings.options.appShortcuts.filter { $0.shortcut != nil }.count
+            let switcher = actionLabel("appSwitch.next") ?? "Switcher"
+            return apps == 0 ? switcher : "\(switcher) · \(apps) app\(apps == 1 ? "" : "s")"
+        case .mouseTune:
+            let options = manager.settings.options
+            return (options.mouseReverse ? "Reversed wheel" : "Natural wheel") + (options.mouseSmooth ? " · smooth" : "")
+        case .calendarClock:
+            if let next = clock.nextMeeting(within: 60 * 60), let countdown = ClockFormat.countdown(to: next.event.startDate, now: Date()) {
+                return "\(next.event.title ?? "Event") \(countdown)"
+            }
+            return clock.clockText.isEmpty ? "On" : clock.clockText
         }
     }
 
@@ -682,6 +777,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             if snap.motionFailed { items.append("⌃⌘-drag could not start: macOS refused the event tap. Check Accessibility.") }
         case .systemMonitor:
             items.append(contentsOf: monitor.alertMessages)
+        case .appSwitch:
+            for bundleID in appSwitch.failedApps {
+                let name = manager.settings.options.appShortcuts.first { $0.bundleID == bundleID }?.name ?? bundleID
+                items.append("\(name)'s shortcut is already used by another app; choose another one on the Shortcuts tab.")
+            }
+        case .mouseTune:
+            if !mouse.tapActive { items.append("The mouse event tap stopped. Switch Mouse Tune off and on again, or check Accessibility.") }
         default: break
         }
         return items
@@ -712,7 +814,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             if options.snapDragToEdges {
                 text += WindowSnapModule.systemEdgeTilingEnabled ? " · edge drags are left to macOS tiling" : " · drag to snap on"
             }
-            return text
+            return text + " · " + snap.layouts.summary
         case .fileShelf:
             let n = shelf.store.items.count
             return (n == 0 ? "Empty" : "\(n) item\(n == 1 ? "" : "s")") + (shelf.isPanelVisible ? " · shelf open" : " · shelf hidden")
@@ -721,9 +823,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             var text = n == 0 ? "No floats" : "\(n) float\(n == 1 ? "" : "s")"
             if capture.locked { text += " · locked" }
             if capture.hidden { text += " · hidden" }
+            if capture.recording { text += " · recording" }
             return text
         case .focusDim:
-            return dim.paused ? "Paused" : "Dimming"
+            let shade = dim.paused ? "Paused" : (manager.settings.options.dimOnlyInSession && dim.sessions.phase != .focus
+                                                 ? "Waiting for a focus session" : "Dimming")
+            return dim.sessions.isActive ? "\(shade) · \(dim.sessions.statusText)" : shade
+        case .keepAwake:
+            return keepAwake.decision.text
+        case .clipboard:
+            let pins = clipboard.history.pins.count
+            var text = "\(clipboard.history.items.count) of \(manager.settings.options.clipboardLimit) remembered"
+            if pins > 0 { text += " · \(pins) pinned" }
+            if manager.settings.options.clipboardPasteDirectly && !clipboard.accessibilityAllowed { text += " · copies only" }
+            return text
+        case .deviceControl:
+            let output = devices.currentOutput?.name ?? "no output"
+            var text = "\(output) · microphone \(devices.micMuted ? "muted" : "on")"
+            let displays = devices.displays.list.count
+            if displays > 0 { text += " · \(displays) external display\(displays == 1 ? "" : "s")" }
+            return text
+        case .appSwitch:
+            let apps = manager.settings.options.appShortcuts.filter { $0.shortcut != nil }.count
+            return "\(apps) app shortcut\(apps == 1 ? "" : "s") · \(appSwitch.switchCount) switch\(appSwitch.switchCount == 1 ? "" : "es") this session"
+        case .mouseTune:
+            let options = manager.settings.options
+            return "Wheel \(options.mouseReverse ? "reversed" : "natural") · smooth \(options.mouseSmooth ? "on" : "off") · "
+                + String(format: "%g× speed", options.mouseSpeed)
+        case .calendarClock:
+            if manager.settings.options.clockNextEvent, CalendarClockModule.access != true { return "Clock on · events need Calendars" }
+            guard let next = clock.nextMeeting() else { return "No timed events in the next 12 hours" }
+            let countdown = ClockFormat.countdown(to: next.event.startDate, now: Date()) ?? ""
+            return "Next: \(next.event.title ?? "Event") \(countdown)" + (next.link != nil ? " · Join ready" : "")
         }
     }
 
@@ -735,7 +866,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         inputs.shelfItems = samplePreviews ? [] : shelf.store.items
         inputs.dimIntensity = manager.settings.dimIntensity
         inputs.snapGap = CGFloat(options.snapGap)
-        for id in ["menuBar.toggle", GadgetActions.snapID(.left), "capture.area", "dim.toggle", "shelf.toggle"] {
+        // Documentation screenshots use the sample clock, not this Mac's time and language.
+        inputs.clockText = samplePreviews ? "" : clock.clockText
+        inputs.worldClocks = options.worldClocks
+        inputs.keepAwakeMinutes = options.keepAwakeMinutes
+        for id in ["menuBar.toggle", GadgetActions.snapID(.left), "capture.area", "dim.toggle", "shelf.toggle",
+                   "clipboard.show", "device.micMute", "appSwitch.next"] {
             if let label = actionLabel(id) { inputs.keys[id == GadgetActions.snapID(.left) ? "snap.left" : id] = label }
         }
         return inputs
@@ -750,6 +886,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .accessibility: return WindowSnapModule.isTrusted(prompt: false)
         case .screenRecording: return CaptureFloatModule.hasAccess()
         case .notifications: return AlertNotifier.granted
+        case .calendars: return CalendarClockModule.access
         }
     }
 
@@ -777,8 +914,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     }
 
     func gadgetRequestPermission(_ permission: GadgetPermission) {
-        guard permission == .notifications else { gadgetOpenPermissionSettings(permission); return }
-        AlertNotifier.request { [weak self] in self?.stateChanged() }
+        switch permission {
+        case .notifications: AlertNotifier.request { [weak self] in self?.stateChanged() }
+        case .calendars:
+            guard CalendarClockModule.access == nil else { gadgetOpenPermissionSettings(.calendars); return }
+            clock.requestAccess { [weak self] in self?.stateChanged() }
+        case .accessibility:
+            if !WindowSnapModule.isTrusted(prompt: true) { gadgetOpenPermissionSettings(.accessibility) }
+        default: gadgetOpenPermissionSettings(permission)
+        }
     }
 
     /// Removes this app's entry from the permission's list (`tccutil reset <service> <bundle id>`, which needs no
@@ -798,6 +942,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .accessibility: _ = WindowSnapModule.isTrusted(prompt: true)
         case .screenRecording: _ = CGRequestScreenCaptureAccess()
         case .notifications: AlertNotifier.request { [weak self] in self?.stateChanged() }
+        case .calendars: clock.requestAccess { [weak self] in self?.stateChanged() }
         }
         settingsVisits[permission] = Date()
         settingsWindowWasVisible = settingsWindow.isVisible
@@ -879,10 +1024,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         organizer.applyOptions()
         snap.applyOptions()
         capture.applyOptions()
+        applyNewGadgetOptions()
         dim.setIntensity(manager.settings.dimIntensity)
         monitor.applySettings()
         syncPins()
         stateChanged()
+    }
+
+    private func applyNewGadgetOptions() {
+        keepAwake.applyOptions()
+        clipboard.applyOptions()
+        devices.applyOptions()
+        appSwitch.applyOptions()
+        mouse.applyOptions()
+        clock.applyOptions()
+    }
+
+    private func toggleMouseReverse() {
+        var options = manager.settings.options
+        options.mouseReverse.toggle()
+        gadgetSetOptions(options)
+        Toast.show(options.mouseReverse ? "Mouse wheel reversed" : "Mouse wheel natural", near: NSEvent.mouseLocation)
+    }
+
+    /// Clipboard History ▸ To Shelf: the item goes through the shelf's own drop path.
+    private func shelve(_ item: ClipboardItem) -> Bool {
+        guard shelf.running else { return false }
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("com.mafianacho.nachocombo.to-shelf"))
+        pasteboard.clearContents()
+        switch item.kind {
+        case .text, .link: pasteboard.setString(item.text, forType: .string)
+        case .image: if let png = item.imagePNG { pasteboard.setData(png, forType: .png) }
+        case .files: pasteboard.writeObjects(item.text.split(separator: "\n").map { URL(fileURLWithPath: String($0)) as NSURL })
+        }
+        shelf.ingest(pasteboard)
+        shelf.show()
+        return true
+    }
+
+    func gadgetDevices() -> DeviceSnapshot { devices.snapshot }
+
+    func gadgetCommandState(_ command: GadgetCommand) -> (on: Bool, enabled: Bool) {
+        switch command {
+        case .toggleKeepAwake: return (keepAwake.manual && keepAwake.decision.holds, true)
+        case .toggleMic: return (devices.micMuted, true)
+        case .nextOutput: return (false, devices.outputs.count > 1)
+        case .toggleRecording: return (capture.recording, true)
+        case .toggleFocusSession: return (dim.sessions.isActive, true)
+        case .restoreLayout: return (false, snap.layouts.current != nil || snap.layouts.store.latest != nil)
+        case .toggleMouseReverse: return (manager.settings.options.mouseReverse, true)
+        case .joinNextMeeting: return (false, clock.nextMeeting()?.link != nil)
+        default: return (false, true)
+        }
+    }
+
+    func gadgetSetAppShortcut(_ bundleID: String, _ shortcut: ToolShortcut?) -> String? {
+        if let shortcut = shortcut,
+           let issue = ShortcutPolicy.validateAppShortcut(shortcut, bundleID: bundleID, settings: manager.settings) {
+            lastShortcutResult = "refused:\(issue.message)"
+            return issue.message
+        }
+        var options = manager.settings.options
+        guard let index = options.appShortcuts.firstIndex(where: { $0.bundleID == bundleID }) else { return nil }
+        let previous = options.appShortcuts[index].shortcut
+        options.appShortcuts[index].shortcut = shortcut
+        gadgetSetOptions(options)
+        if shortcut != nil, manager.states[.appSwitch] == .running, appSwitch.failedApps.contains(bundleID) {
+            options.appShortcuts[index].shortcut = previous
+            gadgetSetOptions(options)
+            lastShortcutResult = "refused:os-in-use"
+            return "Another app already uses this shortcut, so it was not registered."
+        }
+        lastShortcutResult = shortcut.map { "saved:\($0.label)" } ?? "cleared"
+        return nil
     }
 
     func quitApp() { NSApp.terminate(nil) }
@@ -906,6 +1120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         organizer.applyOptions()
         snap.applyOptions()
         capture.applyOptions()
+        applyNewGadgetOptions()
         dim.refresh()
         monitor.applySettings()
     }
@@ -931,7 +1146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
 
     func permissionsAttentionCount() -> Int {
         var count = 0
-        for id in [ModuleID.windowSnap, .captureFloat] where manager.settings.isEnabled(id) {
+        for id in permissionGadgets where manager.settings.isEnabled(id) {
             if case .needsPermission = manager.states[id] ?? .off { count += 1 }
         }
         if manager.settings.options.alertNotifications, AlertNotifier.granted == false { count += 1 }
@@ -943,10 +1158,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         if recording {
             toolShortcuts.suspend()
             actionShortcuts.suspend()
+            appSwitch.suspendShortcuts()
             appliedActionShortcuts = nil
         } else {
             toolShortcuts.apply(manager.settings.toolShortcuts)
             applyActionShortcuts(force: true)
+            appSwitch.applyOptions()
         }
     }
 
@@ -956,7 +1173,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         organizer.applyOptions()
         snap.applyOptions()
         capture.applyOptions()
-        if old.dimScope != options.dimScope || old.dimOtherDisplays != options.dimOtherDisplays { dim.refresh() }
+        applyNewGadgetOptions()
+        if old.dimScope != options.dimScope || old.dimOtherDisplays != options.dimOtherDisplays
+            || old.dimOnlyInSession != options.dimOnlyInSession { dim.refresh() }
         if options.alertNotifications && !old.alertNotifications && AlertNotifier.granted == nil {
             AlertNotifier.request { [weak self] in self?.stateChanged() }
         }
@@ -992,6 +1211,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .hideFloats: capture.toggleHidden()
         case .closeFloats: capture.closeAll()
         case .toggleDimPause: dim.togglePause()
+        case .toggleFocusSession: dim.toggleSession()
+        case .saveLayout: if running(.windowSnap) { snap.layouts.save() }
+        case .restoreLayout: if running(.windowSnap) { snap.layouts.restore() }
+        case .toggleRecording, .pickColor, .liveWindow:
+            if capture.recording && command == .toggleRecording { capture.stopRecording(); break }
+            panel.close()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                switch command {
+                case .toggleRecording: self?.capture.toggleRecording()
+                case .pickColor: self?.capture.pickColor()
+                default: self?.capture.beginLiveWindow()
+                }
+            }
+        case .toggleKeepAwake: keepAwake.toggle()
+        case .keepAwakeFor(let minutes): keepAwake.hold(minutes: minutes)
+        case .showClipboard:
+            panel.close()
+            clipboard.showPanel()
+        case .clearClipboard: clipboard.clearHistory()
+        case .toggleMic: devices.toggleMic()
+        case .nextOutput: devices.nextOutput()
+        case .selectOutput(let uid): devices.selectOutput(uid)
+        case .selectInput(let uid): devices.selectInput(uid)
+        case .setVolume(let value): devices.setOutputVolume(Float32(value))
+        case .setBrightness(let index, let value): devices.displays.setBrightness(index, value)
+        case .hideOtherApps: appSwitch.hideOthers()
+        case .toggleMouseReverse: toggleMouseReverse()
+        case .showCalendar:
+            panel.close()
+            clock.togglePopover()
+        case .joinNextMeeting: clock.joinNext()
         }
         stateChanged()
     }
@@ -1023,6 +1273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .accessibility: address = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
         case .screenRecording: address = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
         case .notifications: address = "x-apple.systempreferences:com.apple.preference.notifications"
+        case .calendars: address = "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
         }
         if let url = URL(string: address) { NSWorkspace.shared.open(url) }
     }
@@ -1157,6 +1408,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             default: break
             }
 
+        case "keepawake" where parts.count >= 2:
+            // Debug only: `keepawake toggle|sleep|for <minutes>`.
+            switch parts[1] {
+            case "toggle": keepAwake.toggle()
+            case "sleep": keepAwake.letSleep()
+            case "for" where parts.count == 3: keepAwake.hold(minutes: Int(parts[2]) ?? 0)
+            default: break
+            }
+        case "clipboard" where parts.count >= 2:
+            // Debug only: `clipboard show|clear|plain|add <text>|pin <i>|shelve <i>`.
+            let argument = parts.dropFirst(2).joined(separator: " ")
+            let items = clipboard.history.search("")
+            switch parts[1] {
+            case "show": clipboard.showPanel()
+            case "clear": clipboard.clearHistory()
+            case "plain": clipboard.pastePlainLast()
+            case "add": clipboard.debugAdd(argument)
+            case "pin": if let i = Int(argument), items.indices.contains(i) { clipboard.togglePin(items[i].id) }
+            case "shelve": if let i = Int(argument), items.indices.contains(i) { clipboard.shelve(items[i]) }
+            default: break
+            }
+        case "device" where parts.count >= 2:
+            // Debug only: `device mute|next|bright <step>`.
+            switch parts[1] {
+            case "mute": devices.toggleMic()
+            case "next": devices.nextOutput()
+            case "bright" where parts.count == 3: devices.changeBrightness(by: Int(parts[2]) ?? 0)
+            default: break
+            }
+        case "switcher" where parts.count == 2:
+            // Debug only: `switcher next|prev|close|hide`.
+            switch parts[1] {
+            case "next": appSwitch.cycle(forward: true)
+            case "prev": appSwitch.cycle(forward: false)
+            case "close": appSwitch.closeSwitcher()
+            case "hide": appSwitch.hideOthers()
+            default: break
+            }
+        case "calendar" where parts.count == 2:
+            switch parts[1] {
+            case "show": clock.togglePopover()
+            case "hide": clock.closePopover()
+            case "reload": clock.loadEvents(force: true)
+            default: break
+            }
+        case "layout" where parts.count == 2:
+            if parts[1] == "save" { snap.layouts.save() } else if parts[1] == "restore" { snap.layouts.restore() }
+        case "session" where parts.count == 2:
+            switch parts[1] {
+            case "toggle": dim.toggleSession()
+            case "stop": dim.sessions.stop()
+            default: break
+            }
         case "allowed" where parts.count == 2:
             if let id = ModuleID(rawValue: parts[1]) { recentlyAllowed[id] = Date() }
         case "appearance" where parts.count == 2:
@@ -1222,6 +1526,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case "lock": capture.toggleLock()
         case "hide": capture.toggleHidden()
         case "closeall": capture.closeAll()
+        case "record": capture.toggleRecording()
+        case "color": capture.pickColor()
+        case "live": capture.beginLiveWindow()
         case "rect" where parts.count == 6:
             let v = parts[2...5].compactMap(Double.init)
             if v.count == 4 { capture.captureGlobal(x: v[0], y: v[1], width: v[2], height: v[3]) }
@@ -1244,6 +1551,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case "opacity" where parts.count == 4:
             if let o = Double(parts[3]) { window.setOpacity(CGFloat(o)) }
         case "save" where parts.count == 4: _ = window.save(to: URL(fileURLWithPath: parts[3]))
+        case "markup": window.toggleMarkup()
         default: break
         }
     }

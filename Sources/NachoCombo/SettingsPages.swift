@@ -626,18 +626,25 @@ final class PermissionsPage: NSView {
     private func privacyLines(_ host: SettingsHost) -> [Line] {
         var lines: [Line] = []
         let manager = host.gadgetManager
-        for (permission, id) in [(GadgetPermission.accessibility, ModuleID.windowSnap), (.screenRecording, .captureFloat)] {
-            let need = id.info.permissions.first { $0.permission == permission }
-            let user = "\(id.displayName) · " + (need?.purpose ?? "")
-            let on = manager.settings.isEnabled(id)
-            let granted = host.gadgetPermissionGranted(permission) == true
+        for permission in [GadgetPermission.accessibility, .screenRecording] {
+            // Every gadget that uses the permission; the ones that cannot run without it decide what the line asks.
+            let users = ModuleID.allCases.filter { id in id.info.permissions.contains { $0.permission == permission } }
+            let required = users.filter { $0.info.requiredPermission == permission }
+            guard let first = required.first ?? users.first else { continue }
+            let names = users.map { id -> String in
+                let optional = id.info.permissions.first { $0.permission == permission }?.optional ?? false
+                return id.displayName + (optional ? " (optional)" : "")
+            }
+            var user = names.joined(separator: ", ")
+            if users.count == 1 { user += " · " + (first.info.permissions.first { $0.permission == permission }?.purpose ?? "") }
             let monthly = permission == .screenRecording ? " macOS 15 and later ask again about once a month." : ""
-            if granted {
+            let waiting = required.first { manager.settings.isEnabled($0) }
+            if host.gadgetPermissionGranted(permission) == true {
                 lines.append(Line(symbol: permission.symbolName, title: permission.paneName(), user: user + "." + monthly,
                                   status: "Allowed", tone: .success,
                                   action: ("Open Settings", false, { host.gadgetOpenPermissionSettings(permission) }),
                                   note: nil))
-            } else if on {
+            } else if let id = waiting {
                 let updated = host.gadgetPermissionStage(permission) == .updated
                 lines.append(Line(symbol: permission.symbolName, title: permission.paneName(), user: user + "." + monthly,
                                   status: "Not allowed", tone: .attention,
@@ -645,9 +652,11 @@ final class PermissionsPage: NSView {
                                            { [weak self] in self?.onOpen?(.gadget(id)) }),
                                   note: updated ? "Nacho Combo was updated, so macOS needs to allow it again." : nil))
             } else {
+                let asked = required.map { $0.displayName }
+                let when = asked.count > 1 ? asked.dropLast().joined(separator: ", ") + " or " + asked.last! : (asked.first ?? "")
                 lines.append(Line(symbol: permission.symbolName, title: permission.paneName(), user: user + "." + monthly,
                                   status: "Not allowed", tone: .neutral, action: nil,
-                                  note: "Asked when you switch on \(id.displayName)."))
+                                  note: "Asked when you switch on \(when)."))
             }
         }
         let alerts = manager.settings.options.alertNotifications
@@ -667,6 +676,24 @@ final class PermissionsPage: NSView {
                               status: "Not asked yet", tone: .neutral,
                               action: alerts ? ("Ask", false, { host.gadgetRequestPermission(.notifications) }) : nil,
                               note: alerts ? nil : "Asked when you turn on alert notifications in System Monitor."))
+        }
+        let events = manager.settings.isEnabled(.calendarClock) && manager.settings.options.clockNextEvent
+        let calendarUser = "Calendar Clock · shows your events and meeting links (optional)."
+        switch host.gadgetPermissionGranted(.calendars) {
+        case true?:
+            lines.append(Line(symbol: GadgetPermission.calendars.symbolName, title: "Calendars", user: calendarUser,
+                              status: "Allowed", tone: .success,
+                              action: ("Open Settings", false, { host.gadgetOpenPermissionSettings(.calendars) }), note: nil))
+        case false?:
+            lines.append(Line(symbol: GadgetPermission.calendars.symbolName, title: "Calendars", user: calendarUser,
+                              status: "Not allowed", tone: .neutral,
+                              action: ("Open Settings", false, { host.gadgetOpenPermissionSettings(.calendars) }),
+                              note: events ? "The clock works; events do not show until you allow it." : nil))
+        case nil:
+            lines.append(Line(symbol: GadgetPermission.calendars.symbolName, title: "Calendars", user: calendarUser,
+                              status: "Not asked yet", tone: .neutral,
+                              action: events ? ("Ask", false, { host.gadgetRequestPermission(.calendars) }) : nil,
+                              note: events ? nil : "Asked when Calendar Clock shows your next event."))
         }
         return lines
     }

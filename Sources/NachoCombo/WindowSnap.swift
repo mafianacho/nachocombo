@@ -34,6 +34,8 @@ final class WindowSnapModule: NSObject, FeatureModule, PermissionPrompting {
     let memory = WindowFrameMemory()
     private lazy var dragSnap = DragSnapController(module: self)
     private lazy var motion = WindowMotionController()
+    /// Saved window layouts, one per arrangement of displays.
+    let layouts = WindowLayoutKeeper()
 
     static func isTrusted(prompt: Bool) -> Bool {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
@@ -56,6 +58,8 @@ final class WindowSnapModule: NSObject, FeatureModule, PermissionPrompting {
         }
         running = true
         applyOptions()
+        layouts.optionsProvider = optionsProvider
+        layouts.start()
         return .running
     }
 
@@ -64,6 +68,7 @@ final class WindowSnapModule: NSObject, FeatureModule, PermissionPrompting {
         promptedSinceEnabled = false
         dragSnap.stop()
         motion.stop()
+        layouts.stop()
     }
 
     /// Starts or stops the mouse features to match the options.
@@ -146,7 +151,7 @@ final class WindowSnapModule: NSObject, FeatureModule, PermissionPrompting {
             "dragSnapDeferredToSystem": "\(WindowSnapModule.systemEdgeTilingEnabled)",
             "motionTapActive": "\(motion.isActive)",
             "rememberedWindows": "\(memory.count)",
-        ]
+        ].merging(layouts.diagnostics) { a, _ in a }
     }
 }
 

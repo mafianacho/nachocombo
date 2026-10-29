@@ -7,6 +7,12 @@ public enum ModuleID: String, Codable, CaseIterable {
     case fileShelf
     case captureFloat
     case focusDim
+    case keepAwake
+    case clipboard
+    case deviceControl
+    case appSwitch
+    case mouseTune
+    case calendarClock
 
     public var displayName: String {
         switch self {
@@ -16,6 +22,12 @@ public enum ModuleID: String, Codable, CaseIterable {
         case .fileShelf: return "File Shelf"
         case .captureFloat: return "Capture Float"
         case .focusDim: return "Focus Dim"
+        case .keepAwake: return "Keep Awake"
+        case .clipboard: return "Clipboard History"
+        case .deviceControl: return "Device Control"
+        case .appSwitch: return "App Switch"
+        case .mouseTune: return "Mouse Tune"
+        case .calendarClock: return "Calendar Clock"
         }
     }
 
@@ -23,7 +35,7 @@ public enum ModuleID: String, Codable, CaseIterable {
     /// re-create the menu bar divider pair.
     public var createsStatusItem: Bool {
         switch self {
-        case .menuBar, .systemMonitor: return true
+        case .menuBar, .systemMonitor, .keepAwake, .calendarClock: return true
         default: return false
         }
     }
