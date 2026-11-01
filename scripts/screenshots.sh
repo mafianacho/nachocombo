@@ -25,13 +25,26 @@ crop() {
 ctl appearance dark
 ctl gallery sample on
 for pair in menuBar:menu-bar-organizer systemMonitor:system-monitor windowSnap:window-snap \
-            fileShelf:file-shelf captureFloat:capture-float focusDim:focus-dim; do
+            fileShelf:file-shelf captureFloat:capture-float focusDim:focus-dim keepAwake:keep-awake \
+            clipboard:clipboard-history deviceControl:device-control appSwitch:app-switch mouseTune:mouse-tune \
+            calendarClock:calendar-clock diskMap:disk-map-gallery; do
   ctl gallery preview "${pair%%:*}" "$PWD/$OUT/${pair##*:}.png"
 done
 ctl monitor menubar "$PWD/$OUT/monitor-menu-bar.png" sample
 ctl monitor flyout cpu 0 "$PWD/$OUT/monitor-cpu-flyout.png" sample
 ctl monitor flyout memory 0 "$PWD/$OUT/monitor-memory-flyout.png" sample
 ctl monitor snapshot battery "$PWD/$OUT/monitor-battery.png" sample
+
+# Disk Map's window, on a made-up disk.
+ctl disk sample; sleep 1
+ctl disk style sunburst; ctl disk color folder; sleep 1
+ctl disk snapshot "$PWD/$OUT/disk-map-sunburst.png"
+ctl disk style blocks; sleep 1
+ctl disk snapshot "$PWD/$OUT/disk-map-blocks.png"
+ctl disk color age; sleep 1
+ctl disk snapshot "$PWD/$OUT/disk-map-age.png"
+ctl disk color folder
+ctl disk hide
 
 ctl gallery page home; sleep 1
 ctl settings snapshot "$PWD/$OUT/gallery-dark.png"

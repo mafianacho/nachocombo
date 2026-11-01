@@ -3,12 +3,12 @@
 # BUILD_MODE=spm   (default) uses SwiftPM (needs a toolchain whose PackageDescription module is present)
 # BUILD_MODE=swiftc uses swiftc directly (works with a bare Command Line Tools install)
 # UNIVERSAL=1      (spm mode) builds a universal binary (arm64 + x86_64)
-# VERSION=x.y.z    sets CFBundleShortVersionString (default 0.1.0)
+# VERSION=x.y.z    sets CFBundleShortVersionString (default 0.3.0)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MODE="${BUILD_MODE:-spm}"
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.3.0}"
 APP="build/NachoCombo.app"
 mkdir -p build
 if [ "$MODE" = "spm" ]; then
@@ -60,6 +60,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>LSUIElement</key><true/>
+<key>NSCalendarsUsageDescription</key><string>Calendar Clock shows your events and meeting links. Events are read on this Mac and never sent anywhere.</string>
+<key>NSCalendarsFullAccessUsageDescription</key><string>Calendar Clock shows your events and meeting links. Events are read on this Mac and never sent anywhere.</string>
+<key>NSDesktopFolderUsageDescription</key><string>Disk Map reads the names and sizes in this folder to map your disk. Nothing leaves this Mac.</string>
+<key>NSDocumentsFolderUsageDescription</key><string>Disk Map reads the names and sizes in this folder to map your disk. Nothing leaves this Mac.</string>
+<key>NSDownloadsFolderUsageDescription</key><string>Disk Map reads the names and sizes in this folder to map your disk. Nothing leaves this Mac.</string>
+<key>NSRemovableVolumesUsageDescription</key><string>Disk Map reads the names and sizes on this disk to map it. Nothing leaves this Mac.</string>
+<key>NSNetworkVolumesUsageDescription</key><string>Disk Map reads the names and sizes on this volume to map it. Nothing leaves this Mac.</string>
+<key>NSFileProviderDomainUsageDescription</key><string>Disk Map reads the names and sizes of your cloud folders to map your disk. Nothing is downloaded.</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>
 PLIST

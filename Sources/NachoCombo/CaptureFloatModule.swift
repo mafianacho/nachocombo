@@ -4,10 +4,11 @@ import Vision
 import NachoComboCore
 
 /// Screen capture that stays on screen: select an area (or a window, or the whole screen) and the picture floats above
-/// other windows, where it can be moved, resized, faded, locked click-through, copied, saved, dragged out and read as
-/// text. Needs the Screen Recording permission (checked, never bypassed). No recording, no cloud.
+/// other windows, where it can be moved, resized, faded, locked click-through, marked up, copied, saved, dragged out
+/// and read as text. A window can also float live, an area can be recorded to a movie on the Desktop, and any pixel's
+/// color can be picked. Needs the Screen Recording permission (checked, never bypassed). Nothing leaves the Mac.
 final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
-    enum Purpose { case float, copyText }
+    enum Purpose { case float, copyText, live, record }
 
     var allowPermissionPrompt = false
     let id = ModuleID.captureFloat
@@ -27,6 +28,14 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
     private(set) var hidden = false
     var onPermissionLost: (() -> Void)?
     var onChange: (() -> Void)?
+    /// The recording item appeared in the menu bar: the divider is re-created so it is not hidden.
+    var onStatusItemsChanged: (() -> Void)?
+    private var recorder: AnyObject?
+    private var recordItem: NSStatusItem?
+    private var recordTimer: Timer?
+    private(set) var lastRecording = "-"
+
+    var recording: Bool { recorder != nil }
 
     static func hasAccess() -> Bool { CGPreflightScreenCaptureAccess() }
 
@@ -44,6 +53,7 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
     }
 
     func stop() {
+        stopRecording()
         running = false
         promptedSinceEnabled = false
         selection?.cancel()
@@ -59,16 +69,23 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
     func beginSelection(purpose: Purpose = .float, windowMode: Bool = false) {
         guard running, selection == nil else { return }
         guard CaptureFloatModule.hasAccess() else { permissionLost(); return }
-        let controller = RegionSelectionController(windowMode: windowMode, hint: purpose == .copyText
-            ? "Drag over text to copy it · Esc: cancel"
-            : "Drag to capture an area · Space: pick a window · Esc: cancel")
+        let hint: String
+        switch purpose {
+        case .copyText: hint = "Drag over text to copy it · Esc: cancel"
+        case .live: hint = "Click a window to float it live · Space: an area instead · Esc: cancel"
+        case .record: hint = "Drag over the area to record · Space: pick a window · Esc: cancel"
+        case .float: hint = "Drag to capture an area · Space: pick a window · Esc: cancel"
+        }
+        let controller = RegionSelectionController(windowMode: windowMode || purpose == .live, hint: hint)
         controller.onFinish = { [weak self] result in
             guard let self = self else { return }
             self.selection = nil
-            switch result {
-            case .area(let rect)?: self.capture(cocoaRect: rect, purpose: purpose)
-            case .window(let number, let frame)?: self.captureWindow(number, frame: frame, purpose: purpose)
-            case nil: self.lastResult = "cancelled"
+            switch (result, purpose) {
+            case (.area(let rect)?, .record), (.window(_, let rect)?, .record): self.startRecording(cocoa: rect)
+            case (.area(let rect)?, .live): self.capture(cocoaRect: rect, purpose: .float)
+            case (.area(let rect)?, _): self.capture(cocoaRect: rect, purpose: purpose)
+            case (.window(let number, let frame)?, _): self.captureWindow(number, frame: frame, purpose: purpose)
+            case (nil, _): self.lastResult = "cancelled"
             }
         }
         selection = controller
@@ -118,17 +135,17 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
                 self.lastResult = "error:window-capture-failed"
                 return
             }
-            self.deliver(image, frame: frame, purpose: purpose, scale: 1)
+            self.deliver(image, frame: frame, purpose: purpose, scale: 1, liveWindow: purpose == .live ? number : nil)
         }
     }
 
-    private func deliver(_ image: CGImage, frame: CGRect, purpose: Purpose, scale: CGFloat) {
+    private func deliver(_ image: CGImage, frame: CGRect, purpose: Purpose, scale: CGFloat, liveWindow: CGWindowID? = nil) {
         captureCount += 1
         lastResult = "ok:\(Int(frame.width))x\(Int(frame.height)) px:\(image.width)x\(image.height)"
         switch purpose {
         case .copyText:
             TextRecognizer.copyText(in: image, near: NSPoint(x: frame.midX, y: frame.midY))
-        case .float:
+        case .float, .live, .record:
             let size = CGSize(width: (frame.width * scale).rounded(), height: (frame.height * scale).rounded())
             var origin = frame.origin
             if scale != 1 { origin = NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2) }
@@ -141,6 +158,7 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
             }
             window.onCloseAll = { [weak self] in self?.closeAll() }
             window.setLocked(locked)
+            if let number = liveWindow { window.startLive(number) }
             floats.append(window)
             if hidden { hidden = false; floats.forEach { $0.orderFrontRegardless() } }
             window.orderFrontRegardless()
@@ -154,6 +172,111 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
         let cocoa = CGRect(x: x, y: primary.frame.height - y - height, width: width, height: height)
         capture(cocoaRect: cocoa)
     }
+
+    // MARK: recording, color, live
+
+    /// Starts by picking the area; while a recording runs, stops it.
+    func toggleRecording() {
+        guard running else { return }
+        if recording { stopRecording() } else { beginSelection(purpose: .record) }
+    }
+
+    private func startRecording(cocoa rect: CGRect) {
+        guard #available(macOS 12.3, *) else {
+            Toast.show("Recording needs macOS 12.3 or later", near: NSEvent.mouseLocation)
+            return
+        }
+        guard RegionSelection.isCapturable(rect) else { return }
+        let recorder = ScreenRecorder(url: RecordingFiles.movieURL())
+        recorder.onStop = { [weak self] url in self?.recordingEnded(url) }
+        self.recorder = recorder
+        lastRecording = "starting"
+        recorder.start(cocoa: rect) { [weak self] error in
+            guard let self = self else { return }
+            if let error = error {
+                self.recorder = nil
+                self.lastRecording = "error:\(error)"
+                Toast.show("Recording did not start: \(error)", near: NSEvent.mouseLocation)
+                self.onChange?()
+                return
+            }
+            self.lastRecording = "recording"
+            self.showRecordItem()
+            self.onChange?()
+        }
+        onChange?()
+    }
+
+    func stopRecording() {
+        guard let recorder = recorder else { return }
+        if #available(macOS 12.3, *) { (recorder as? ScreenRecorder)?.stop() }
+        self.recorder = nil
+        removeRecordItem()
+        onChange?()
+    }
+
+    private func recordingEnded(_ url: URL?) {
+        guard let url = url else {
+            lastRecording = "error:empty"
+            Toast.show("Nothing was recorded", near: NSEvent.mouseLocation)
+            return
+        }
+        lastRecording = "saved:\(url.lastPathComponent)"
+        guard optionsProvider().recordGIF else {
+            Toast.show("Saved “\(url.lastPathComponent)” to the Desktop", near: NSEvent.mouseLocation)
+            return
+        }
+        Toast.show("Saved the movie; making the GIF…", near: NSEvent.mouseLocation)
+        RecordingFiles.makeGIF(from: url) { [weak self] gif in
+            self?.lastRecording = gif.map { "saved:\($0.lastPathComponent)" } ?? "error:gif"
+            Toast.show(gif == nil ? "The GIF could not be made" : "Saved the movie and a GIF to the Desktop",
+                       near: NSEvent.mouseLocation)
+        }
+    }
+
+    private func showRecordItem() {
+        guard recordItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.image = UI.symbol("record.circle.fill", size: 14, weight: .semibold, description: "Recording")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [.systemRed]))
+        item.button?.imagePosition = .imageLeading
+        item.button?.target = self
+        item.button?.action = #selector(recordItemClicked)
+        item.button?.toolTip = "Recording — click to stop"
+        item.button?.setAccessibilityLabel("Stop recording")
+        recordItem = item
+        let started = Date()
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            let seconds = Int(Date().timeIntervalSince(started))
+            self?.recordItem?.button?.attributedTitle = NSAttributedString(
+                string: String(format: " %d:%02d", seconds / 60, seconds % 60),
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])
+        }
+        RunLoop.main.add(t, forMode: .common)
+        t.fire()
+        recordTimer = t
+        onStatusItemsChanged?()
+    }
+
+    private func removeRecordItem() {
+        recordTimer?.invalidate()
+        recordTimer = nil
+        if let item = recordItem { NSStatusBar.system.removeStatusItem(item) }
+        recordItem = nil
+    }
+
+    @objc private func recordItemClicked() { stopRecording() }
+
+    func pickColor() {
+        guard running else { return }
+        ColorPicker.pick { hex in
+            guard let hex = hex else { return }
+            Toast.show("Copied \(hex)", near: NSEvent.mouseLocation)
+        }
+    }
+
+    /// Picks a window that keeps updating in its float.
+    func beginLiveWindow() { beginSelection(purpose: .live, windowMode: true) }
 
     // MARK: all floats
 
@@ -206,6 +329,11 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
                 return "#\(index) \(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))x\(Int(f.height)) pinned=\(w.pinned) alpha=\(String(format: "%.2f", w.alphaValue))"
             }.joined(separator: " | "),
             "lastResult": lastResult,
+            "recording": "\(recording)",
+            "recordItem": "\(recordItem != nil)",
+            "lastRecording": lastRecording,
+            "liveFloats": "\(floats.filter { $0.isLive }.count)",
+            "markedUp": "\(floats.filter { $0.annotationCount > 0 }.count)",
         ]
     }
 }
@@ -498,14 +626,19 @@ final class SelectionView: NSView {
 // MARK: - Floating capture window
 
 final class FloatingCaptureWindow: NSPanel {
-    let cgImage: CGImage
+    private(set) var cgImage: CGImage
     let originalSize: CGSize
+    private var liveTimer: Timer?
+    private(set) var liveEnded = false
+    var isLive: Bool { liveTimer != nil }
+    var annotationCount: Int { canvas.annotations.count }
     private(set) var pinned = true
     private(set) var locked = false
     var onClosed: (() -> Void)?
     var onCloseAll: (() -> Void)?
     private let canvas: CaptureCanvasView
     private let pinButton = NSButton()
+    private let markupButton = NSButton()
 
     init(cgImage: CGImage, pointSize: CGSize, at origin: CGPoint, rounded: Bool = true) {
         self.cgImage = cgImage
@@ -524,17 +657,75 @@ final class FloatingCaptureWindow: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         canvas.owner = self
         contentView = canvas
-        canvas.buildControls(pinButton: pinButton)
+        canvas.buildControls(pinButton: pinButton, markupButton: markupButton)
         setRounded(rounded)
     }
 
     override var canBecomeKey: Bool { true }
 
     override func close() {
+        liveTimer?.invalidate()
+        liveTimer = nil
         let handler = onClosed
         onClosed = nil
         super.close()
         handler?()
+    }
+
+    // MARK: live and mark-up
+
+    /// Keeps the picture following the window (three times a second); stops when the window goes away.
+    func startLive(_ number: CGWindowID) {
+        liveTimer?.invalidate()
+        let t = Timer(timeInterval: 0.33, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, number,
+                                                      [.boundsIgnoreFraming, .bestResolution]),
+                  image.width > 1, image.height > 1 else {
+                self.liveTimer?.invalidate()
+                self.liveTimer = nil
+                self.liveEnded = true
+                self.canvas.live = false
+                return
+            }
+            self.updateImage(image)
+        }
+        RunLoop.main.add(t, forMode: .common)
+        liveTimer = t
+        canvas.live = true
+    }
+
+    func updateImage(_ image: CGImage) {
+        cgImage = image
+        canvas.image = NSImage(cgImage: image, size: originalSize)
+    }
+
+    /// Pen on: drags draw arrows (⌥: boxes) instead of moving the float.
+    func setMarkup(_ on: Bool) {
+        canvas.drawing = on
+        isMovableByWindowBackground = !on
+        markupButton.state = on ? .on : .off
+        markupButton.layer?.backgroundColor = (on ? NSColor.systemRed : NSColor.black.withAlphaComponent(0.55)).cgColor
+    }
+
+    func toggleMarkup() { setMarkup(!canvas.drawing) }
+
+    func clearMarkup() { canvas.annotations.removeAll() }
+
+    /// The picture with its mark-up, at full resolution: what copy, save and drag hand out.
+    func renderedImage() -> CGImage {
+        guard !canvas.annotations.isEmpty,
+              let context = CGContext(data: nil, width: cgImage.width, height: cgImage.height, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return cgImage }
+        let size = CGSize(width: cgImage.width, height: cgImage.height)
+        context.draw(cgImage, in: CGRect(origin: .zero, size: size))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        let scale = size.width / max(1, originalSize.width)
+        for annotation in canvas.annotations { annotation.draw(in: size, lineWidth: 3 * scale) }
+        NSGraphicsContext.restoreGraphicsState()
+        return context.makeImage() ?? cgImage
     }
 
     // MARK: actions
@@ -569,7 +760,7 @@ final class FloatingCaptureWindow: NSPanel {
     func copyToPasteboard() {
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.writeObjects([NSImage(cgImage: cgImage, size: originalSize)])
+        pb.writeObjects([NSImage(cgImage: renderedImage(), size: originalSize)])
     }
 
     func copyText() {
@@ -577,7 +768,7 @@ final class FloatingCaptureWindow: NSPanel {
     }
 
     func pngData() -> Data? {
-        NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
+        NSBitmapImageRep(cgImage: renderedImage()).representation(using: .png, properties: [:])
     }
 
     @discardableResult
@@ -634,6 +825,7 @@ final class FloatingCaptureWindow: NSPanel {
         case ("c", true): copyToPasteboard()
         case ("s", true): saveWithPanel()
         case ("w", true): close()
+        case ("z", true): if !canvas.annotations.isEmpty { canvas.annotations.removeLast() }
         case ("=", true), ("+", true): resize(toWidth: frame.width * 1.1)
         case ("-", true): resize(toWidth: frame.width / 1.1)
         case ("0", true): resize(percent: 100)
@@ -654,8 +846,12 @@ final class FloatingCaptureWindow: NSPanel {
 
 final class CaptureCanvasView: NSView, NSDraggingSource {
     weak var owner: FloatingCaptureWindow?
-    private let image: NSImage
+    var image: NSImage { didSet { needsDisplay = true } }
     var locked = false { didSet { needsDisplay = true } }
+    var live = false { didSet { needsDisplay = true } }
+    var drawing = false { didSet { window?.invalidateCursorRects(for: self) } }
+    var annotations: [Annotation] = [] { didSet { needsDisplay = true } }
+    private var sketch: Annotation? { didSet { needsDisplay = true } }
 
     init(image: NSImage) {
         self.image = image
@@ -664,12 +860,24 @@ final class CaptureCanvasView: NSView, NSDraggingSource {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    override var mouseDownCanMoveWindow: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { !drawing }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    override func resetCursorRects() { if drawing { addCursorRect(bounds, cursor: .crosshair) } }
 
     override func draw(_ dirtyRect: NSRect) {
         image.draw(in: bounds)
+        for annotation in annotations + (sketch.map { [$0] } ?? []) { annotation.draw(in: bounds.size, lineWidth: 3) }
+        if live {
+            let badge = NSRect(x: bounds.maxX - 44, y: bounds.maxY - 20, width: 38, height: 16)
+            NSColor.systemRed.withAlphaComponent(0.9).setFill()
+            NSBezierPath(roundedRect: badge, xRadius: 4, yRadius: 4).fill()
+            let text = "LIVE" as NSString
+            let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 9, weight: .heavy),
+                                                             .foregroundColor: NSColor.white]
+            let size = text.size(withAttributes: attributes)
+            text.draw(at: NSPoint(x: badge.midX - size.width / 2, y: badge.midY - size.height / 2), withAttributes: attributes)
+        }
         NSColor.white.withAlphaComponent(0.7).setStroke()
         let border = NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5))
         border.lineWidth = 1
@@ -684,7 +892,7 @@ final class CaptureCanvasView: NSView, NSDraggingSource {
         }
     }
 
-    func buildControls(pinButton: NSButton) {
+    func buildControls(pinButton: NSButton, markupButton: NSButton) {
         let close = Self.smallButton("✕", tip: "Close", id: "float-close", action: #selector(closeTapped))
         close.target = self
         pinButton.title = "📌"
@@ -701,12 +909,23 @@ final class CaptureCanvasView: NSView, NSDraggingSource {
         let grip = ResizeGripView()
         grip.owner = owner
         grip.toolTip = "Drag to resize"
-        for control in [close, pinButton] { addSubview(control) }
+        markupButton.title = "✎"
+        markupButton.toolTip = "Mark up: drag for an arrow, ⌥-drag for a box, ⌘Z to undo"
+        Self.style(markupButton)
+        markupButton.attributedTitle = NSAttributedString(string: "✎", attributes: [
+            .foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 11, weight: .bold)])
+        markupButton.target = self
+        markupButton.action = #selector(markupTapped)
+        markupButton.setAccessibilityIdentifier("float-markup")
+        markupButton.setAccessibilityLabel("Mark up")
+        for control in [close, pinButton, markupButton] { addSubview(control) }
         addSubview(drag)
         addSubview(grip)
         close.frame = NSRect(x: 4, y: bounds.height - 22, width: 20, height: 18)
         pinButton.frame = NSRect(x: 26, y: bounds.height - 22, width: 22, height: 18)
         drag.frame = NSRect(x: 50, y: bounds.height - 22, width: 22, height: 18)
+        markupButton.frame = NSRect(x: 74, y: bounds.height - 22, width: 22, height: 18)
+        markupButton.autoresizingMask = [.minYMargin]
         close.autoresizingMask = [.minYMargin]
         pinButton.autoresizingMask = [.minYMargin]
         drag.autoresizingMask = [.minYMargin]
@@ -736,10 +955,34 @@ final class CaptureCanvasView: NSView, NSDraggingSource {
 
     @objc private func closeTapped() { owner?.close() }
     @objc private func pinTapped() { owner?.togglePin() }
+    @objc private func markupTapped() { owner?.toggleMarkup() }
 
     override func mouseDown(with event: NSEvent) {
+        if drawing {
+            let point = normalized(convert(event.locationInWindow, from: nil))
+            sketch = Annotation(box: event.modifierFlags.contains(.option), start: point, end: point)
+            return
+        }
         if event.clickCount == 2 { owner?.close(); return }
         super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard drawing, var current = sketch else { super.mouseDragged(with: event); return }
+        current.end = normalized(convert(event.locationInWindow, from: nil))
+        sketch = current
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard drawing, let current = sketch else { super.mouseUp(with: event); return }
+        sketch = nil
+        if hypot((current.end.x - current.start.x) * bounds.width, (current.end.y - current.start.y) * bounds.height) > 4 {
+            annotations.append(current)
+        }
+    }
+
+    private func normalized(_ point: NSPoint) -> CGPoint {
+        CGPoint(x: min(1, max(0, point.x / max(1, bounds.width))), y: min(1, max(0, point.y / max(1, bounds.height))))
     }
 
     /// Scroll fades the float; ⌘-scroll resizes it.
@@ -766,6 +1009,8 @@ final class CaptureCanvasView: NSView, NSDraggingSource {
         add("Save…") { owner.saveWithPanel() }
         menu.addItem(.separator())
         add(owner.pinned ? "Unpin" : "Pin Again") { owner.togglePin() }
+        add(drawing ? "Stop Marking Up" : "Mark Up") { owner.toggleMarkup() }
+        if !annotations.isEmpty { add("Clear Mark-Up") { owner.clearMarkup() } }
         add("Lock (Click Through)") { owner.setLocked(true) }
         let opacity = NSMenuItem(title: "Opacity", action: nil, keyEquivalent: "")
         let opacityMenu = NSMenu()
@@ -822,7 +1067,7 @@ final class FloatDragHandle: NSView {
         downPoint = nil
         guard let url = window.dragFile() else { return }
         let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-        let preview = NSImage(cgImage: window.cgImage, size: NSSize(width: 96, height: 96 * window.originalSize.height
+        let preview = NSImage(cgImage: window.renderedImage(), size: NSSize(width: 96, height: 96 * window.originalSize.height
                                                                      / max(1, window.originalSize.width)))
         item.setDraggingFrame(NSRect(origin: convert(now, from: nil), size: preview.size), contents: preview)
         canvas.beginDraggingSession(with: [item], event: event, source: canvas)
@@ -869,5 +1114,36 @@ final class ResizeGripView: NSView {
     override func mouseDragged(with event: NSEvent) {
         let now = NSEvent.mouseLocation
         owner?.resize(toWidth: startWidth + (now.x - startMouse.x))
+    }
+}
+
+/// An arrow or a box drawn on a float, in coordinates relative to the float (0…1), so it follows resizing.
+struct Annotation {
+    var box: Bool
+    var start: CGPoint
+    var end: CGPoint
+
+    func draw(in size: CGSize, lineWidth: CGFloat) {
+        let a = CGPoint(x: start.x * size.width, y: start.y * size.height)
+        let b = CGPoint(x: end.x * size.width, y: end.y * size.height)
+        NSColor.systemRed.setStroke()
+        let path = NSBezierPath()
+        path.lineWidth = lineWidth
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        if box {
+            path.appendRect(NSRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y)))
+        } else {
+            path.move(to: a)
+            path.line(to: b)
+            let angle = atan2(b.y - a.y, b.x - a.x)
+            let head = max(10, lineWidth * 4)
+            for side in [-1.0, 1.0] {
+                let wing = angle + .pi + CGFloat(side) * 0.45
+                path.move(to: b)
+                path.line(to: CGPoint(x: b.x + cos(wing) * head, y: b.y + sin(wing) * head))
+            }
+        }
+        path.stroke()
     }
 }

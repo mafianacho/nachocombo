@@ -88,7 +88,7 @@ final class ToolPanelCoreTests: XCTestCase {
         if case .conflictsWithAction? = ShortcutPolicy.validate(snapLeft, for: .menuBar, existing: [:]) {} else { XCTFail("snap left") }
         let shelf = ToolShortcut(keyCode: 1, modifiers: co)
         if case .conflictsWithAction? = ShortcutPolicy.validate(shelf, for: .fileShelf, existing: [:]) {} else { XCTFail("shelf action") }
-        let mine = ToolShortcut(keyCode: 46, modifiers: co)
+        let mine = ToolShortcut(keyCode: 45, modifiers: co)   // ⌃⌥N: no default uses it
         XCTAssertNil(ShortcutPolicy.validate(mine, for: .menuBar, existing: [:]))
         let existing = [ModuleID.menuBar.rawValue: mine]
         XCTAssertEqual(ShortcutPolicy.validate(mine, for: .systemMonitor, existing: existing), .conflictsWithTool(.menuBar))
@@ -245,7 +245,7 @@ final class ToolPanelCoreTests: XCTestCase {
     }
 
     func testCombosAreWellFormed() {
-        XCTAssertEqual(ComboCatalog.presets.map { $0.number }, [1, 2, 3, 4, 5])
+        XCTAssertEqual(ComboCatalog.presets.map { $0.number }, Array(1...ComboCatalog.presets.count))
         XCTAssertEqual(Set(ComboCatalog.presets.map { $0.id }).count, ComboCatalog.presets.count)
         for combo in ComboCatalog.presets {
             XCTAssertFalse(combo.moments.isEmpty, combo.id)
@@ -313,7 +313,7 @@ final class ToolPanelCoreTests: XCTestCase {
         XCTAssertTrue(manager.saveCombo(draft))
         let saved = try XCTUnwrap(ComboCatalog.combo(draft.id, in: manager.settings))
         XCTAssertEqual(saved.name, "Morning")
-        XCTAssertEqual(saved.number, 6, "numbered after the five presets")
+        XCTAssertEqual(saved.number, ComboCatalog.presets.count + 1, "numbered after the presets")
         XCTAssertTrue(saved.isCustom)
         XCTAssertEqual(saved.moments.map { $0.module }, [.windowSnap, .fileShelf])
         XCTAssertEqual(ComboCatalog.current(manager.settings)?.id, draft.id, "the box is exactly this combo")
