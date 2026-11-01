@@ -45,6 +45,7 @@ enum GadgetPreview {
             case .appSwitch: picture = appSwitch(inputs, dark: dark)
             case .mouseTune: picture = mouse(inputs, dark: dark)
             case .calendarClock: picture = calendar(inputs, dark: dark)
+            case .diskMap: picture = diskMap()
             }
         }
         return picture
@@ -431,6 +432,33 @@ enum GadgetPreview {
             }
         }
         return Picture(image: image, caption: "A wheel mouse scrolls smoothly in its own direction; the trackpad stays natural.")
+    }
+
+    /// The real pictures of the map, drawn from a made-up disk, side by side on the menu board.
+    private static func diskMap() -> Picture {
+        let size = NSSize(width: width, height: 226)
+        let sample = DiskSample.tree()
+        let slices = [DiskNode(name: "Hidden Space", kind: .hidden, size: sample.space.hidden(scanned: sample.root.size)),
+                      DiskNode(name: "Free Space", kind: .free, size: sample.space.free)]
+        let image = canvas(size) { rect in
+            Brand.board.setFill()
+            rect.fill()
+            let free = DiskFormat.size(sample.space.free).uppercased()
+            let font = Brand.sign(22)
+            Draw.text(free, in: NSRect(x: 14, y: 8, width: 120, height: 32), font: font, color: Brand.boardGuac)
+            Draw.text("FREE OF \(DiskFormat.size(sample.space.total))", in: NSRect(x: 20 + Draw.width(free, font), y: 16, width: 140, height: 16),
+                      font: Brand.mono(9), color: Brand.boardMute)
+            guard let context = NSGraphicsContext.current?.cgContext else { return }
+            func place(_ style: DiskMapStyle, in frame: NSRect) {
+                context.saveGState()
+                context.translateBy(x: frame.minX, y: frame.minY)
+                DiskMapRenderer(focus: sample.root, slices: slices, style: style, coloring: .folder, size: frame.size).draw()
+                context.restoreGState()
+            }
+            place(.sunburst, in: NSRect(x: 10, y: 44, width: 176, height: 176))
+            place(.blocks, in: NSRect(x: 196, y: 48, width: 194, height: 168))
+        }
+        return Picture(image: image, caption: "The gadget's two pictures, drawn from a sample disk. Open it to map your own.")
     }
 
     private static func calendar(_ inputs: GadgetPreviewInputs, dark: Bool) -> Picture {

@@ -381,6 +381,9 @@ final class ToolDetailView: NSView {
             let show = commandButton("Show Calendar", "panel-calendar-show", .showCalendar)
             let join = commandButton("Join Next Call", "panel-calendar-join", .joinNextMeeting)
             return [UI.hstack([show, join], spacing: 8), statusLine]
+        case .diskMap:
+            let open = commandButton("Open Disk Map", "panel-disk-open", .showDiskMap)
+            return [UI.hstack([open], spacing: 8), statusLine]
         }
     }
 

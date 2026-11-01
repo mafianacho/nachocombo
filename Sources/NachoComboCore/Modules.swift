@@ -13,6 +13,7 @@ public enum ModuleID: String, Codable, CaseIterable {
     case appSwitch
     case mouseTune
     case calendarClock
+    case diskMap
 
     public var displayName: String {
         switch self {
@@ -28,6 +29,7 @@ public enum ModuleID: String, Codable, CaseIterable {
         case .appSwitch: return "App Switch"
         case .mouseTune: return "Mouse Tune"
         case .calendarClock: return "Calendar Clock"
+        case .diskMap: return "Disk Map"
         }
     }
 

@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private var appSwitch: AppSwitchModule!
     private var mouse: MouseTuneModule!
     private var clock: CalendarClockModule!
+    private var disk: DiskMapModule!
     private var mainItem: NSStatusItem!
     private var settingsWindow: SettingsWindowController!
     private var panel: PanelController!
@@ -68,8 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         appSwitch = AppSwitchModule()
         mouse = MouseTuneModule()
         clock = CalendarClockModule()
+        disk = DiskMapModule()
         manager = ModuleManager(store: store, modules: [organizer, monitor, snap, shelf, capture, dim, keepAwake, clipboard,
-                                                        devices, appSwitch, mouse, clock])
+                                                        devices, appSwitch, mouse, clock, disk])
         panel = PanelController(host: self)
 
         // Created first, so it is the right-most item and never swallowed by the divider.
@@ -97,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         appSwitch.optionsProvider = options
         mouse.optionsProvider = options
         clock.optionsProvider = options
+        disk.optionsProvider = options
 
         settingsWindow = SettingsWindowController(host: self)
 
@@ -141,6 +144,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         }
         clock.onChange = { [weak self] in self?.stateChanged() }
         clock.openSettings = { [weak self] in self?.showSettings(.calendarClock) }
+        disk.onChange = { [weak self] in self?.stateChanged() }
+        disk.updateOptions = { [weak self] value in self?.gadgetSetOptions(value) }
+        disk.openFullDiskAccess = { [weak self] in self?.gadgetOpenPermissionSettings(.fullDiskAccess) }
         manager.onStarted = { [weak self] id in
             // Items created after the divider would land on its hidden side: re-create the pair.
             if id != .menuBar && id.createsStatusItem { self?.organizer.rebuild() }
@@ -442,6 +448,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             case "appSwitch.hideOthers": appSwitch.hideOthers()
             case "mouseTune.reverse": toggleMouseReverse()
             case "calendarClock.show": clock.togglePopover()
+            case "disk.show": disk.showWindow()
             default: return
             }
         }
@@ -755,6 +762,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
                 return "\(next.event.title ?? "Event") \(countdown)"
             }
             return clock.clockText.isEmpty ? "On" : clock.clockText
+        case .diskMap:
+            let space = samplePreviews ? DiskSample.tree().space : disk.startupSpace
+            return space.map { "\(DiskFormat.size($0.free)) free" } ?? "On"
         }
     }
 
@@ -855,6 +865,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             guard let next = clock.nextMeeting() else { return "No timed events in the next 12 hours" }
             let countdown = ClockFormat.countdown(to: next.event.startDate, now: Date()) ?? ""
             return "Next: \(next.event.title ?? "Event") \(countdown)" + (next.link != nil ? " · Join ready" : "")
+        case .diskMap:
+            if samplePreviews { return "No scan yet" }
+            return disk.statusLine
         }
     }
 
@@ -887,6 +900,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .screenRecording: return CaptureFloatModule.hasAccess()
         case .notifications: return AlertNotifier.granted
         case .calendars: return CalendarClockModule.access
+        case .fullDiskAccess: return DiskMapModule.hasFullDiskAccess
         }
     }
 
@@ -943,6 +957,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .screenRecording: _ = CGRequestScreenCaptureAccess()
         case .notifications: AlertNotifier.request { [weak self] in self?.stateChanged() }
         case .calendars: clock.requestAccess { [weak self] in self?.stateChanged() }
+        case .fullDiskAccess: openPermissionPane(.fullDiskAccess)
         }
         settingsVisits[permission] = Date()
         settingsWindowWasVisible = settingsWindow.isVisible
@@ -1032,6 +1047,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     }
 
     private func applyNewGadgetOptions() {
+        disk.controller?.applyOptions()
         keepAwake.applyOptions()
         clipboard.applyOptions()
         devices.applyOptions()
@@ -1242,6 +1258,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             panel.close()
             clock.togglePopover()
         case .joinNextMeeting: clock.joinNext()
+        case .showDiskMap:
+            panel.close()
+            disk.showWindow()
         }
         stateChanged()
     }
@@ -1274,6 +1293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .screenRecording: address = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
         case .notifications: address = "x-apple.systempreferences:com.apple.preference.notifications"
         case .calendars: address = "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
+        case .fullDiskAccess: address = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
         }
         if let url = URL(string: address) { NSWorkspace.shared.open(url) }
     }
@@ -1453,6 +1473,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             case "reload": clock.loadEvents(force: true)
             default: break
             }
+        case "disk" where parts.count >= 2:
+            handleDisk(Array(parts.dropFirst()), raw: command)
         case "layout" where parts.count == 2:
             if parts[1] == "save" { snap.layouts.save() } else if parts[1] == "restore" { snap.layouts.restore() }
         case "session" where parts.count == 2:
@@ -1493,6 +1515,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private func openToolForce(_ id: ModuleID) {
         guard let button = pinnedItems[id]?.button ?? mainItem.button else { return }
         panel.show(from: button, route: .tool(id))
+    }
+
+    /// Debug only: `disk show|hide|sample|cancel|up|pick|remove`, `disk scan|focus|select <path>`, `disk style <name>`,
+    /// `disk color <name>`, `disk snapshot|sheetshot <png>`, `disk sheet <button index>` (presses a button of the approval
+    /// sheet), `disk click <x> <y> [double]`, `disk key <code> <characters or -> [command]`.
+    private func handleDisk(_ args: [String], raw: String) {
+        let argument = raw.split(separator: " ", maxSplits: 2).dropFirst(2).first.map(String.init) ?? ""
+        switch args[0] {
+        case "show": disk.showWindow()
+        case "hide": disk.controller?.window.close()
+        case "sample": disk.showSample()
+        case "cancel": disk.controller?.cancelScan()
+        case "up": disk.controller?.goUp()
+        case "pick": disk.controller?.pickSelection()
+        case "remove": if let node = disk.controller?.selection { disk.controller?.askToRemove([node]) }
+        case "scan":
+            disk.showWindow()
+            let volume = DiskVolumes.list().first { $0.path == argument }
+            disk.controller?.scan(volume ?? DiskTarget(name: (argument as NSString).lastPathComponent, path: argument, isVolume: false))
+        case "click" where args.count >= 3:
+            disk.controller?.simulateClick(x: CGFloat(Double(args[1]) ?? 0), y: CGFloat(Double(args[2]) ?? 0), count: args.count > 3 ? 2 : 1)
+        case "key" where args.count >= 3:
+            disk.controller?.simulateKey(code: UInt16(args[1]) ?? 0, characters: args[2] == "-" ? "" : args[2], command: args.count > 3)
+        case "sheetshot": _ = disk.controller?.writeSheetSnapshot(to: URL(fileURLWithPath: argument))
+        case "focus": disk.controller?.focus(onPath: argument)
+        case "select": disk.controller?.select(onPath: argument)
+        case "sheet": disk.controller?.clickSheet(Int(argument) ?? 2)
+        case "style": if let style = DiskMapStyle(rawValue: argument) { disk.controller?.selectStyle(style) }
+        case "color": if let coloring = DiskColoring(rawValue: argument) { disk.controller?.selectColoring(coloring) }
+        case "snapshot": _ = disk.controller?.writeSnapshot(to: URL(fileURLWithPath: argument))
+        default: break
+        }
     }
 
     private func handleShelf(_ parts: [String]) {

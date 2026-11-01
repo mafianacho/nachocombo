@@ -18,6 +18,7 @@ enum GadgetCommand: Equatable {
     case hideOtherApps
     case toggleMouseReverse
     case showCalendar, joinNextMeeting
+    case showDiskMap
 }
 
 /// What the gallery needs from the app: live state of every gadget and the actions behind its controls.
@@ -222,6 +223,7 @@ final class GadgetDetailView: NSView {
         case .clipboard: return ("Main · every day", Brand.guac)
         case .appSwitch: return ("Main · every day", Brand.guac)
         case .calendarClock: return ("Main · always in sight", Brand.guac)
+        case .diskMap: return ("Side · when space runs out", Brand.nachoInk)
         case .keepAwake: return ("Side · for long tasks", Brand.nachoInk)
         case .deviceControl: return ("Side · for calls", Brand.nachoInk)
         case .mouseTune: return ("Sauce · set and forget", Brand.salsa)
@@ -542,6 +544,10 @@ final class GadgetDetailView: NSView {
         case .calendarClock:
             rows.append(row([button("Show Calendar", symbol: "calendar", .showCalendar, enabled: on),
                              commandButton("Join Next Call", symbol: "video", .joinNextMeeting), UI.spacer()]))
+        case .diskMap:
+            rows.append(row([button("Open Disk Map", symbol: "chart.pie", .showDiskMap, enabled: on), UI.spacer()]))
+            rows.append(UI.wrapLabel("A scan starts when you press Scan in the window. Nothing runs before that.",
+                                     width: GadgetDetailView.cardInner, style: .subheadline))
         }
         return rows
     }
@@ -874,6 +880,19 @@ final class GadgetDetailView: NSView {
                 }
             }, button: allow))
             rows.append(worldClockRows())
+        case .diskMap:
+            rows.append(popup("Open With", choices: DiskMapStyle.allCases.map { ($0.displayName, $0) },
+                              get: { $0.diskMapStyle }, set: { $0.diskMapStyle = $1 }))
+            rows.append(popup("Color the Map", choices: DiskColoring.allCases.map { ($0.displayName, $0) },
+                              get: { $0.diskColoring }, set: { $0.diskColoring = $1 }))
+            let allow = UI.pushButton("Allow Full Disk Access…", small: true) { [weak self] in
+                self?.host?.gadgetOpenPermissionSettings(.fullDiskAccess)
+            }
+            allow.setAccessibilityIdentifier("allow-full-disk-access")
+            rows.append(withNote(UI.label("Folders macOS Protects", style: .callout), text: { [weak self] in
+                self?.host?.gadgetPermissionGranted(.fullDiskAccess) == true ? nil
+                    : "Without Full Disk Access macOS asks about your folders one by one, and what stays closed counts as hidden space."
+            }, button: allow))
         }
         switch id {
         case .windowSnap:

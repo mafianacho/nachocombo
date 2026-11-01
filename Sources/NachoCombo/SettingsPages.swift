@@ -695,6 +695,17 @@ final class PermissionsPage: NSView {
                               action: events ? ("Ask", false, { host.gadgetRequestPermission(.calendars) }) : nil,
                               note: events ? nil : "Asked when Calendar Clock shows your next event."))
         }
+        let diskUser = "Disk Map · lets a scan see every folder at once (optional)."
+        if host.gadgetPermissionGranted(.fullDiskAccess) == true {
+            lines.append(Line(symbol: GadgetPermission.fullDiskAccess.symbolName, title: "Full Disk Access", user: diskUser,
+                              status: "Allowed", tone: .success,
+                              action: ("Open Settings", false, { host.gadgetOpenPermissionSettings(.fullDiskAccess) }), note: nil))
+        } else {
+            lines.append(Line(symbol: GadgetPermission.fullDiskAccess.symbolName, title: "Full Disk Access", user: diskUser,
+                              status: "Not allowed", tone: .neutral,
+                              action: ("Open Settings", false, { host.gadgetOpenPermissionSettings(.fullDiskAccess) }),
+                              note: "Without it, what macOS keeps closed counts as hidden space."))
+        }
         return lines
     }
 

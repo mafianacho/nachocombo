@@ -2,10 +2,10 @@
 
 # Nacho Combo
 
-One macOS menu bar app with twelve gadgets, each switched on or off on its own: a menu bar organizer, a system monitor,
+One macOS menu bar app with thirteen gadgets, each switched on or off on its own: a menu bar organizer, a system monitor,
 window snapping, a file shelf, floating screen captures, focus dimming, keep awake, clipboard history, device control
-(sound, microphone, external display brightness), app and window switching, mouse tuning and a calendar clock. Order
-them one by one or as a combo. No third-party apps, code or brands are used; the brand fonts are open-licensed
+(sound, microphone, external display brightness), app and window switching, mouse tuning, a calendar clock and a disk
+map. Order them one by one or as a combo. No third-party apps, code or brands are used; the brand fonts are open-licensed
 ([Brand](#brand)).
 
 <img src="docs/images/gallery-dark.png" width="100%" alt="The settings window: a sidebar with All Gadgets, Combos, General, Permissions and the gadgets, and the gadget gallery with a tile per gadget">
@@ -22,7 +22,7 @@ above: a sidebar on the left and, first, the **gadget gallery** with every gadge
 - [Gadgets](#gadgets): [Menu Bar Organizer](#menu-bar-organizer) · [System Monitor](#system-monitor) ·
   [Window Snap](#window-snap) · [File Shelf](#file-shelf) · [Capture Float](#capture-float) · [Focus Dim](#focus-dim) ·
   [Keep Awake](#keep-awake) · [Clipboard History](#clipboard-history) · [Device Control](#device-control) ·
-  [App Switch](#app-switch) · [Mouse Tune](#mouse-tune) · [Calendar Clock](#calendar-clock)
+  [App Switch](#app-switch) · [Mouse Tune](#mouse-tune) · [Calendar Clock](#calendar-clock) · [Disk Map](#disk-map)
 - [Shortcuts](#shortcuts)
 - [Quick panel](#quick-panel-menu-bar)
 - [Install](#install-release) · [Build / test](#build--test) · [License](#license)
@@ -123,7 +123,7 @@ asks for. Afterwards every gadget is still its own switch; a combo never changes
 | No.4 Focus | Focus Dim, Menu Bar Organizer | Dim 60% on every display, collapse after 5 s | Nothing |
 | No.5 Meeting | Calendar Clock, Device Control, Keep Awake | Keep Awake keeps the display on | Nothing |
 | No.6 Presenter | Menu Bar Organizer, Focus Dim, Keep Awake | Dim 70% on every display, no auto-collapse | Nothing |
-| No.7 Full Combo | All twelve | Nothing | Accessibility, Screen Recording |
+| No.7 Full Combo | All thirteen | Nothing | Accessibility, Screen Recording |
 
 Ordering never raises a system dialog: a gadget whose permission is missing waits under "To finish" with its own
 `Allow …` button, which shows the usual explanation sheet and then macOS's dialog. Right after an order, `Undo` puts
@@ -143,9 +143,9 @@ that still needs a permission continues on the Combos page.
 ## Permissions
 
 Four gadgets need a permission, and nothing is asked before you switch one on: Window Snap, App Switch and Mouse Tune
-(Accessibility) and Capture Float (Screen Recording). Three are optional: Accessibility lets Clipboard History paste
-into the app you were in (otherwise it copies), Calendars lets Calendar Clock show your events, and Notifications are
-for System Monitor alerts.
+(Accessibility) and Capture Float (Screen Recording). Four are optional: Accessibility lets Clipboard History paste
+into the app you were in (otherwise it copies), Calendars lets Calendar Clock show your events, Notifications are
+for System Monitor alerts, and Full Disk Access lets Disk Map see every folder at once.
 
 1. **Before:** a tile that will ask shows a lock and the permission's name while it is off. Switching it on shows a
    short sheet (what it needs and why, what macOS will show next); `Continue` lets macOS show its own dialog, `Not Now`
@@ -182,6 +182,7 @@ list (`Window Snap needs Accessibility  Allow…`).
 | [App Switch](#app-switch) | Shortcuts that open, bring forward or hide apps, and an ⌥Tab switcher for every window | Accessibility |
 | [Mouse Tune](#mouse-tune) | A wheel mouse's own scroll direction, smooth scrolling, speed and back / forward buttons | Accessibility |
 | [Calendar Clock](#calendar-clock) | A clock your way with a month calendar, the next meeting's Join button and world clocks | None (Calendars for events) |
+| [Disk Map](#disk-map) | What fills a disk and what is left, as a sunburst or as blocks; go to any item or remove it with your approval | None (Full Disk Access to see every folder) |
 
 ### Menu Bar Organizer
 
@@ -417,6 +418,38 @@ shade never catches a click; clicking the desktop shows everything.
 - **World clocks:** cities you add, with the time and how far ahead or behind they are.
 - Calendars is optional and only for events; they are read on this Mac and never sent anywhere.
 
+### Disk Map
+
+<img src="docs/images/disk-map-sunburst.png" width="100%" alt="The Disk Map window: the free space in large type and the whole disk as a bar, a sunburst of folders with free space as an open wedge, and the list of items beside it">
+
+- **What is left:** the free space in large type above the map, the whole disk as one bar in the map's colors, and what
+  macOS can clear by itself. On the map, free space is a part of the picture: an open wedge of the wheel, a block among
+  the blocks.
+- **Sunburst:** every folder is a ring of chips around the one you are in. **Blocks** shows the same disk as nested
+  blocks with the size as the big number on each. Both take their colors from one ramp, so a big folder is many tones.
+
+<img src="docs/images/disk-map-blocks.png" width="49%" alt="Disk Map's blocks: folders as nested blocks, with the free space as a block of its own"> <img src="docs/images/disk-map-age.png" width="49%" alt="The blocks colored by last change: green for fresh items, red for long untouched ones">
+
+- **Color by Last Change:** fresh items turn green and long untouched ones red, so what could go stands out.
+- **Go to it:** click to select, double-click to go inside, click the middle of the wheel (or ⌘↑) to come back. Show any
+  item in Finder, open it, Quick Look it (Space) or copy its path, from the card beside the map or by right-clicking.
+- **Remove it, with your approval:** `Remove…` (⌘⌫) opens a sheet that names what goes, where it is and what it adds up
+  to; `Add to List` collects items to review together. **Move to Trash** is the first choice. **Delete Permanently**
+  asks a second time, and only that frees the space right away: what is in the Trash stays on the disk until you empty it.
+- **What is never offered:** macOS itself, the folders it keeps (Applications, Library, your home folder and the ones in
+  it) and other accounts. Their contents can go, with a warning where it matters: app data in Library, folders that sync
+  to the cloud, a project's `.git`, a photo library. Each item is checked again right before it goes, and nothing asks
+  for an administrator.
+- **Hidden space:** what is used but out of the scan's sight (folders macOS keeps closed, local snapshots, swap, other
+  APFS volumes) is shown as such, so the map adds up to the disk. Full Disk Access is optional: without it macOS asks
+  about your folders one by one.
+- A scan starts when you press Scan, reads names and sizes on this Mac and nothing leaves it. It does not follow links,
+  stay on other volumes or download what is only in the cloud; a file with several hard links counts once. Choose
+  another disk or any folder from the menu at the top. Clones share their space on APFS but count in full at each place,
+  so folders can add up to more than is used.
+- Folders too small to see are summed up to keep memory low; opening one scans it again. The map stays in memory for ten
+  minutes after the window closes.
+
 ## Shortcuts
 Defaults; every one can be changed or removed on the gadget's page ▸ Shortcuts.
 
@@ -429,7 +462,7 @@ Defaults; every one can be changed or removed on the gadget's page ▸ Shortcuts
 | Clipboard History | ⌃⌥V show the history (paste the last copy as plain text: none) |
 | Device Control | ⌃⌥M mute / unmute the microphone (next output, brighter, darker: none) |
 | App Switch | ⌥Tab / ⌥⇧Tab switch windows; app shortcuts and Hide Others: none until you set them |
-| Menu Bar Organizer, System Monitor, Keep Awake, Mouse Tune, Calendar Clock | none (assign on the gadget's page) |
+| Menu Bar Organizer, System Monitor, Keep Awake, Mouse Tune, Calendar Clock, Disk Map | none (assign on the gadget's page) |
 
 Shortcuts are registered only while their gadget runs. A shortcut must use two modifiers (one with a function key, and
 ⌥Tab / ⌥⇧Tab for the window switcher), must
@@ -455,7 +488,7 @@ When another app already holds a combination, the gadget's page says so and keep
   button, and the control screen says it in words as well (`Running / Needs Accessibility / Error`).
 - Control screens: Menu Bar Organizer (collapse / expand, show always-hidden), System Monitor (CPU, memory and network
   figures), Window Snap (the layout grid), File Shelf (open / close, add clipboard, item count), Capture Float (area,
-  window, screen, previous area, lock, close all), Focus Dim (strength, pause). `Settings…` opens the settings window on that
+  window, screen, previous area, lock, close all), Focus Dim (strength, pause), Disk Map (free space, open the window). `Settings…` opens the settings window on that
   gadget.
 - **Pin to the menu bar** per tool: a pinned tool gets its own menu bar icon that opens its control screen directly.
   Pinning is separate from on / off and never asks for a permission.
@@ -521,9 +554,13 @@ without them the system font is used.
     `ctl monitor items cpu,network`, `ctl monitor range <cpu|disk|network|power|battery|flyout.*> <600|3600|10800|86400>`,
     `ctl monitor publicip`, `ctl monitor snapshot <item> <file.png> [light] [sample]` (renders a panel as PNG),
     `ctl monitor menubar <file.png> [light] [sample]`.
+  - Disk Map: `ctl disk show|hide|sample|cancel|up|pick|remove`, `ctl disk scan|focus|select <path>`,
+    `ctl disk style sunburst|blocks`, `ctl disk color folder|age`, `ctl disk snapshot|sheetshot <file.png>`,
+    `ctl disk sheet <button index>` (presses a button of the approval sheet), `ctl disk click <x> <y> [double]`,
+    `ctl disk key <code> <characters or -> [command]`. `sample` is a made-up disk nothing can be done to.
   - Flyouts: `ctl monitor hover <n>` (opens the flyout of the open panel's n-th hover card),
     `ctl monitor flyout <item> <n> <file.png> [light] [sample]` (renders the panel and the flyout side by side as PNG).
-- The signature is ad-hoc; after a rebuild, Accessibility and Screen Recording have to be allowed again.
+- The signature is ad-hoc; after a rebuild, Accessibility, Screen Recording and Full Disk Access have to be allowed again.
 
 ## License
 [MIT](LICENSE) © 2026 Mafianacho. The "Nacho Combo" name and logo are not covered by this license.

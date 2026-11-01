@@ -192,6 +192,10 @@ public struct GadgetOptions: Codable, Equatable {
     /// Time zone identifiers of the world clocks.
     public var worldClocks: [String]
 
+    // Disk Map
+    public var diskMapStyle: DiskMapStyle
+    public var diskColoring: DiskColoring
+
     public static let autoCollapseChoices = [0, 5, 10, 15, 30, 60]
     public static let gapChoices = [0, 4, 8, 12, 16, 24]
     public static let fadeChoices: [Double] = [0, 0.25, 0.5, 1]
@@ -220,7 +224,7 @@ public struct GadgetOptions: Codable, Equatable {
                 mouseSmooth: Bool = true, mouseSpeed: Double = 1, mouseSideButtons: Bool = true,
                 mouseMiddle: MiddleButton = .click, clockDate: Bool = true, clockWeekday: Bool = true,
                 clockSeconds: Bool = false, clockHours: ClockHours = .system, clockNextEvent: Bool = true,
-                worldClocks: [String] = []) {
+                worldClocks: [String] = [], diskMapStyle: DiskMapStyle = .sunburst, diskColoring: DiskColoring = .folder) {
         self.autoCollapseSeconds = autoCollapseSeconds
         self.expandOnHover = expandOnHover
         self.alwaysHiddenSection = alwaysHiddenSection
@@ -267,6 +271,8 @@ public struct GadgetOptions: Codable, Equatable {
         self.clockHours = clockHours
         self.clockNextEvent = clockNextEvent
         self.worldClocks = worldClocks
+        self.diskMapStyle = diskMapStyle
+        self.diskColoring = diskColoring
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -276,7 +282,7 @@ public struct GadgetOptions: Codable, Equatable {
              keepAwakeDisplay, keepAwakeMinutes, keepAwakePowerOnly, keepAwakeBatteryFloor, keepAwakeApps, clipboardLimit,
              clipboardPasteDirectly, clipboardImages, preferredOutput, preferredInput, micIndicator, appShortcuts,
              appHideOnRepeat, mouseReverse, mouseSmooth, mouseSpeed, mouseSideButtons, mouseMiddle, clockDate, clockWeekday,
-             clockSeconds, clockHours, clockNextEvent, worldClocks
+             clockSeconds, clockHours, clockNextEvent, worldClocks, diskMapStyle, diskColoring
     }
 
     public init(from decoder: Decoder) throws {
@@ -333,5 +339,7 @@ public struct GadgetOptions: Codable, Equatable {
         clockHours = value(.clockHours, d.clockHours)
         clockNextEvent = value(.clockNextEvent, d.clockNextEvent)
         worldClocks = value(.worldClocks, d.worldClocks)
+        diskMapStyle = value(.diskMapStyle, d.diskMapStyle)
+        diskColoring = value(.diskColoring, d.diskColoring)
     }
 }

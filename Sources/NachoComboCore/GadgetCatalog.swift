@@ -2,7 +2,7 @@ import Foundation
 
 /// macOS privacy permissions a gadget can need.
 public enum GadgetPermission: String, CaseIterable {
-    case accessibility, screenRecording, notifications, calendars
+    case accessibility, screenRecording, notifications, calendars, fullDiskAccess
 
     public var displayName: String {
         switch self {
@@ -10,6 +10,7 @@ public enum GadgetPermission: String, CaseIterable {
         case .screenRecording: return "Screen Recording"
         case .notifications: return "Notifications"
         case .calendars: return "Calendars"
+        case .fullDiskAccess: return "Full Disk Access"
         }
     }
 
@@ -19,6 +20,7 @@ public enum GadgetPermission: String, CaseIterable {
         case .screenRecording: return "rectangle.dashed.badge.record"
         case .notifications: return "bell.badge"
         case .calendars: return "calendar"
+        case .fullDiskAccess: return "internaldrive"
         }
     }
 
@@ -37,13 +39,14 @@ public enum GadgetPermission: String, CaseIterable {
         case .screenRecording: return major >= 15 ? "Screen & System Audio Recording" : "Screen Recording"
         case .notifications: return "Notifications"
         case .calendars: return "Calendars"
+        case .fullDiskAccess: return "Full Disk Access"
         }
     }
 
     /// The way from the settings app to the switch ("Privacy & Security ▸ Accessibility").
     public func path(major: Int = GadgetPermission.currentMajor) -> String {
         switch self {
-        case .accessibility, .screenRecording, .calendars:
+        case .accessibility, .screenRecording, .calendars, .fullDiskAccess:
             return (major <= 12 ? "Security & Privacy ▸ Privacy ▸ " : "Privacy & Security ▸ ") + paneName(major: major)
         case .notifications:
             return (major <= 12 ? "Notifications & Focus" : "Notifications") + " ▸ Nacho Combo"
@@ -63,6 +66,7 @@ public enum GadgetPermission: String, CaseIterable {
         case .accessibility: return "Accessibility"
         case .screenRecording: return "ScreenCapture"
         case .calendars: return "Calendar"
+        case .fullDiskAccess: return "SystemPolicyAllFiles"
         case .notifications: return nil
         }
     }
@@ -128,6 +132,7 @@ public enum GadgetCatalog {
         case .appSwitch: return appSwitch
         case .mouseTune: return mouseTune
         case .calendarClock: return calendarClock
+        case .diskMap: return diskMap
         }
     }
 
@@ -411,6 +416,37 @@ public extension GadgetCatalog {
         permissionNote: "No permission needed for the clock and world clocks. Events are read on this Mac and never sent anywhere.",
         limits: [
             "Hide the system clock's date in Control Center ▸ Clock Options if you do not want two.",
+        ])
+
+    static let diskMap = GadgetInfo(
+        id: .diskMap,
+        tagline: "Shows what fills a disk and what is left, and clears what you approve.",
+        features: [
+            f("chart.pie", "Sunburst", "Every folder is a ring of chips around the one you are in, with free space as an open wedge of the wheel."),
+            f("square.split.2x2", "Blocks", "The same disk as nested blocks, with the size as the big number on each. The block for free space sits among them."),
+            f("internaldrive", "What Is Left", "The free space in large type, the whole disk as one bar, and what macOS can clear by itself."),
+            f("clock.arrow.circlepath", "Color by Last Change", "Fresh items turn green and long untouched ones red, so what could go stands out."),
+            f("folder", "Go to It", "Show any item in Finder, open it, look at it with Quick Look or copy its path."),
+            f("checklist", "Clean-Up List", "Collect items as you go, see what they add up to, then review them together."),
+            f("trash", "Remove with Approval", "Nothing goes without a sheet that names what goes. The Trash comes first; deleting for good asks a second time."),
+            f("eye.slash", "Hidden Space", "What the scan cannot see is shown as such, not left out, so the map adds up to the disk."),
+        ],
+        tips: [t("", "Click", "Select an item"), t("", "Double-Click", "Go inside a folder, or show a file in Finder"),
+               t("", "Click the middle", "Go back up"), t("⌘↑", "", "Go back up"), t("⌘1", "", "Sunburst"), t("⌘2", "", "Blocks"),
+               t("Space", "", "Quick Look the selected item"), t("⌘⌫", "", "Remove the selected item (asks first)"),
+               t("⌘R", "", "Scan again")],
+        permissions: [
+            GadgetPermissionNeed(permission: .fullDiskAccess,
+                                 reason: "Only so a scan can see every folder at once. Without it macOS asks about your folders one by one, and what stays closed counts as hidden space.",
+                                 optional: true, purpose: "reads the names and sizes of every folder"),
+        ],
+        permissionNote: "No permission needed to run. A scan only starts when you press Scan; it reads names and sizes on this Mac and nothing leaves it.",
+        limits: [
+            "Moving to the Trash frees nothing until the Trash is emptied.",
+            "macOS itself and the folders it keeps cannot be removed from here, and nothing asks for an administrator.",
+            "Cloned files share their space on APFS but count in full at each place, so folders can add up to more than is used.",
+            "Files kept only in the cloud count as nothing, and looking at them downloads nothing.",
+            "Full Disk Access takes effect after Nacho Combo restarts, and rebuilding the app (ad-hoc signature) asks for it again.",
         ])
 }
 

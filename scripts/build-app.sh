@@ -62,6 +62,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>LSUIElement</key><true/>
 <key>NSCalendarsUsageDescription</key><string>Calendar Clock shows your events and meeting links. Events are read on this Mac and never sent anywhere.</string>
 <key>NSCalendarsFullAccessUsageDescription</key><string>Calendar Clock shows your events and meeting links. Events are read on this Mac and never sent anywhere.</string>
+<key>NSDesktopFolderUsageDescription</key><string>Disk Map reads the names and sizes in this folder to map your disk. Nothing leaves this Mac.</string>
+<key>NSDocumentsFolderUsageDescription</key><string>Disk Map reads the names and sizes in this folder to map your disk. Nothing leaves this Mac.</string>
+<key>NSDownloadsFolderUsageDescription</key><string>Disk Map reads the names and sizes in this folder to map your disk. Nothing leaves this Mac.</string>
+<key>NSRemovableVolumesUsageDescription</key><string>Disk Map reads the names and sizes on this disk to map it. Nothing leaves this Mac.</string>
+<key>NSNetworkVolumesUsageDescription</key><string>Disk Map reads the names and sizes on this volume to map it. Nothing leaves this Mac.</string>
+<key>NSFileProviderDomainUsageDescription</key><string>Disk Map reads the names and sizes of your cloud folders to map your disk. Nothing is downloaded.</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>
 PLIST

@@ -80,6 +80,7 @@ public enum GadgetActions {
             GadgetAction(id: "appSwitch.hideOthers", module: .appSwitch, title: "Hide Other Apps", defaultShortcut: nil),
             GadgetAction(id: "mouseTune.reverse", module: .mouseTune, title: "Reverse Mouse Scrolling On / Off", defaultShortcut: nil),
             GadgetAction(id: "calendarClock.show", module: .calendarClock, title: "Show Calendar", defaultShortcut: nil),
+            GadgetAction(id: "disk.show", module: .diskMap, title: "Open Disk Map", defaultShortcut: nil),
         ]
     }()
 

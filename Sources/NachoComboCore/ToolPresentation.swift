@@ -16,6 +16,7 @@ public extension ModuleID {
         case .appSwitch: return "rectangle.stack"
         case .mouseTune: return "computermouse"
         case .calendarClock: return "calendar"
+        case .diskMap: return "chart.pie"
         }
     }
 
@@ -33,6 +34,7 @@ public extension ModuleID {
         case .appSwitch: return "Opens apps from your own shortcuts and switches between windows with ⌥Tab."
         case .mouseTune: return "Fixes a wheel mouse: its own scroll direction, smooth scrolling and back / forward buttons."
         case .calendarClock: return "A clock with a calendar, your next meeting and world clocks in the menu bar."
+        case .diskMap: return "Maps what fills a disk and what is left, and clears what you approve."
         }
     }
 }

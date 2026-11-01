@@ -57,6 +57,7 @@ enum GadgetIcon {
         case .appSwitch: drawAppSwitch()
         case .mouseTune: drawMouse()
         case .calendarClock: drawCalendar()
+        case .diskMap: drawDiskMap()
         }
         NSGraphicsContext.restoreGraphicsState()
         NSColor.white.withAlphaComponent(0.12).setStroke()
@@ -83,6 +84,7 @@ enum GadgetIcon {
         case .appSwitch: return (rgb(0xC2C8D4), rgb(0x596273))
         case .mouseTune: return (rgb(0xD8F27A), rgb(0x6E9E10))
         case .calendarClock: return (rgb(0xFFFFFF), rgb(0xDCDCE2))
+        case .diskMap: return (rgb(0x3F2E20), rgb(0x1E1610))
         }
     }
 
@@ -392,6 +394,32 @@ enum GadgetIcon {
         hands.lineCapStyle = .round
         NSColor.white.setStroke()
         hands.stroke()
+    }
+
+    /// A small wheel of chips with an open wedge of free space.
+    private static func drawDiskMap() {
+        let center = NSPoint(x: 50, y: 50)
+        func ring(_ radius: CGFloat, width: CGFloat, _ pieces: [(CGFloat, CGFloat, NSColor)]) {
+            for (start, end, color) in pieces {
+                let arc = NSBezierPath()
+                arc.appendArc(withCenter: center, radius: radius, startAngle: start - 90, endAngle: end - 90, clockwise: false)
+                arc.lineWidth = width
+                arc.lineCapStyle = .butt
+                color.setStroke()
+                arc.stroke()
+            }
+        }
+        let colors = DiskPalette.families
+        ring(17, width: 10, [(2, 118, colors[0]), (122, 208, colors[2]), (212, 268, colors[5])])
+        ring(27.5, width: 8, [(2, 58, colors[0]), (62, 118, colors[1]), (122, 170, colors[2]),
+                              (174, 208, colors[3]), (212, 268, colors[5])])
+        ring(36, width: 6, [(2, 34, colors[0].withAlphaComponent(0.85)), (122, 150, colors[2].withAlphaComponent(0.85))])
+        let free = NSBezierPath()
+        free.appendArc(withCenter: center, radius: 22, startAngle: 272 - 90, endAngle: 358 - 90, clockwise: false)
+        free.lineWidth = 22
+        free.setLineDash([2.4, 2.4], count: 2, phase: 0)
+        DiskPalette.free.withAlphaComponent(0.55).setStroke()
+        free.stroke()
     }
 
     /// Dimmed windows behind one bright front window.

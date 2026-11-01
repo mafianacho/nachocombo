@@ -228,6 +228,7 @@ public enum ComboCatalog {
         m(.focusDim, [], "Switch windows", "Everything behind the active window dims"),
         m(.mouseTune, [], "Turn the wheel", "Smooth scrolling, in the direction you like"),
         m(.menuBar, [], "Click ‹", "Fold away the menu bar icons you rarely need"),
+        m(.diskMap, ["disk.show"], "Open Disk Map", "See what fills the disk and what is left"),
     ]
 
     /// Up to three moments for any mix of gadgets.
