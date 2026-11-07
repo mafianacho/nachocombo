@@ -96,6 +96,16 @@ public struct ToolStatusPresentation: Equatable {
 }
 
 public extension ToolStatusPresentation {
+    /// The state in one word, for the sidebar's pill: what the switch says, or what stands in its way.
+    var badgeText: String {
+        switch dot {
+        case .on: return "ON"
+        case .off: return "OFF"
+        case .onNeedsSetup: return waitingFor == nil ? "WAIT" : "ALLOW"
+        case .onError: return "ERROR"
+        }
+    }
+
     /// "3 running · 1 needs Accessibility · 1 error": only tools that really run count as running (the switches that are
     /// on can be more); a tool that waits for a permission is named with that permission, failures are counted apart.
     static func summary(of statuses: [ToolStatusPresentation]) -> String {

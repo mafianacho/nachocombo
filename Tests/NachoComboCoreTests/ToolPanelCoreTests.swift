@@ -356,3 +356,17 @@ final class ToolPanelCoreTests: XCTestCase {
         XCTAssertEqual(manager.snapshot(), before)
     }
 }
+
+final class SidebarBadgeTests: XCTestCase {
+    func testTheSidebarNamesEveryStateInOneWord() {
+        func badge(_ enabled: Bool, _ state: ModuleState, permission: String? = nil) -> String {
+            ToolStatusPresentation.make(enabled: enabled, state: state, permission: permission).badgeText
+        }
+        XCTAssertEqual(badge(false, .off), "OFF")
+        XCTAssertEqual(badge(true, .running), "ON")
+        XCTAssertEqual(badge(true, .needsPermission("x"), permission: "Accessibility"), "ALLOW")
+        XCTAssertEqual(badge(true, .failed("x")), "ERROR")
+        XCTAssertEqual(badge(true, .off), "WAIT", "switched on and still starting")
+        XCTAssertEqual(badge(false, .failed("x")), "OFF", "off never keeps another state's word")
+    }
+}

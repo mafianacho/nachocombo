@@ -471,6 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         extra["toolShortcutLabels"] = labels
         var gallery: [String: Any] = ["selected": settingsWindow.page.key, "visible": settingsWindow.isVisible,
                                       "tab": settingsWindow.detail.tab.key,
+                                      "overviewShown": settingsWindow.overview?.shown?.rawValue ?? "",
                                       "windowFrame": NSStringFromRect(settingsWindow.window.frame),
                                       "contentFitting": NSStringFromSize(settingsWindow.window.contentView?.fittingSize ?? .zero)]
         for id in ModuleID.allCases {
@@ -1338,6 +1339,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             case "tab":
                 if let tab = DetailTab.allCases.first(where: { $0.key == parts[2] }) { settingsWindow.detail.select(tab: tab) }
             case "sample": samplePreviews = parts[2] == "on"; settingsWindow.refreshPreview()
+            case "hover":
+                settingsWindow.simulateHover(ModuleID(rawValue: parts[2]))
+                if parts.count == 4 { _ = settingsWindow.writeOverviewSnapshot(to: URL(fileURLWithPath: parts[3])) }
             case "detail": settingsWindow.show(); _ = settingsWindow.writeDetailSnapshot(to: URL(fileURLWithPath: parts[2]))
             case "content": settingsWindow.show(); _ = settingsWindow.writeTabSnapshot(to: URL(fileURLWithPath: parts[2]))
             case "preview" where parts.count >= 4:
