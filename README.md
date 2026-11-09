@@ -2,6 +2,12 @@
 
 # Nacho Combo
 
+<p align="center"><b><a href="https://github.com/mafianacho/nachocombo/releases/latest">⬇ Download for macOS (.dmg)</a></b> · macOS 12 or later · Apple Silicon + Intel · free and open source (MIT)</p>
+
+<p align="center"><img src="docs/images/hero.gif" width="720" alt="Slideshow of the thirteen gadgets: Window Snap, System Monitor, Capture Float, File Shelf, Focus Dim, Clipboard History, Device Control, App Switch, Mouse Tune, Keep Awake, Calendar Clock, Menu Bar Organizer and Disk Map"></p>
+
+<p align="center"><sub>Slideshow of screenshots rendered by the app itself, not a screen recording.</sub></p>
+
 One macOS menu bar app with thirteen gadgets, each switched on or off on its own: a menu bar organizer, a system monitor,
 window snapping, a file shelf, floating screen captures, focus dimming, keep awake, clipboard history, device control
 (sound, microphone, external display brightness), app and window switching, mouse tuning, a calendar clock and a disk
