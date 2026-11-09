@@ -49,8 +49,9 @@ above: a sidebar on the left and, first, the **gadget gallery** with every gadge
 The window can be resized; its size and the last page come back next time.
 
 **Sidebar.** All Gadgets (the gallery), Combos, General, Permissions (with a count when something needs you), then every gadget
-with its state: green = running, orange = switched on but waiting for you (a permission), red = error, nothing = off.
-↑ / ↓ move between entries.
+with its state in one word: `ON`, `OFF`, `ALLOW` (switched on but waiting for a permission), `ERROR`. A gadget that is off is
+dimmed, and the heading counts what is on. Rest the pointer on a gadget and its overview opens beside the sidebar, like a
+large tooltip: what it is, a picture of it at work and what it can do. ↑ / ↓ move between entries.
 
 **All Gadgets.** The yellow lid on top shows what runs, what waits for you and which combo the box is (`Your box: Desk`,
 or `Start from a combo`). Each tile shows the gadget's icon, its name, one status slot and its own on / off switch. The slot holds
@@ -543,7 +544,7 @@ without them the system font is used.
   `ctl appearance dark|light|system`, `ctl relaunch`, `ctl dump`, `ctl quit`. Prints the state JSON (the `ui` section holds the panel,
   gallery, pin and shortcut state). Not meant for release use.
   - Settings window: `ctl gallery select <module>`, `ctl gallery page home|general|permissions|<module>`,
-    `ctl gallery tab overview|settings|shortcuts`, `ctl gallery page combos`, `ctl combo select|order|edit <id>`,
+    `ctl gallery tab overview|settings|shortcuts`, `ctl gallery hover <module>|off [file.png]` (the overview card, and its picture), `ctl gallery page combos`, `ctl combo select|order|edit <id>`,
     `ctl combo new [preset]`, `ctl combo save`, `ctl combo undo`, `ctl combo welcome on|off`, `ctl panel combos`, `ctl gallery sample on|off` (pictures with sample data),
     `ctl gallery detail <file.png>` (the whole page), `ctl gallery content <file.png>` (the shown tab only),
     `ctl gallery preview <module> <file.png> [light]`,

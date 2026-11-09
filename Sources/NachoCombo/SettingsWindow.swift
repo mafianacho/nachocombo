@@ -20,6 +20,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var pageView: NSView?
     private var liveTimer: Timer?
     private var ticks = 0
+    /// A gadget's Overview beside the sidebar, while the pointer rests on its row.
+    private(set) lazy var overview: GadgetOverviewFlyout? = host.map { GadgetOverviewFlyout(host: $0, parent: window) }
     private(set) var page: SettingsPage = .home
 
     static let minimumSize = NSSize(width: SidebarView.width + GadgetDetailView.width + 40, height: 560)
@@ -45,6 +47,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.contentMinSize = SettingsWindowController.minimumSize
         build()
         sidebar.onSelect = { [weak self] page in self?.select(page) }
+        sidebar.onHover = { [weak self] row, inside in self?.rowHovered(row, inside: inside) }
         home.onOpen = { [weak self] page in self?.select(page) }
         permissions.onOpen = { [weak self] page in self?.select(page) }
         combos.onOpen = { [weak self] page in self?.select(page) }
@@ -92,7 +95,28 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         select(.gadget(id), tab: tab)
     }
 
+    private func rowHovered(_ row: SidebarRow, inside: Bool) {
+        guard case .gadget(let id) = row.page else {
+            overview?.leave()
+            return
+        }
+        if inside { overview?.enter(id, row: row) } else { overview?.leave() }
+    }
+
+    /// Debug only: the pointer arrives on a gadget's row, through the row's own tracking handler (nil: leaves it).
+    func simulateHover(_ id: ModuleID?) {
+        guard let id = id else { overview?.hide(); return }
+        guard let row = sidebar.row(for: .gadget(id)) else { return }
+        overview?.enter(id, row: row, force: true)
+    }
+
+    func writeOverviewSnapshot(to url: URL) -> Bool {
+        guard let rep = overview?.snapshot(), let data = rep.representation(using: .png, properties: [:]) else { return false }
+        return (try? data.write(to: url)) != nil
+    }
+
     func select(_ newPage: SettingsPage, tab: DetailTab? = nil) {
+        overview?.hide()
         let changed = newPage != page || pageView == nil
         page = newPage
         sidebar.select(newPage)
@@ -177,13 +201,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func refresh() {
         guard let host = host else { return }
         let manager = host.gadgetManager
-        for id in ModuleID.allCases {
-            let status = manager.status(of: id)
-            sidebar.row(for: .gadget(id))?.configure(dot: status.dot, count: 0, value: status.accessibilityText)
-        }
+        let statuses = ModuleID.allCases.map { manager.status(of: $0) }
+        for (id, status) in zip(ModuleID.allCases, statuses) { sidebar.row(for: .gadget(id))?.configure(status: status) }
+        sidebar.setOnCount(statuses.filter { $0.dot == .on }.count, of: statuses.count)
         let count = host.permissionsAttentionCount()
-        sidebar.row(for: .permissions)?.configure(dot: nil, count: count,
-                                                  value: count == 0 ? "Nothing to do" : "\(count) need attention")
+        sidebar.row(for: .permissions)?.configure(count: count, value: count == 0 ? "Nothing to do" : "\(count) need attention")
         switch page {
         case .home: home.refresh()
         case .combos: combos.refresh()
@@ -207,9 +229,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        overview?.hide()
         liveTimer?.invalidate()
         liveTimer = nil
     }
+
+    func windowDidResignKey(_ notification: Notification) { overview?.hide() }
 
     /// Debug aid (`ctl settings snapshot <png>`); draws the window without needing screen recording permission.
     func writeSnapshot(to url: URL) -> Bool {

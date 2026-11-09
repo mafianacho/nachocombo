@@ -61,20 +61,27 @@ protocol SettingsHost: GadgetHost {
 
 // MARK: - Sidebar
 
-/// One entry of the sidebar: an icon, a name and, on the right, a status dot (gadgets) or a count (Permissions).
+/// One entry of the sidebar: an icon, a name and, on the right, a state in one word (gadgets) or a count (Permissions).
+/// A gadget that is off goes quiet, so what is on can be read down the column at a glance.
 final class SidebarRow: NSView {
     let page: SettingsPage
     var onSelect: ((SettingsPage) -> Void)?
     var onMove: ((SettingsPage, Int) -> Void)?
+    var onHover: ((SidebarRow, Bool) -> Void)?
     var selected = false { didSet { if selected != oldValue { needsDisplay = true; setAccessibilitySelected(selected) } } }
-    private let dot = StatusDotView()
+    private let badge = StatusBadge()
     private let count = Chip("", tone: .attention)
+    private let image: NSImageView
+    private let name: NSTextField
     private var hover = false { didSet { needsDisplay = true } }
     private var tracking: NSTrackingArea?
     static let height: CGFloat = 30
 
     init(page: SettingsPage, title: String, icon: NSImage) {
         self.page = page
+        image = NSImageView(image: icon)
+        // Plain labels: the gallery's LiveLabel erases its rectangle inside vibrancy, which shows on the sidebar material.
+        name = NSTextField(labelWithString: title)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         heightAnchor.constraint(equalToConstant: SidebarRow.height).isActive = true
@@ -83,22 +90,19 @@ final class SidebarRow: NSView {
         setAccessibilityLabel(title)
         setAccessibilityIdentifier("sidebar-\(page.key)")
         focusRingType = .none
-        let image = NSImageView(image: icon)
         image.imageScaling = .scaleProportionallyDown
         image.translatesAutoresizingMaskIntoConstraints = false
         image.widthAnchor.constraint(equalToConstant: 20).isActive = true
         image.heightAnchor.constraint(equalToConstant: 20).isActive = true
         image.setAccessibilityElement(false)
-        // Plain labels: the gallery's LiveLabel erases its rectangle inside vibrancy, which shows on the sidebar material.
-        let name = NSTextField(labelWithString: title)
         name.font = UI.font(.body, weight: .medium)
         name.textColor = Brand.ink
         name.lineBreakMode = .byTruncatingTail
         name.setAccessibilityElement(false)
         name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        dot.isHidden = true
+        badge.isHidden = true
         count.isHidden = true
-        let row = UI.hstack([image, name, UI.spacer(), count, dot], spacing: 7)
+        let row = UI.hstack([image, name, UI.spacer(), count, badge], spacing: 7)
         addSubview(row)
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
@@ -108,9 +112,16 @@ final class SidebarRow: NSView {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func configure(dot kind: StatusDotKind?, count value: Int, value text: String) {
-        dot.isHidden = kind == nil || kind == .off
-        if let kind = kind { dot.kind = kind }
+    func configure(status: ToolStatusPresentation) {
+        badge.isHidden = false
+        badge.status = status
+        let off = status.dot == .off
+        image.alphaValue = off ? 0.42 : 1
+        name.textColor = off ? UI.secondaryText : Brand.ink
+        setAccessibilityValue(status.accessibilityText)
+    }
+
+    func configure(count value: Int, value text: String) {
         count.isHidden = value == 0
         count.title = "\(value)"
         setAccessibilityValue(text)
@@ -142,8 +153,14 @@ final class SidebarRow: NSView {
         addTrackingArea(area)
         tracking = area
     }
-    override func mouseEntered(with event: NSEvent) { hover = true }
-    override func mouseExited(with event: NSEvent) { hover = false }
+    override func mouseEntered(with event: NSEvent) {
+        hover = true
+        onHover?(self, true)
+    }
+    override func mouseExited(with event: NSEvent) {
+        hover = false
+        onHover?(self, false)
+    }
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         onSelect?(page)
@@ -169,9 +186,11 @@ final class SidebarRow: NSView {
 /// Left column of the settings window: All Gadgets, Combos, General, Permissions, then every gadget with its state.
 /// It sits on the design system's paper-2, a tint step from the page.
 final class SidebarView: NSView {
-    static let width: CGFloat = 220
+    static let width: CGFloat = 244
     private(set) var rows: [SidebarRow] = []
     var onSelect: ((SettingsPage) -> Void)?
+    var onHover: ((SidebarRow, Bool) -> Void)?
+    private let onCount = NSTextField(labelWithString: "")
 
     override func draw(_ dirtyRect: NSRect) {
         Brand.paper2.setFill()
@@ -194,6 +213,7 @@ final class SidebarView: NSView {
             let row = SidebarRow(page: page, title: title, icon: icon)
             row.onSelect = { [weak self] page in self?.onSelect?(page) }
             row.onMove = { [weak self] page, step in self?.move(from: page, step: step) }
+            row.onHover = { [weak self] row, inside in self?.onHover?(row, inside) }
             rows.append(row)
             views.append(row)
         }
@@ -203,12 +223,16 @@ final class SidebarView: NSView {
         add(.general, "General", SidebarView.symbolIcon("gearshape.fill", tint: Brand.ink2, glyph: Brand.paper))
         add(.permissions, "Permissions", SidebarView.symbolIcon("lock.shield.fill", tint: Brand.nachoDeep, glyph: Brand.onNacho))
         let heading = Brand.eyebrow("Gadgets", size: 10.5)
-        views.append(heading)
+        onCount.font = Brand.mono(10.5, weight: .medium)
+        onCount.textColor = Brand.ink2
+        onCount.setAccessibilityIdentifier("sidebar-on-count")
+        let headingRow = UI.hstack([heading, UI.spacer(), onCount], spacing: 6)
+        views.append(headingRow)
         for id in ModuleID.allCases { add(.gadget(id), id.displayName, GadgetIcon.image(for: id, size: 20)) }
 
         let stack = UI.vstack(views, spacing: 2)
         stack.setCustomSpacing(16, after: rows[3])
-        stack.setCustomSpacing(4, after: heading)
+        stack.setCustomSpacing(4, after: headingRow)
         stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -218,9 +242,16 @@ final class SidebarView: NSView {
             widthAnchor.constraint(equalToConstant: SidebarView.width),
         ])
         for row in rows { row.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: 0).isActive = true }
-        heading.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 16).isActive = true
+        headingRow.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 16).isActive = true
+        headingRow.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -8).isActive = true
     }
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// How many gadgets run, beside the heading of the list.
+    func setOnCount(_ running: Int, of total: Int) {
+        let text = "\(running) OF \(total) ON"
+        if onCount.stringValue != text { onCount.stringValue = text }
+    }
 
     /// A small rounded square in one color with an SF Symbol on it, like the system's own settings panes.
     static func symbolIcon(_ name: String, tint: NSColor, glyph: NSColor = .white) -> NSImage {
