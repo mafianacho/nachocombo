@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private var disk: DiskMapModule!
     private var computerUse: ComputerUseModule!
     private var computerUseCard: ComputerUseCard?
+    private var pet: NachoPetModule!
+    private var petCard: PetSettingsCard?
     private let updater = UpdateController()
     private var mainItem: NSStatusItem!
     private var settingsWindow: SettingsWindowController!
@@ -74,8 +76,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         clock = CalendarClockModule()
         disk = DiskMapModule()
         computerUse = ComputerUseModule()
+        pet = NachoPetModule()
         manager = ModuleManager(store: store, modules: [organizer, monitor, snap, shelf, capture, dim, keepAwake, clipboard,
-                                                        devices, appSwitch, mouse, clock, disk, computerUse])
+                                                        devices, appSwitch, mouse, clock, disk, pet, computerUse])
+        pet.perform = { [weak self] command in
+            self?.petPerform(command) ?? PetCommandOutcome(ok: false, message: "Nacho Combo is not ready.")
+        }
+        pet.openSettings = { [weak self] in self?.showSettings(.nachoPet) }
+        pet.turnOff = { [weak self] in self?.manager.setEnabled(.nachoPet, false) }
+        pet.onChange = { [weak self] in
+            self?.petCard?.refresh()
+            self?.stateChanged()
+        }
+        petCard = PetSettingsCard(module: pet, width: GadgetDetailView.cardInner)
         computerUse.currentSettings = { [weak self] in self?.manager.settings.computerUse ?? ComputerUseSettings() }
         computerUse.onActivity = { [weak self] in self?.stateChanged() }
         computerUse.onEmergencyStop = { [weak self] in self?.manager.setEnabled(.computerUse, false) }
@@ -815,6 +828,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .diskMap:
             let space = samplePreviews ? DiskSample.tree().space : disk.startupSpace
             return space.map { "\(DiskFormat.size($0.free)) free" } ?? "On"
+        case .nachoPet:
+            return pet.statusText
         case .computerUse:
             return computerUse.endpoint
         }
@@ -920,6 +935,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .diskMap:
             if samplePreviews { return "No scan yet" }
             return disk.statusLine
+        case .nachoPet:
+            var text = pet.statusText
+            if let server = pet.settings.endpoint?.base.host, pet.settings.serverMode != .production { text += " · \(server)" }
+            return text
         case .computerUse:
             let groups = manager.settings.computerUse.enabledToolGroups.count
             let keys = computerUse.keys.records.count
@@ -1137,6 +1156,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     func gadgetDevices() -> DeviceSnapshot { devices.snapshot }
 
     func gadgetComputerUseView() -> NSView? { computerUseCard?.view }
+    func gadgetPetView() -> NSView? { petCard?.refresh(); return petCard?.view }
+
+    // MARK: Nacho Pet commands (from the chat, through /ws/connector)
+
+    /// Runs what Nacho asked for. Already checked against the closed lists in `PetCommands` (never Computer Use or
+    /// the pet itself); here the Mac's state decides. A gadget that still needs a permission is not switched on from
+    /// the chat: the permission sheet only ever opens because the user pressed something in Nacho Combo.
+    private func petPerform(_ command: PetCommand) -> PetCommandOutcome {
+        defer { stateChanged() }
+        switch command {
+        case let .arrangeWindow(action, appName):
+            guard WindowSnapModule.isTrusted(prompt: false) else {
+                return PetCommandOutcome(ok: false, message: "Nacho Combo has no Accessibility permission, so it cannot move windows. "
+                                         + "Ask the user to switch on Window Snap in Nacho Combo and allow Accessibility.")
+            }
+            var target: NSRunningApplication?
+            if let name = appName {
+                target = NSWorkspace.shared.runningApplications.first {
+                    $0.activationPolicy == .regular && $0.localizedName?.caseInsensitiveCompare(name) == .orderedSame
+                }
+                guard target != nil else { return PetCommandOutcome(ok: false, message: "No running app is named \(name).") }
+            }
+            let previous = snap.targetAppProvider
+            if let target = target { snap.targetAppProvider = { target } }
+            snap.perform(action)
+            snap.targetAppProvider = previous
+            let result = snap.lastResult
+            if result.hasPrefix("ok:") {
+                let app = (target ?? windowTargetApp())?.localizedName ?? "the front app"
+                return PetCommandOutcome(ok: true, message: "Moved the front window of \(app) to \(action.displayName).")
+            }
+            if result.contains("noFocusedWindow") { return PetCommandOutcome(ok: false, message: "That app has no window to move.") }
+            if result.contains("noTargetApp") { return PetCommandOutcome(ok: false, message: "There is no app window in front to move.") }
+            return PetCommandOutcome(ok: false, message: "The window could not be moved (\(result)).")
+        case let .setGadget(id, on):
+            if on, let permission = id.info.requiredPermission, gadgetPermissionGranted(permission) != true {
+                return PetCommandOutcome(ok: false, message: "\(id.displayName) needs the \(permission.displayName) permission first. "
+                                         + "Ask the user to switch it on in Nacho Combo, which asks for the permission.")
+            }
+            let state = manager.setEnabled(id, on)
+            switch state {
+            case .running where on, .off where !on:
+                return PetCommandOutcome(ok: true, message: "\(id.displayName) is now \(on ? "on" : "off").")
+            case let .needsPermission(m), let .failed(m):
+                return PetCommandOutcome(ok: false, message: "\(id.displayName) did not start: \(m)")
+            default:
+                return PetCommandOutcome(ok: true, message: "\(id.displayName) is \(state.label.lowercased()).")
+            }
+        case .listGadgets:
+            var gadgets: [String: String] = [:]
+            for id in ModuleID.allCases {
+                switch manager.states[id] ?? .off {
+                case .running: gadgets[id.rawValue] = "on"
+                case .off: gadgets[id.rawValue] = "off"
+                case .needsPermission: gadgets[id.rawValue] = "waiting for permission"
+                case .failed: gadgets[id.rawValue] = "failed"
+                }
+            }
+            let on = gadgets.values.filter { $0 == "on" }.count
+            return PetCommandOutcome(ok: true, message: "\(on) of \(gadgets.count) gadgets are on. Names: "
+                                     + ModuleID.allCases.map { "\($0.rawValue) (\($0.displayName))" }.joined(separator: ", "),
+                                     gadgets: gadgets)
+        }
+    }
 
     func gadgetCommandState(_ command: GadgetCommand) -> (on: Bool, enabled: Bool) {
         switch command {

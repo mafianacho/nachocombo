@@ -17,6 +17,7 @@ public extension ModuleID {
         case .mouseTune: return "computermouse"
         case .calendarClock: return "calendar"
         case .diskMap: return "chart.pie"
+        case .nachoPet: return "bubble.left.and.bubble.right"
         case .computerUse: return "desktopcomputer"
         }
     }
@@ -36,6 +37,7 @@ public extension ModuleID {
         case .mouseTune: return "Fixes a wheel mouse: its own scroll direction, smooth scrolling and back / forward buttons."
         case .calendarClock: return "A clock with a calendar, your next meeting and world clocks in the menu bar."
         case .diskMap: return "Maps what fills a disk and what is left, and clears what you approve."
+        case .nachoPet: return "Nacho sits in the corner of your screen. Click to chat, hand it a capture or a file, or ask it to arrange windows."
         case .computerUse: return "Lets an MCP client that holds your key see and control this Mac. Experimental, off by default."
         }
     }

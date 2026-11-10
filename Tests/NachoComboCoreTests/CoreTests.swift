@@ -27,9 +27,11 @@ final class CoreTests: XCTestCase {
             .appendingPathComponent("settings.json")
     }
 
-    func testDefaultsAreAllOff() {
+    func testDefaultsAreAllOffExceptThePet() {
         let s = SettingsStore(url: tempURL()).load()
-        for id in ModuleID.allCases { XCTAssertFalse(s.isEnabled(id)) }
+        for id in ModuleID.allCases where id != .nachoPet { XCTAssertFalse(s.isEnabled(id)) }
+        XCTAssertTrue(s.isEnabled(.nachoPet), "the pet shows from the first launch")
+        XCTAssertEqual(ModuleID.allCases.filter { $0.enabledByDefault }, [.nachoPet])
         XCTAssertFalse(s.menuBarCollapsed)
     }
 

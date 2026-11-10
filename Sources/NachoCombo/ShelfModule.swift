@@ -677,6 +677,9 @@ final class ShelfRowView: NSView, NSDraggingSource {
                 break
             }
             list.append(("Copy", { [weak self] in if let item = self?.item { ShelfRowView.copy(item) } }))
+            if PetHandoff.available {
+                list.append(("Give to Nacho", { [weak self] in if let item = self?.item { PetHandoff.give(item) } }))
+            }
             list.append(("Remove", { [weak self] in guard let self = self else { return }; self.onRemove?(self.item.id) }))
             return list
         }()

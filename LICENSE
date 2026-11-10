@@ -1,5 +1,13 @@
 MIT License
 
+Scope: this MIT license applies to the source code of Nacho Combo only. It does NOT cover the Nacho
+character artwork (Resources/Nacho/, all rights reserved, see Resources/Nacho/LICENSE), the app icon and logo
+(Resources/AppIcon.png, docs/images/app-icon.png), or the names "Nacho Combo", "Nacho" and "Mafianacho".
+See TRADEMARKS.md and NOTICE. The brand fonts in Resources/Fonts keep their own SIL Open Font License.
+
+적용 범위: 이 MIT 라이선스는 나초 콤보의 소스 코드에만 적용됩니다. 나초 캐릭터 그림(Resources/Nacho/),
+앱 아이콘·로고, "나초 콤보"·"나초"·"마피아나초" 이름은 포함되지 않습니다. TRADEMARKS.md와 NOTICE를 보세요.
+
 Copyright (c) 2026 Mafianacho
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

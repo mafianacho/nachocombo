@@ -3,12 +3,12 @@
 # BUILD_MODE=spm   (default) uses SwiftPM (needs a toolchain whose PackageDescription module is present)
 # BUILD_MODE=swiftc uses swiftc directly (works with a bare Command Line Tools install)
 # UNIVERSAL=1      (spm mode) builds a universal binary (arm64 + x86_64)
-# VERSION=x.y.z    sets CFBundleShortVersionString (default 0.4.0)
+# VERSION=x.y.z    sets CFBundleShortVersionString (default 0.5.0)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MODE="${BUILD_MODE:-spm}"
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.4.0}"
+VERSION="${VERSION:-0.5.0}"
 APP="build/NachoCombo.app"
 mkdir -p build
 if [ "$MODE" = "spm" ]; then
@@ -21,9 +21,9 @@ else
   rm -f build/NachoComboCore.o build/NachoComboCore.swiftmodule
   swiftc -O -target "$TARGET" -module-name NachoComboCore -parse-as-library -wmo \
     -emit-module -emit-module-path build/NachoComboCore.swiftmodule \
-    -c Sources/NachoComboCore/*.swift -o build/NachoComboCore.o
+    -c $(find Sources/NachoComboCore -name '*.swift' | sort) -o build/NachoComboCore.o
   swiftc -O -target "$TARGET" -module-name NachoCombo -I build \
-    build/NachoComboCore.o Sources/NachoCombo/*.swift -o build/NachoCombo-bin
+    build/NachoComboCore.o $(find Sources/NachoCombo -name '*.swift' | sort) -o build/NachoCombo-bin
   BIN="build/NachoCombo-bin"
 fi
 rm -rf "$APP"
@@ -39,6 +39,11 @@ if [ -f Resources/AppIcon.png ]; then
   done
   iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
   rm -rf "$ICONSET"
+fi
+# Nacho character art (all rights reserved, not covered by the MIT license: Resources/Nacho/LICENSE, TRADEMARKS.md).
+if [ -d Resources/Nacho ]; then
+  mkdir -p "$APP/Contents/Resources/Nacho"
+  cp Resources/Nacho/*.png Resources/Nacho/LICENSE "$APP/Contents/Resources/Nacho/"
 fi
 # Brand fonts (SIL Open Font License, licenses beside them); the app registers them at launch.
 if [ -d Resources/Fonts ]; then
@@ -71,6 +76,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSLocalNetworkUsageDescription</key><string>Only when Computer Use's LAN mode is on: Nacho Combo opens its server to other computers on the same network (and, if you choose, announces it with Bonjour).</string>
 <key>NSBonjourServices</key><array><string>_nacho-mcp._tcp</string></array>
+<key>NSMicrophoneUsageDescription</key><string>Nacho Pet uses the microphone only while dictation is on (the mic button in the chat), to type what you say. Audio is not saved.</string>
+<key>NSSpeechRecognitionUsageDescription</key><string>Nacho Pet turns what you dictate into text in the message box (macOS speech recognition, Korean). You send it yourself.</string>
 </dict></plist>
 PLIST
 codesign --force --sign - "$APP"

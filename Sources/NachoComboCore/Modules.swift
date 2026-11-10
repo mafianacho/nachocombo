@@ -14,6 +14,7 @@ public enum ModuleID: String, Codable, CaseIterable {
     case mouseTune
     case calendarClock
     case diskMap
+    case nachoPet
     case computerUse
 
     public var displayName: String {
@@ -31,6 +32,7 @@ public enum ModuleID: String, Codable, CaseIterable {
         case .mouseTune: return "Mouse Tune"
         case .calendarClock: return "Calendar Clock"
         case .diskMap: return "Disk Map"
+        case .nachoPet: return "Nacho Pet"
         case .computerUse: return "Computer Use"
         }
     }
@@ -44,9 +46,13 @@ public enum ModuleID: String, Codable, CaseIterable {
         }
     }
 
-    /// Combos never switch this gadget on or off: it lets other computers control the Mac, so it is only ever turned
-    /// on by its own switch.
-    public var inCombos: Bool { self != .computerUse }
+    /// Combos never switch these gadgets on or off: Computer Use lets other computers control the Mac, so it is only
+    /// ever turned on by its own switch; Nacho Pet is on from the first launch and only its own switch hides it.
+    public var inCombos: Bool { self != .computerUse && self != .nachoPet }
+
+    /// On until the user switches it off. Only Nacho Pet: it is the face of the app from the first launch (a decision
+    /// of the owners). Everything else stays off until opted in.
+    public var enabledByDefault: Bool { self == .nachoPet }
 
     /// The gadgets a combo can hold, in gallery order.
     public static var comboGadgets: [ModuleID] { allCases.filter { $0.inCombos } }

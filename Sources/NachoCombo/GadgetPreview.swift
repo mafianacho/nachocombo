@@ -46,6 +46,7 @@ enum GadgetPreview {
             case .mouseTune: picture = mouse(inputs, dark: dark)
             case .calendarClock: picture = calendar(inputs, dark: dark)
             case .diskMap: picture = diskMap()
+            case .nachoPet: picture = nachoPet(dark: dark)
             case .computerUse: picture = computerUse(dark: dark)
             }
         }
@@ -487,6 +488,32 @@ enum GadgetPreview {
             Stage.caption("⌃⌥⌘. stops every call", at: NSPoint(x: 24, y: 206), small: true)
         }
         return Picture(image: image, caption: "A client with your key calls only the tool groups you switched on. Drawn, not a recording.")
+    }
+
+    private static func nachoPet(dark: Bool) -> Picture {
+        let size = NSSize(width: width, height: 240)
+        let image = canvas(size) { rect in
+            Stage.wallpaper(rect, dark: dark)
+            Stage.window(NSRect(x: 18, y: 26, width: 180, height: 150), dark: dark, title: "Safari", style: .text)
+            let bubble = NSRect(x: rect.width - 216, y: 30, width: 196, height: 116)
+            Stage.shadowed(bubble, radius: 12) {
+                (dark ? NSColor(white: 0.16, alpha: 0.97) : NSColor(white: 0.99, alpha: 0.97)).setFill()
+                NSBezierPath(roundedRect: bubble, xRadius: 12, yRadius: 12).fill()
+            }
+            let ink = dark ? NSColor(white: 1, alpha: 0.9) : NSColor(white: 0, alpha: 0.85)
+            let soft = dark ? NSColor(white: 1, alpha: 0.55) : NSColor(white: 0, alpha: 0.5)
+            Draw.text("창 왼쪽으로 붙여 줘", in: NSRect(x: bubble.minX + 12, y: bubble.minY + 12, width: bubble.width - 24, height: 16),
+                      font: .systemFont(ofSize: 11, weight: .medium), color: NSColor.controlAccentColor)
+            Draw.text("왼쪽 절반으로 옮겼어요.", in: NSRect(x: bubble.minX + 12, y: bubble.minY + 36, width: bubble.width - 24, height: 16),
+                      font: .systemFont(ofSize: 11), color: ink)
+            Draw.text("📎 Capture.png  이거 뭐야?", in: NSRect(x: bubble.minX + 12, y: bubble.minY + 62, width: bubble.width - 24, height: 16),
+                      font: .systemFont(ofSize: 11), color: soft)
+            if let art = PetArt.image(named: "happy") {
+                art.draw(in: NSRect(x: rect.width - 104, y: 150, width: 84, height: 84), from: .zero, operation: .sourceOver,
+                         fraction: 1, respectFlipped: true, hints: nil)
+            }
+        }
+        return Picture(image: image, caption: "Nacho waits in the corner; click to chat, hand it a capture or a file. Drawn, not a recording.")
     }
 
     private static func calendar(_ inputs: GadgetPreviewInputs, dark: Bool) -> Picture {

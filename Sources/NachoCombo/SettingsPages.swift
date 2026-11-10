@@ -632,7 +632,8 @@ final class GeneralPage: NSView {
     private func aboutRow() -> NSView {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
         let text = UI.wrapLabel("Nacho Combo \(version) · Not signed with an Apple Developer ID, so macOS asks for "
-                                + "permissions again after an update.", width: inner - 170, style: .footnote,
+                                + "permissions again after an update. Source code: MIT. The Nacho character, icons, name and logo "
+                                + "are not open source (TRADEMARKS.md).", width: inner - 170, style: .footnote,
                                 color: UI.tertiaryText)
         let quit = UI.pushButton("Quit Nacho Combo") { [weak self] in self?.host?.quitApp() }
         quit.setAccessibilityIdentifier("quit-app")

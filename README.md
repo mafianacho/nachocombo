@@ -11,8 +11,9 @@
 One macOS menu bar app with thirteen gadgets, each switched on or off on its own: a menu bar organizer, a system monitor,
 window snapping, a file shelf, floating screen captures, focus dimming, keep awake, clipboard history, device control
 (sound, microphone, external display brightness), app and window switching, mouse tuning, a calendar clock and a disk
-map, plus the experimental [Computer Use](#computer-use-experimental) (an MCP server, off by default). Order them one by
-one or as a combo. No third-party apps, code or brands are used; the brand fonts are open-licensed
+map, plus the experimental [Computer Use](#computer-use-experimental) (an MCP server, off by default) and
+[Nacho Pet](#nacho-pet), the Nacho character in the corner of the screen to chat with. Order them one by one or as a
+combo. No third-party apps, code or brands are used; the brand fonts are open-licensed
 ([Brand](#brand)).
 
 <img src="docs/images/gallery-dark.png" width="100%" alt="The settings window: a sidebar with All Gadgets, Combos, General, Permissions and the gadgets, and the gadget gallery with a tile per gadget">
@@ -30,7 +31,7 @@ above: a sidebar on the left and, first, the **gadget gallery** with every gadge
   [Window Snap](#window-snap) · [File Shelf](#file-shelf) · [Capture Float](#capture-float) · [Focus Dim](#focus-dim) ·
   [Keep Awake](#keep-awake) · [Clipboard History](#clipboard-history) · [Device Control](#device-control) ·
   [App Switch](#app-switch) · [Mouse Tune](#mouse-tune) · [Calendar Clock](#calendar-clock) · [Disk Map](#disk-map) ·
-  [Computer Use (experimental)](#computer-use-experimental)
+  [Computer Use (experimental)](#computer-use-experimental) · [Nacho Pet](#nacho-pet)
 - [Shortcuts](#shortcuts)
 - [Quick panel](#quick-panel-menu-bar)
 - [Install](#install-release) · [Updates](#updates) · [Build / test](#build--test) · [License](#license)
@@ -486,6 +487,57 @@ groups you switched on.
 - **Call log:** the last calls with their tool, client and result are on the Settings tab.
 - Combos never switch it on or off.
 
+### Nacho Pet
+
+> **Not yet tried on a real Mac.** The Core (login, chat, uploads, commands) is covered by `swift test` and a real round
+> trip against the mock server (`scripts/pet-roundtrip.sh`); the macOS part has only been compiled in CI. The checklist
+> for a Mac is [below](#nacho-pet-on-a-mac-checklist).
+
+Nacho, the Nachotown character, sits in the bottom-right corner of the screen from the
+first launch. It is **on by default**, needs no permission and connects to nothing until you open the chat.
+
+- **Chat:** click Nacho to open the bubble. Type, or press the mic for Korean dictation (macOS speech recognition; asks
+  for the microphone and speech recognition the first time). Answers stream in; the button turns into **멈추기** (stop)
+  while Nacho answers. The **연결** tab shows what your Nacho is connected to.
+- **Account:** the first time, **나초 계정으로 로그인** opens `auth.nachotown.com` in the system's browser sheet (Keycloak,
+  client `nacho-gadget-app`, PKCE). Nacho Combo never sees the password; the session is kept in the Keychain and is
+  refreshed by itself. Sign out from the pet's right-click menu or the Settings tab.
+- **Ask about a capture:** right-click a floating capture ▸ **Ask Nacho About This…**: the picture is attached to your
+  next message.
+- **Hand over files:** right-click a shelf item ▸ **Give to Nacho**, drop files on Nacho, or use the paperclip. Nacho
+  looks at pictures (JPEG, PNG, WebP, GIF; larger pictures are shrunk to fit 5 MB) and reads txt, md and csv; PDF and
+  mp4 are passed on and kept but not opened.
+- **Arranges for you:** ask "창 왼쪽으로 붙여 줘" or "킵 어웨이크 켜 줘". Through the Nachotown connector, Nacho can snap
+  the front window (with Window Snap's Accessibility permission) and switch other gadgets on or off. It never switches
+  Computer Use or itself, never turns on a gadget that still needs a permission, and this can be switched off on the
+  Settings tab (*Let Nacho snap windows and switch gadgets on this Mac*).
+- **Moves with you:** drag Nacho anywhere; it comes back to the same place. Right-click ▸ 오른쪽 아래로 돌려놓기 puts it
+  back. Switching the gadget off (or right-click ▸ 나초 숨기기) hides Nacho and closes every connection.
+- Server: Production (`nacho.nachotown.com`) by default; the Settings tab also offers a local nacho-server, the mock
+  server and a custom address. Combos never switch Nacho Pet on or off.
+- **The Nacho character is not open source.** The pictures in `Resources/Nacho` are © Mafianacho, all rights reserved
+  (캐릭터 그림은 오픈소스 대상이 아니며 무단 사용 금지). See [TRADEMARKS.md](TRADEMARKS.md).
+
+#### Nacho Pet on a Mac (checklist)
+Build and start as usual (`scripts/build-app.sh`, `open build/NachoCombo.app`). For a try without a Nacho account, run
+the mock server first (`node tools/mock-server/server.mjs`, Node 18+) and pick **Mock server** on Nacho Pet ▸ Settings;
+its login page signs you in at once.
+
+1. **First appearance:** on a fresh settings file Nacho shows up bottom right, above the Dock; dragging moves it and it
+   stays there after a relaunch. Nacho Combo has still made no network request (the mock server log stays empty).
+2. **Input:** click Nacho → the bubble opens next to it with the text field focused; Esc closes it.
+3. **Login:** 나초 계정으로 로그인 → browser sheet → back in the bubble as signed in; relaunch → still signed in.
+4. **Streaming:** send a message → Nacho's face goes thinking → answering; text streams in; 멈추기 stops a long answer.
+5. **Dictation:** press the mic → macOS asks for the microphone and speech recognition once → spoken Korean appears in
+   the field; pressing again stops.
+6. **Capture → Nacho:** take a capture float, right-click ▸ Ask Nacho About This… → the chip appears; send "이거 뭐야?".
+7. **Shelf → Nacho:** right-click a shelf file ▸ Give to Nacho (and drop a file on Nacho) → chip → send.
+8. **Window command:** with Window Snap's Accessibility allowed, ask "창 왼쪽으로 붙여 줘" with another app in front → that
+   window moves; "킵 어웨이크 켜 줘" switches Keep Awake on in the gallery; "컴퓨터 사용 켜 줘" is refused.
+9. **Hide / OFF:** right-click ▸ 나초 숨기기 → Nacho disappears, the gadget shows Off, `ctl dump` shows the sockets
+   closed; switching it on brings Nacho back where it was.
+10. **Other gadgets:** the gallery, combos, Window Snap, Capture Float and File Shelf behave as before.
+
 ## Shortcuts
 Defaults; every one can be changed or removed on the gadget's page ▸ Shortcuts.
 
@@ -583,6 +635,12 @@ no keys of its own. **The update path has not yet been tried on a real Mac.**
   Universal build `UNIVERSAL=1`, version `VERSION=x.y.z`, packaging `VERSION=x.y.z scripts/package.sh` (zip, dmg,
   SHA256SUMS → `dist/`).
 - Core unit tests (Linux and macOS): `swift test` (on Linux the manifest leaves out the AppKit target).
+- Nacho Pet round trip (Linux and macOS, Node 18+): `scripts/pet-roundtrip.sh` starts `tools/mock-server` (a mock
+  nacho-server and stand-in Keycloak on 127.0.0.1) and drives `nacho-pet-cli`, which runs the same `PetSession` as the
+  app: PKCE login, `/ws/chat` streaming and stop, a picture and a file upload, connector commands (window, gadget on/off,
+  Computer Use refused), token refresh and logout. Logs and `summary.txt` go to `build/pet-roundtrip/`; no token appears
+  in them. On Linux without Swift: `docker run --rm -v "$PWD":/src -w /src swift:6.0 scripts/pet-roundtrip.sh` (with
+  Node mounted into the container).
 - README screenshots: `scripts/screenshots.sh` (quits a running Nacho Combo, renders everything into `docs/images`).
 - Debug control channel: start with `NachoCombo --debug-ctl`, then `NachoCombo ctl set systemMonitor off|on`,
   `ctl collapse on|off|all`, `ctl snap <action>` (e.g. `left`, `top-left`, `first-third`, `next-display`),
@@ -615,4 +673,7 @@ no keys of its own. **The update path has not yet been tried on a real Mac.**
 - The signature is ad-hoc; after a rebuild, Accessibility, Screen Recording and Full Disk Access have to be allowed again.
 
 ## License
-[MIT](LICENSE) © 2026 Mafianacho. The "Nacho Combo" name and logo are not covered by this license.
+The source code is [MIT](LICENSE) © 2026 Mafianacho. The MIT license covers the source code only: the Nacho character
+pictures (`Resources/Nacho`), the app icon and logo, and the names Nacho Combo™, Nacho™ and Mafianacho™ are not covered
+and are not open source. **캐릭터 그림은 오픈소스 대상이 아니며 무단 사용 금지입니다.** Forks have to change the name and
+remove these assets: see [TRADEMARKS.md](TRADEMARKS.md) and [NOTICE](NOTICE).

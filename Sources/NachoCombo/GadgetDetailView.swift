@@ -74,6 +74,8 @@ protocol GadgetHost: AnyObject {
     func gadgetSetAppShortcut(_ bundleID: String, _ shortcut: ToolShortcut?) -> String?
     /// Computer Use's settings (port, LAN mode, tool groups, keys, call log): one view the app owns and keeps current.
     func gadgetComputerUseView() -> NSView?
+    /// Nacho Pet's account / server / control card.
+    func gadgetPetView() -> NSView?
 }
 
 /// The three parts of a gadget's page. Overview is for getting to know it, Settings for changing it, Shortcuts for keys.
@@ -230,6 +232,7 @@ final class GadgetDetailView: NSView {
         case .keepAwake: return ("Side · for long tasks", Brand.nachoInk)
         case .deviceControl: return ("Side · for calls", Brand.nachoInk)
         case .mouseTune: return ("Sauce · set and forget", Brand.salsa)
+        case .nachoPet: return ("Friend · always there", Brand.guac)
         case .computerUse: return ("Extra · experimental", Brand.salsa)
         }
     }
@@ -551,6 +554,10 @@ final class GadgetDetailView: NSView {
         case .diskMap:
             rows.append(row([button("Open Disk Map", symbol: "chart.pie", .showDiskMap, enabled: on), UI.spacer()]))
             rows.append(UI.wrapLabel("A scan starts when you press Scan in the window. Nothing runs before that.",
+                                     width: GadgetDetailView.cardInner, style: .subheadline))
+        case .nachoPet:
+            rows.append(UI.wrapLabel("Click Nacho in the corner of the screen to chat. Right-click a floating capture or a shelf item and "
+                                     + "choose Ask Nacho / Give to Nacho, or drop files on Nacho. Account and server are on the Settings tab.",
                                      width: GadgetDetailView.cardInner, style: .subheadline))
         case .computerUse:
             rows.append(row([button("Emergency Stop", symbol: "stop.circle", .computerUseEmergencyStop, enabled: on), UI.spacer()]))
@@ -901,6 +908,8 @@ final class GadgetDetailView: NSView {
                 self?.host?.gadgetPermissionGranted(.fullDiskAccess) == true ? nil
                     : "Without Full Disk Access macOS asks about your folders one by one, and what stays closed counts as hidden space."
             }, button: allow))
+        case .nachoPet:
+            if let view = host?.gadgetPetView() { rows.append(view) }
         case .computerUse:
             if let view = host?.gadgetComputerUseView() { rows.append(view) }
         }

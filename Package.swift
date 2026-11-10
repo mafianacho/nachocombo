@@ -1,10 +1,15 @@
 // swift-tools-version:5.5
 import PackageDescription
 
-var products: [Product] = [.library(name: "NachoComboCore", targets: ["NachoComboCore"])]
+var products: [Product] = [
+    .library(name: "NachoComboCore", targets: ["NachoComboCore"]),
+    // Dev/test client of the Nacho Pet core (scripts/pet-roundtrip.sh against tools/mock-server). Not shipped.
+    .executable(name: "nacho-pet-cli", targets: ["NachoPetCLI"]),
+]
 var targets: [Target] = [
     // Foundation-only logic (settings, module lifecycle, math). Testable on any OS.
     .target(name: "NachoComboCore"),
+    .executableTarget(name: "NachoPetCLI", dependencies: ["NachoComboCore"]),
     .testTarget(name: "NachoComboCoreTests", dependencies: ["NachoComboCore"]),
 ]
 
