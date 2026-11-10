@@ -230,8 +230,8 @@ public enum UpdatePlan {
         return text.count > maxLength ? String(text.prefix(maxLength - 1)) + "…" : text
     }
 
-    /// Automatic checks: at launch and then once a day.
-    public static let checkInterval: TimeInterval = 24 * 60 * 60
+    /// Automatic checks: at launch and then every 6 hours.
+    public static let checkInterval: TimeInterval = 6 * 60 * 60
 
     public static func isCheckDue(last: Date?, now: Date, interval: TimeInterval = checkInterval) -> Bool {
         guard let last = last else { return true }

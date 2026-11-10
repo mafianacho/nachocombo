@@ -616,18 +616,33 @@ without them the system font is used.
   build and package the app on a macOS runner. The notes of a version come from `docs/release-notes/vX.Y.Z.md`.
 
 ## Updates
-From 0.4.0 Nacho Combo can update itself from this repository's [Releases](../../releases), with no update server and
-no keys of its own. **The update path has not yet been tried on a real Mac.**
-- General ▸ Updates looks for the latest release at launch and once a day (Check Automatically, on by default), or when
-  you press Check Now. Drafts and pre-releases are ignored, and a check that cannot reach GitHub stays quiet.
-- When a newer version exists, General and the menu bar icon's menu offer **Update…** with a summary of the notes.
-  Nothing is downloaded or installed until you click it and confirm.
-- The update downloads `NachoCombo-<version>-macos.zip` and `SHA256SUMS.txt` of that release, stops if the checksum
-  does not match, unpacks it, checks its bundle id, version and code signature (`codesign --verify --deep --strict`),
-  then replaces the app in one step; the old copy goes to the Trash and Nacho Combo restarts. If anything fails, the
-  running copy stays as it is. The app's folder must be writable (e.g. Applications); otherwise update by hand.
-- Because the app is ad-hoc signed, macOS may ask for Screen Recording and Accessibility again after an update.
-- **0.3.0 and earlier cannot update themselves:** install 0.4.0 once by hand.
+Nacho Combo updates itself from this repository's [Releases](../../releases), with no update server and no keys of its
+own. **Automatic installs and rollback (from the version after 0.5.0) have not yet been tried on a real Mac**; the
+engine is covered by `swift test` and `scripts/update-roundtrip.sh` (which also runs in CI on macOS with real `ditto`
+and `codesign`).
+- **Checking:** at launch and every 6 hours (General ▸ Check Automatically, on by default), or when you press Check
+  Now. Drafts, pre-releases and versions you went back from are ignored, and a check that cannot reach GitHub stays quiet.
+- **Installing automatically** (General ▸ Install Automatically, on by default): a new version is downloaded in the
+  background, checked against the release's `SHA256SUMS.txt`, unpacked and checked for its bundle id, version and code
+  signature (`codesign --verify --deep --strict`). It then waits and **replaces the app when Nacho Combo quits**
+  (also at logout, restart or shutdown); if quitting did not get to it, the next launch swaps it in first and restarts.
+  Nacho Combo never restarts by itself while you use it. The menu bar menu and General offer **Restart to Update** to
+  install at once. With Install Automatically off, nothing is downloaded or installed until you click **Update…**.
+- **Rolling back:** the version before is kept, and General ▸ Updates ▸ **Revert to x.y.z…** puts it back and restarts;
+  the version you left is not installed again automatically (a newer one still is). If a new version does not get
+  through its first launch twice in a row, the next launch goes back to the previous version by itself. Every release
+  stays on the Releases page for going back further by hand.
+- **Few files:** at most two copies are kept in `~/Library/Application Support/NachoCombo/Updates`: the version waiting
+  to be installed and the one before the running version. Older copies, zips and interrupted downloads are deleted at
+  once (not moved to the Trash).
+- If anything fails, the running copy stays as it is. The app's folder must be writable (e.g. Applications); a copy that
+  macOS runs from a temporary place (App Translocation) cannot update itself.
+- Because the app is ad-hoc signed, macOS may ask for Screen Recording and Accessibility again after an update. The
+  first launch after an update lists the gadgets that lost their permission and opens the Permissions page.
+- Limit: the automatic rollback runs inside the new version, so a version that crashes before any of its code runs
+  cannot roll itself back; the previous copy stays in the folder above.
+- **0.5.0 and earlier** install the next version only by clicking Update… (their own updater); from then on updates
+  are automatic. **0.3.0 and earlier cannot update themselves:** install a newer version once by hand.
 
 ## Build / test
 - macOS: `scripts/build-app.sh` → `build/NachoCombo.app` (ad-hoc signed; the app icon, also used as the menu bar item, is
@@ -635,6 +650,10 @@ no keys of its own. **The update path has not yet been tried on a real Mac.**
   Universal build `UNIVERSAL=1`, version `VERSION=x.y.z`, packaging `VERSION=x.y.z scripts/package.sh` (zip, dmg,
   SHA256SUMS → `dist/`).
 - Core unit tests (Linux and macOS): `swift test` (on Linux the manifest leaves out the AppKit target).
+- Auto-update round trip (Linux and macOS, Node 18+; Linux also zip/unzip): `scripts/update-roundtrip.sh` serves fake
+  releases from `tools/mock-server/releases.mjs` and drives `nacho-update-cli` (the app's `UpdateStore`) through check,
+  quit, launch, crashes, automatic and manual rollback, a corrupt release and leftover clean-up. On macOS the fake apps
+  are ad-hoc signed and checked with `codesign`. Logs and `summary.txt` go to `build/update-roundtrip/`.
 - Nacho Pet round trip (Linux and macOS, Node 18+): `scripts/pet-roundtrip.sh` starts `tools/mock-server` (a mock
   nacho-server and stand-in Keycloak on 127.0.0.1) and drives `nacho-pet-cli`, which runs the same `PetSession` as the
   app: PKCE login, `/ws/chat` streaming and stop, a picture and a file upload, connector commands (window, gadget on/off,

@@ -59,6 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything starts: an update that quitting did not get to is swapped in now, and a version that failed
+        // its first launches goes back to the previous copy. Either way this copy restarts.
+        updater.automaticInstall = { [store] in store.load().autoInstallUpdates }
+        if updater.handleLaunch() { return }
         Brand.registerFonts()
         firstLaunch = !FileManager.default.fileExists(atPath: store.url.path)
         organizer = MenuBarOrganizerModule(initiallyCollapsed: store.load().menuBarCollapsed)
@@ -208,9 +212,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         syncPins()
         manager.bootstrap()
         updater.automaticChecks = { [weak self] in self?.manager.settings.checkForUpdates ?? false }
+        updater.automaticInstall = { [weak self] in self?.manager.settings.autoInstallUpdates ?? false }
         updater.onChange = { [weak self] in self?.stateChanged() }
         updater.relaunch = { [weak self] in self?.relaunch() }
         updater.startSchedule()
+        if let notice = updater.takeLaunchNotice() {
+            // After an ad-hoc signed update macOS may have dropped Accessibility / Screen Recording: say so once.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.showUpdateNotice(notice) }
+        }
         notePermissionGrants()
         startPermissionWatchIfNeeded()
         // The first launch always shows the window; later launches follow General ▸ Show This Window at Launch.
@@ -233,10 +242,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        guard manager != nil else { return }
         panel.close()
         toolShortcuts.suspend()
         actionShortcuts.suspend()
         manager.shutdown()
+        // Quit, logout, restart or shutdown: a downloaded update replaces this copy now (it starts next time).
+        updater.applyAtQuit()
+    }
+
+    /// The first launch after an update or a rollback: which switched-on gadgets lost their permission.
+    private func showUpdateNotice(_ notice: LaunchNotice) {
+        recheckPermissions()
+        var waiting: [String] = []
+        for id in ModuleID.allCases where manager.settings.isEnabled(id) {
+            if case .needsPermission = manager.states[id] ?? .off {
+                let permission = id.info.requiredPermission.map { " (\($0.displayName))" } ?? ""
+                waiting.append(id.displayName + permission)
+            }
+        }
+        let alert = NSAlert()
+        switch notice {
+        case let .updated(to):
+            guard !waiting.isEmpty else { return }   // nothing to do for the user: no alert
+            alert.messageText = "Nacho Combo was updated to \(to)"
+            alert.informativeText = "Because the app is ad-hoc signed, macOS asks again for: \(waiting.joined(separator: ", ")). "
+                + "Allow them in System Settings and these gadgets start again."
+        case let .rolledBack(from, to):
+            alert.messageText = "Nacho Combo went back to \(to)"
+            alert.informativeText = "\(from) was removed and will not be installed again automatically; a newer version still is."
+                + (waiting.isEmpty ? "" : " macOS asks again for: \(waiting.joined(separator: ", ")).")
+        }
+        if waiting.isEmpty {
+            alert.addButton(withTitle: "OK")
+        } else {
+            alert.addButton(withTitle: "Open Permissions")
+            alert.addButton(withTitle: "Later")
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn, !waiting.isEmpty {
+            settingsWindow.select(.permissions)
+            settingsWindow.show()
+        }
     }
 
     private func showSettings(_ id: ModuleID? = nil) {
@@ -595,10 +642,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         comboItem.submenu = combos
         menu.addItem(comboItem)
         menu.addItem(.separator())
-        if case .available(let version, _) = updater.state {
+        switch updater.state {
+        case .available(let version, _):
             let update = NSMenuItem(title: "Update to \(version)…", action: #selector(menuInstallUpdate), keyEquivalent: "")
             update.target = self
             menu.addItem(update)
+        case .ready(let version, _):
+            let update = NSMenuItem(title: "Restart to Update to \(version)", action: #selector(menuInstallUpdate), keyEquivalent: "")
+            update.target = self
+            menu.addItem(update)
+        default: break
         }
         let settings = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
@@ -1266,6 +1319,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         NSWorkspace.shared.open(updater.releasePage ?? URL(string: "https://github.com/mafianacho/nachocombo/releases/latest")!)
     }
     @objc private func menuInstallUpdate() { installUpdate() }
+    var previousVersion: String? { updater.previousVersion }
+    func revertUpdate() { updater.confirmRollback(window: settingsWindow.isVisible ? settingsWindow.window : nil) }
 
     func orderCombo(_ id: String) {
         guard let combo = ComboCatalog.combo(id, in: manager.settings) else { return }

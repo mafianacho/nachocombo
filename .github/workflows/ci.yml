@@ -22,6 +22,8 @@ jobs:
           persist-credentials: false
       - name: Core unit tests
         run: swift test
+      - name: Auto-update round trip (mock GitHub Releases, real ditto and codesign)
+        run: scripts/update-roundtrip.sh
       - name: Build NachoCombo.app (universal, ad-hoc signed)
         env:
           UNIVERSAL: "1"

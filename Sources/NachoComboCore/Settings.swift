@@ -46,8 +46,11 @@ public struct AppSettings: Codable, Equatable {
     public var customCombos: [SavedCombo]
     /// Computer Use: port, listen mode and tool group switches (everything OFF by default). Missing in older files.
     public var computerUse: ComputerUseSettings
-    /// Updates: look for a new release at launch and once a day. Missing in older files (= on).
+    /// Updates: look for a new release at launch and every 6 hours. Missing in older files (= on).
     public var checkForUpdates: Bool
+    /// Updates: download a new release in the background and install it when Nacho Combo quits (or at the next
+    /// launch). Off: nothing is installed until the user clicks Update. Missing in older files (= on).
+    public var autoInstallUpdates: Bool
 
     /// First launch: every module is OFF except Nacho Pet (`ModuleID.enabledByDefault`), so no permission prompt or
     /// monitoring starts before opt-in. The pet needs no permission and starts nothing that leaves the Mac until the
@@ -62,9 +65,10 @@ public struct AppSettings: Codable, Equatable {
                 permissionGrants: [String: String] = [:], launchWindow: LaunchWindow = .whenNeeded,
                 menuBarAttentionDot: Bool = true, dismissedHints: [String: Bool] = [:], combo: String? = nil,
                 customCombos: [SavedCombo] = [], computerUse: ComputerUseSettings = ComputerUseSettings(),
-                checkForUpdates: Bool = true) {
+                checkForUpdates: Bool = true, autoInstallUpdates: Bool = true) {
         self.computerUse = computerUse
         self.checkForUpdates = checkForUpdates
+        self.autoInstallUpdates = autoInstallUpdates
         self.combo = combo
         self.customCombos = customCombos
         self.permissionGrants = permissionGrants
@@ -90,7 +94,7 @@ public struct AppSettings: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case version, enabledModules, menuBarCollapsed, monitor, dimIntensity, pinnedTools, toolShortcuts, options,
              actionShortcuts, permissionGrants, launchWindow, menuBarAttentionDot, dismissedHints, combo, customCombos,
-             computerUse, checkForUpdates
+             computerUse, checkForUpdates, autoInstallUpdates
     }
 
     public init(from decoder: Decoder) throws {
@@ -117,6 +121,7 @@ public struct AppSettings: Codable, Equatable {
         // A broken Computer Use section falls back to its defaults (everything off), never to something more open.
         computerUse = (try? c.decodeIfPresent(ComputerUseSettings.self, forKey: .computerUse)) ?? ComputerUseSettings()
         checkForUpdates = (try? c.decodeIfPresent(Bool.self, forKey: .checkForUpdates)) ?? true
+        autoInstallUpdates = (try? c.decodeIfPresent(Bool.self, forKey: .autoInstallUpdates)) ?? true
     }
 
     public func hintDismissed(_ key: String) -> Bool { dismissedHints[key] ?? false }
