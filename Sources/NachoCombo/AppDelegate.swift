@@ -94,7 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         computerUse.onEmergencyStop = { [weak self] in self?.manager.setEnabled(.computerUse, false) }
         let card = ComputerUseCard(module: computerUse, manager: manager, width: GadgetDetailView.cardInner)
         card.openPermissionPane = { [weak self] permission in self?.openComputerUsePermission(permission) }
-        card.recheckPermissions = { [weak self] in self?.manager.retry(.computerUse) }
+        card.recheckPermissions = { [weak self] in self?.recheckComputerUse(force: true) }
+        card.resetAccessibility = { [weak self] in self?.resetComputerUseAccessibility() }
         card.settingsChanged = { [weak self] in self?.reapplyComputerUse() }
         card.emergencyStop = { [weak self] in self?.computerUse.emergencyStop() }
         computerUseCard = card
@@ -318,9 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             if manager.states[id] == .running { started.append(id) }
         }
         // Computer Use needs a permission only for the tool groups that are on, so it is not among permissionGadgets.
-        if manager.settings.isEnabled(.computerUse), case .needsPermission = manager.states[.computerUse] ?? .off {
-            manager.retry(.computerUse)
-        }
+        recheckComputerUse()
         notePermissionGrants()
         for id in started {
             recentlyAllowed[id] = Date()
@@ -336,6 +335,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     /// The gadgets that cannot run without a permission.
     private var permissionGadgets: [ModuleID] { ModuleID.allCases.filter { $0.info.requiredPermission != nil } }
 
+    /// Computer Use waits for a permission while it is closed for one, or while it runs with groups left out.
+    private var computerUseWaitsForPermission: Bool {
+        guard manager.settings.isEnabled(.computerUse) else { return false }
+        switch manager.states[.computerUse] ?? .off {
+        case .needsPermission: return true
+        case .running: return !computerUse.blockedGroups.isEmpty
+        default: return false
+        }
+    }
+
+    /// Restarts Computer Use without any permission dialog when what macOS allows changed since its last start (a
+    /// permission was just allowed: the server opens, or the left-out groups join). A running server is only
+    /// restarted on a real change, so polling never drops connections. `force` (the card's button) re-checks anyway.
+    private func recheckComputerUse(force: Bool = false) {
+        guard computerUseWaitsForPermission, force || computerUse.permissionsChangedSinceStart else { return }
+        computerUse.allowPermissionPrompt = false
+        let state = computerUse.start()
+        manager.report(.computerUse, state: state)
+    }
+
+    /// "Reset Accessibility Permission" on the Computer Use card: clears the stale entry (tccutil), asks macOS again
+    /// and opens the Accessibility pane. Returns a problem to show, or nil.
+    private func resetComputerUseAccessibility() -> String? {
+        let problem = ComputerUseModule.resetPermission(.accessibility)
+        if problem == nil { gadgetOpenPermissionSettings(.accessibility) }
+        startPermissionWatchIfNeeded(restart: true)
+        stateChanged()
+        return problem
+    }
+
     /// Remembers which copy of the app had each permission, so a later copy can tell an update from a revocation.
     private func notePermissionGrants() {
         guard let signature = CodeSignature.current else { return }
@@ -349,7 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     /// Polls once a second while a switched-on gadget waits for a permission, for at most 10 minutes at a time (opening
     /// the window, the panel or System Settings from here starts it again). Stops by itself when nothing waits.
     private func startPermissionWatchIfNeeded(restart: Bool = false) {
-        let waiting = permissionGadgets.contains { id in
+        let waiting = computerUseWaitsForPermission || permissionGadgets.contains { id in
             guard manager.settings.isEnabled(id), case .needsPermission = manager.states[id] ?? .off else { return false }
             return true
         }
@@ -375,6 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             return gadgetPermissionGranted(permission) == true
         }
         if ready || !settingsVisits.isEmpty { recheckPermissions() }
+        else if computerUseWaitsForPermission && computerUse.permissionsChangedSinceStart { recheckComputerUse() }
     }
 
     /// The short explanation before macOS's own permission dialog appears (only when the permission is missing).
