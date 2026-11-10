@@ -384,6 +384,10 @@ final class ToolDetailView: NSView {
         case .diskMap:
             let open = commandButton("Open Disk Map", "panel-disk-open", .showDiskMap)
             return [UI.hstack([open], spacing: 8), statusLine]
+        case .nachoPet:
+            let note = UI.wrapLabel("Click Nacho in the corner of the screen to chat. Drop files on Nacho to hand them over.",
+                                    width: UI.panelWidth - 2 * UI.margin, style: .subheadline)
+            return [note, statusLine]
         case .computerUse:
             let stop = commandButton("Emergency Stop (\(ComputerUseModule.emergencyLabel))", "panel-computer-use-emergency",
                                      .computerUseEmergencyStop)

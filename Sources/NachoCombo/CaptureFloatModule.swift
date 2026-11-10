@@ -1007,6 +1007,9 @@ final class CaptureCanvasView: NSView, NSDraggingSource {
         add("Copy") { owner.copyToPasteboard() }
         add("Copy Text") { owner.copyText() }
         add("Save…") { owner.saveWithPanel() }
+        if PetHandoff.available {
+            add("Ask Nacho About This…") { if let png = owner.pngData() { PetHandoff.askAbout(png: png, name: FloatingCaptureWindow.fileName) } }
+        }
         menu.addItem(.separator())
         add(owner.pinned ? "Unpin" : "Pin Again") { owner.togglePin() }
         add(drawing ? "Stop Marking Up" : "Mark Up") { owner.toggleMarkup() }

@@ -1,0 +1,16 @@
+Nacho Combo
+Copyright (c) 2026 Mafianacho
+
+The source code of Nacho Combo is licensed under the MIT license (LICENSE).
+
+The following are NOT covered by the MIT license and are not open source:
+  - Resources/Nacho/            Nacho character artwork. All rights reserved (Resources/Nacho/LICENSE).
+  - Resources/AppIcon.png       App icon and logo. All rights reserved.
+  - docs/images/app-icon.png    App icon and logo. All rights reserved.
+  - The names "Nacho Combo", "Nacho" and "Mafianacho" (TRADEMARKS.md).
+
+Third-party material with its own license:
+  - Resources/Fonts/            Anton and IBM Plex fonts, SIL Open Font License 1.1 (Anton-OFL.txt, IBMPlex-OFL.txt).
+
+다음은 MIT 라이선스 대상이 아니며 오픈소스가 아닙니다: 나초 캐릭터 그림(Resources/Nacho/, 무단 사용 금지),
+앱 아이콘·로고, "나초 콤보"·"나초"·"마피아나초" 이름. 자세한 내용은 TRADEMARKS.md를 보세요.

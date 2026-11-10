@@ -58,6 +58,7 @@ enum GadgetIcon {
         case .mouseTune: drawMouse()
         case .calendarClock: drawCalendar()
         case .diskMap: drawDiskMap()
+        case .nachoPet: drawNachoPet()
         case .computerUse: drawComputerUse()
         }
         NSGraphicsContext.restoreGraphicsState()
@@ -86,6 +87,7 @@ enum GadgetIcon {
         case .mouseTune: return (rgb(0xD8F27A), rgb(0x6E9E10))
         case .calendarClock: return (rgb(0xFFFFFF), rgb(0xDCDCE2))
         case .diskMap: return (rgb(0x3F2E20), rgb(0x1E1610))
+        case .nachoPet: return (rgb(0xFFF1C9), rgb(0xF5B63E))
         case .computerUse: return (rgb(0x5B6CFF), rgb(0x1B2A8F))
         }
     }
@@ -425,6 +427,23 @@ enum GadgetIcon {
     }
 
     /// A display with a pointer on it, driven from elsewhere: Computer Use.
+    /// The Nacho character itself (bundled art, all rights reserved); a speech bubble if the art is missing.
+    private static func drawNachoPet() {
+        if let art = PetArt.image(named: "idle") {
+            // The icon grid is flipped (y down); respectFlipped keeps the picture upright.
+            art.draw(in: NSRect(x: 12, y: 12, width: 76, height: 76), from: .zero, operation: .sourceOver, fraction: 1,
+                     respectFlipped: true, hints: nil)
+            return
+        }
+        fill(CGRect(x: 20, y: 24, width: 60, height: 40), radius: 14, NSColor.white.withAlphaComponent(0.95))
+        let tail = NSBezierPath()
+        tail.move(to: NSPoint(x: 34, y: 62))
+        tail.line(to: NSPoint(x: 30, y: 76))
+        tail.line(to: NSPoint(x: 46, y: 62))
+        tail.close()
+        tail.fill()
+    }
+
     private static func drawComputerUse() {
         fill(CGRect(x: 16, y: 22, width: 68, height: 46), radius: 6, NSColor.white.withAlphaComponent(0.95))
         fill(CGRect(x: 21, y: 27, width: 58, height: 36), radius: 3, NSColor(srgbRed: 0.11, green: 0.16, blue: 0.45, alpha: 1))
