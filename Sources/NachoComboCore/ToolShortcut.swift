@@ -93,6 +93,8 @@ public enum ShortcutPolicy {
             ("Switch Space ⌃⌥Space", 49, ct | o), ("Spotlight ⌘Space", 49, c), ("Input Source ⌃Space", 49, ct),
             ("Mission Control ⌃↑", 126, ct), ("App Windows ⌃↓", 125, ct),
             ("App Switcher ⌘Tab", 48, c), ("App Switcher ⌘⇧Tab", 48, c | s),
+            // Not macOS, but Computer Use's emergency stop must never be taken by another shortcut.
+            ("Computer Use Emergency Stop ⌃⌥⌘.", 47, ct | o | c),
         ]
     }()
 

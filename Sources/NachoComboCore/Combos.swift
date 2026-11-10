@@ -118,7 +118,7 @@ public struct ComboPlan: Equatable {
     public let optionChanges: [String]
 
     public static func make(_ combo: Combo, settings: AppSettings) -> ComboPlan {
-        let on = ModuleID.allCases.filter { settings.isEnabled($0) }
+        let on = ModuleID.comboGadgets.filter { settings.isEnabled($0) }
         return ComboPlan(turnsOn: combo.gadgets.filter { !on.contains($0) },
                          staysOn: combo.gadgets.filter { on.contains($0) },
                          turnsOff: on.filter { !combo.gadgets.contains($0) },
@@ -181,7 +181,7 @@ public enum ComboCatalog {
               tuning: ComboTuning(dimIntensity: 0.7, autoCollapseSeconds: 0, dimOtherDisplays: true)),
         Combo(id: "full", number: 7, name: "Full Combo", line: "Everything in the box.",
               who: "For anyone who installs all of these on every new Mac.",
-              gadgets: ModuleID.allCases,
+              gadgets: ModuleID.comboGadgets,
               moments: [m(.windowSnap, [GadgetActions.snapID(.left)], "", "Put the front window on the left half"),
                         m(.captureFloat, ["capture.area"], "", "Float a piece of the screen above your work"),
                         m(.systemMonitor, [], "Glance at the menu bar", "CPU, memory and network, live")],
@@ -202,7 +202,7 @@ public enum ComboCatalog {
     /// The combo whose gadgets are exactly the ones switched on (nil: a box of your own). When several match, the one
     /// ordered last wins.
     public static func current(_ settings: AppSettings) -> Combo? {
-        let on = Set(ModuleID.allCases.filter { settings.isEnabled($0) })
+        let on = Set(ModuleID.comboGadgets.filter { settings.isEnabled($0) })
         guard !on.isEmpty else { return nil }
         let matches = combos(settings).filter { Set($0.gadgets) == on }
         return matches.first { $0.id == settings.combo } ?? matches.first
@@ -237,7 +237,7 @@ public enum ComboCatalog {
     }
 
     public static func custom(_ saved: SavedCombo, index: Int) -> Combo {
-        let gadgets = ModuleID.allCases.filter { saved.gadgets.contains($0) }
+        let gadgets = ModuleID.comboGadgets.filter { saved.gadgets.contains($0) }
         return Combo(id: saved.id, number: presets.count + index + 1, name: saved.name, line: "Your own mix.",
                      who: "Made by you. Change it any time with Edit.", gadgets: gadgets,
                      moments: moments(for: gadgets), tuning: saved.tuning, isCustom: true)
@@ -258,7 +258,7 @@ public enum ComboCatalog {
             return SavedCombo(id: "custom-" + UUID().uuidString.prefix(8).lowercased(),
                               name: freeName("My \(combo.name)", in: settings), gadgets: combo.gadgets, tuning: combo.tuning)
         }
-        let on = ModuleID.allCases.filter { settings.isEnabled($0) }
+        let on = ModuleID.comboGadgets.filter { settings.isEnabled($0) }
         return SavedCombo(id: "custom-" + UUID().uuidString.prefix(8).lowercased(), name: freeName("My Combo", in: settings),
                           gadgets: on, tuning: ComboTuning())
     }
@@ -304,7 +304,7 @@ public extension ModuleManager {
         guard combo.isValid else { return false }
         var clean = combo
         clean.name = combo.cleanName
-        clean.gadgets = ModuleID.allCases.filter { combo.gadgets.contains($0) }
+        clean.gadgets = ModuleID.comboGadgets.filter { combo.gadgets.contains($0) }
         if let index = settings.customCombos.firstIndex(where: { $0.id == clean.id }) {
             update { $0.customCombos[index] = clean }
         } else {
@@ -323,7 +323,7 @@ public extension ModuleManager {
 
     func snapshot() -> BoxSnapshot {
         var enabled: [ModuleID: Bool] = [:]
-        for id in ModuleID.allCases { enabled[id] = settings.isEnabled(id) }
+        for id in ModuleID.comboGadgets { enabled[id] = settings.isEnabled(id) }
         return BoxSnapshot(enabled: enabled, options: settings.options, dimIntensity: settings.dimIntensity,
                            monitor: settings.monitorSettings, combo: settings.combo)
     }
@@ -336,8 +336,8 @@ public extension ModuleManager {
             settings.monitorSettings = snapshot.monitor
             settings.combo = snapshot.combo
         }
-        for id in ModuleID.allCases where !(snapshot.enabled[id] ?? false) && settings.isEnabled(id) { setEnabled(id, false) }
-        for id in ModuleID.allCases where (snapshot.enabled[id] ?? false) && !settings.isEnabled(id) {
+        for id in ModuleID.comboGadgets where !(snapshot.enabled[id] ?? false) && settings.isEnabled(id) { setEnabled(id, false) }
+        for id in ModuleID.comboGadgets where (snapshot.enabled[id] ?? false) && !settings.isEnabled(id) {
             setEnabled(id, true, userInitiated: false)
         }
     }

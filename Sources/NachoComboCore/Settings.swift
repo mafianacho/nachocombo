@@ -44,6 +44,10 @@ public struct AppSettings: Codable, Equatable {
     public var combo: String?
     /// Combos the user made, in board order.
     public var customCombos: [SavedCombo]
+    /// Computer Use: port, listen mode and tool group switches (everything OFF by default). Missing in older files.
+    public var computerUse: ComputerUseSettings
+    /// Updates: look for a new release at launch and once a day. Missing in older files (= on).
+    public var checkForUpdates: Bool
 
     /// First launch: every module is OFF, so no permission prompt or monitoring starts before opt-in.
     public static let defaults = AppSettings(
@@ -55,7 +59,10 @@ public struct AppSettings: Codable, Equatable {
                 options: GadgetOptions = .defaults, actionShortcuts: [String: ActionBinding] = [:],
                 permissionGrants: [String: String] = [:], launchWindow: LaunchWindow = .whenNeeded,
                 menuBarAttentionDot: Bool = true, dismissedHints: [String: Bool] = [:], combo: String? = nil,
-                customCombos: [SavedCombo] = []) {
+                customCombos: [SavedCombo] = [], computerUse: ComputerUseSettings = ComputerUseSettings(),
+                checkForUpdates: Bool = true) {
+        self.computerUse = computerUse
+        self.checkForUpdates = checkForUpdates
         self.combo = combo
         self.customCombos = customCombos
         self.permissionGrants = permissionGrants
@@ -80,7 +87,8 @@ public struct AppSettings: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case version, enabledModules, menuBarCollapsed, monitor, dimIntensity, pinnedTools, toolShortcuts, options,
-             actionShortcuts, permissionGrants, launchWindow, menuBarAttentionDot, dismissedHints, combo, customCombos
+             actionShortcuts, permissionGrants, launchWindow, menuBarAttentionDot, dismissedHints, combo, customCombos,
+             computerUse, checkForUpdates
     }
 
     public init(from decoder: Decoder) throws {
@@ -104,6 +112,9 @@ public struct AppSettings: Codable, Equatable {
         dismissedHints = (try? c.decodeIfPresent([String: Bool].self, forKey: .dismissedHints)) ?? [:]
         combo = try? c.decodeIfPresent(String.self, forKey: .combo)
         customCombos = (try? c.decodeIfPresent([SavedCombo].self, forKey: .customCombos)) ?? []
+        // A broken Computer Use section falls back to its defaults (everything off), never to something more open.
+        computerUse = (try? c.decodeIfPresent(ComputerUseSettings.self, forKey: .computerUse)) ?? ComputerUseSettings()
+        checkForUpdates = (try? c.decodeIfPresent(Bool.self, forKey: .checkForUpdates)) ?? true
     }
 
     public func hintDismissed(_ key: String) -> Bool { dismissedHints[key] ?? false }

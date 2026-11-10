@@ -11,7 +11,8 @@
 One macOS menu bar app with thirteen gadgets, each switched on or off on its own: a menu bar organizer, a system monitor,
 window snapping, a file shelf, floating screen captures, focus dimming, keep awake, clipboard history, device control
 (sound, microphone, external display brightness), app and window switching, mouse tuning, a calendar clock and a disk
-map. Order them one by one or as a combo. No third-party apps, code or brands are used; the brand fonts are open-licensed
+map, plus the experimental [Computer Use](#computer-use-experimental) (an MCP server, off by default). Order them one by
+one or as a combo. No third-party apps, code or brands are used; the brand fonts are open-licensed
 ([Brand](#brand)).
 
 <img src="docs/images/gallery-dark.png" width="100%" alt="The settings window: a sidebar with All Gadgets, Combos, General, Permissions and the gadgets, and the gadget gallery with a tile per gadget">
@@ -28,10 +29,11 @@ above: a sidebar on the left and, first, the **gadget gallery** with every gadge
 - [Gadgets](#gadgets): [Menu Bar Organizer](#menu-bar-organizer) · [System Monitor](#system-monitor) ·
   [Window Snap](#window-snap) · [File Shelf](#file-shelf) · [Capture Float](#capture-float) · [Focus Dim](#focus-dim) ·
   [Keep Awake](#keep-awake) · [Clipboard History](#clipboard-history) · [Device Control](#device-control) ·
-  [App Switch](#app-switch) · [Mouse Tune](#mouse-tune) · [Calendar Clock](#calendar-clock) · [Disk Map](#disk-map)
+  [App Switch](#app-switch) · [Mouse Tune](#mouse-tune) · [Calendar Clock](#calendar-clock) · [Disk Map](#disk-map) ·
+  [Computer Use (experimental)](#computer-use-experimental)
 - [Shortcuts](#shortcuts)
 - [Quick panel](#quick-panel-menu-bar)
-- [Install](#install-release) · [Build / test](#build--test) · [License](#license)
+- [Install](#install-release) · [Updates](#updates) · [Build / test](#build--test) · [License](#license)
 
 ## Usage
 1. Double-click `NachoCombo.app` (it is ad-hoc signed and not notarized, so the first launch may need right-click ▸ Open).
@@ -132,6 +134,8 @@ asks for. Afterwards every gadget is still its own switch; a combo never changes
 | No.6 Presenter | Menu Bar Organizer, Focus Dim, Keep Awake | Dim 70% on every display, no auto-collapse | Nothing |
 | No.7 Full Combo | All thirteen | Nothing | Accessibility, Screen Recording |
 
+Computer Use is never part of a combo: ordering one neither switches it on nor off.
+
 Ordering never raises a system dialog: a gadget whose permission is missing waits under "To finish" with its own
 `Allow …` button, which shows the usual explanation sheet and then macOS's dialog. Right after an order, `Undo` puts
 the box back as it was (switches and settings), for a few minutes or until the next order.
@@ -190,6 +194,7 @@ list (`Window Snap needs Accessibility  Allow…`).
 | [Mouse Tune](#mouse-tune) | A wheel mouse's own scroll direction, smooth scrolling, speed and back / forward buttons | Accessibility |
 | [Calendar Clock](#calendar-clock) | A clock your way with a month calendar, the next meeting's Join button and world clocks | None (Calendars for events) |
 | [Disk Map](#disk-map) | What fills a disk and what is left, as a sunburst or as blocks; go to any item or remove it with your approval | None (Full Disk Access to see every folder) |
+| [Computer Use](#computer-use-experimental) (experimental) | An MCP server: a client holding your key sees and controls this Mac through the tool groups you switch on | Per tool group: Screen Recording, Accessibility, Automation |
 
 ### Menu Bar Organizer
 
@@ -457,6 +462,30 @@ shade never catches a click; clicking the desktop shows everything.
 - Folders too small to see are summed up to keep memory low; opening one scans it again. The map stays in memory for ten
   minutes after the window closes.
 
+### Computer Use (experimental)
+
+> **Not yet tried on a real Mac.** The Core is covered by `swift test`; the macOS part has only been compiled in CI.
+> What still has to be checked on a Mac is listed in [docs/COMPUTER-USE-MCP.md](docs/COMPUTER-USE-MCP.md).
+
+An [MCP](https://modelcontextprotocol.io) server inside Nacho Combo. A client (an AI agent, a script) that sends a key you
+made here can look at the screen, open apps, move windows, click and type, use the clipboard and more, through the tool
+groups you switched on.
+
+- **Off by default, and so is every tool group.** With no group on, no tool is offered. Each group asks for its macOS
+  permission (Screen Recording, Accessibility, Automation) only when you switch it on.
+- **High-risk tools apart:** AppleScript, shell commands, reading and writing files and force-quitting processes are
+  their own groups and ask for confirmation before they turn on.
+- **Keys:** make, name, reissue and revoke them on the Settings tab. A key is shown once; only its hash is stored.
+  Without a key every request is refused.
+- **Emergency stop ⌃⌥⌘.** refuses every call at once and turns the gadget off. It is reserved: no other shortcut can
+  take it. The quick panel and the gadget's page have an Emergency Stop button too.
+- **Local by default:** the server listens on `127.0.0.1` only. The optional **LAN mode** lets other computers on the
+  same private network connect, **only over TLS** with a self-signed certificate whose fingerprint the client pins, and
+  only from private addresses; it never opens without encryption. It can keep the Mac awake while the server is on and
+  announce itself with Bonjour (`_nacho-mcp._tcp`).
+- **Call log:** the last calls with their tool, client and result are on the Settings tab.
+- Combos never switch it on or off.
+
 ## Shortcuts
 Defaults; every one can be changed or removed on the gadget's page ▸ Shortcuts.
 
@@ -470,6 +499,7 @@ Defaults; every one can be changed or removed on the gadget's page ▸ Shortcuts
 | Device Control | ⌃⌥M mute / unmute the microphone (next output, brighter, darker: none) |
 | App Switch | ⌥Tab / ⌥⇧Tab switch windows; app shortcuts and Hide Others: none until you set them |
 | Menu Bar Organizer, System Monitor, Keep Awake, Mouse Tune, Calendar Clock, Disk Map | none (assign on the gadget's page) |
+| Computer Use | ⌃⌥⌘. emergency stop while it runs (fixed, and reserved so no other shortcut can use it) |
 
 Shortcuts are registered only while their gadget runs. A shortcut must use two modifiers (one with a function key, and
 ⌥Tab / ⌥⇧Tab for the window switcher), must
@@ -515,8 +545,9 @@ without them the system font is used.
 - Target: macOS 12 (Monterey) or later, Swift 5.5+ (Package.swift `platforms: .macOS(.v12)`).
 - Settings: `~/Library/Application Support/NachoCombo/settings.json` (everything is OFF by default; includes the dim
   strength `dimIntensity`, the gadget `options`, `pinnedTools`, `toolShortcuts`, `actionShortcuts`, `launchWindow`,
-  `menuBarAttentionDot`, `dismissedHints`, `combo` (the combo last ordered), `customCombos` (your own combos) and
-  `permissionGrants`, the code signature of the copy that last had each permission). Settings files from earlier versions still load.
+  `menuBarAttentionDot`, `dismissedHints`, `combo` (the combo last ordered), `customCombos` (your own combos),
+  `computerUse` (port, listen mode and tool groups; a missing or broken section means everything off),
+  `checkForUpdates` and `permissionGrants`, the code signature of the copy that last had each permission). Settings files from earlier versions still load.
   Pinned clipboard items (`clipboard-pins.json`) and window layouts (`window-layouts.json`) have files of their own. The window's size and last page are kept in the app's
   user defaults.
 - OFF contract: a gadget's `stop()` releases all of its timers, monitors, event taps and status items, and its action
@@ -530,7 +561,21 @@ without them the system font is used.
   the first launch. Right-click the app → Open → Open, or allow it in System Settings ▸ Privacy & Security. Updating or
   rebuilding changes the code signature, so Window Snap's Accessibility permission has to be granted again.
 - Releases are created automatically: pushing a tag like `v0.1.0` makes GitHub Actions (`.github/workflows/release.yml`)
-  build and package the app on a macOS runner.
+  build and package the app on a macOS runner. The notes of a version come from `docs/release-notes/vX.Y.Z.md`.
+
+## Updates
+From 0.4.0 Nacho Combo can update itself from this repository's [Releases](../../releases), with no update server and
+no keys of its own. **The update path has not yet been tried on a real Mac.**
+- General ▸ Updates looks for the latest release at launch and once a day (Check Automatically, on by default), or when
+  you press Check Now. Drafts and pre-releases are ignored, and a check that cannot reach GitHub stays quiet.
+- When a newer version exists, General and the menu bar icon's menu offer **Update…** with a summary of the notes.
+  Nothing is downloaded or installed until you click it and confirm.
+- The update downloads `NachoCombo-<version>-macos.zip` and `SHA256SUMS.txt` of that release, stops if the checksum
+  does not match, unpacks it, checks its bundle id, version and code signature (`codesign --verify --deep --strict`),
+  then replaces the app in one step; the old copy goes to the Trash and Nacho Combo restarts. If anything fails, the
+  running copy stays as it is. The app's folder must be writable (e.g. Applications); otherwise update by hand.
+- Because the app is ad-hoc signed, macOS may ask for Screen Recording and Accessibility again after an update.
+- **0.3.0 and earlier cannot update themselves:** install 0.4.0 once by hand.
 
 ## Build / test
 - macOS: `scripts/build-app.sh` → `build/NachoCombo.app` (ad-hoc signed; the app icon, also used as the menu bar item, is

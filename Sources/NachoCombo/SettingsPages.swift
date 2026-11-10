@@ -57,6 +57,13 @@ protocol SettingsHost: GadgetHost {
     /// The combo just ordered, while its order can still be undone.
     var orderUndoName: String? { get }
     func undoOrder()
+    /// In-app updates (General ▸ Updates).
+    var updateState: UpdateController.State { get }
+    var currentVersion: String { get }
+    func checkForUpdatesNow()
+    /// Shows the confirmation, then downloads, verifies and installs. Only from the user's click.
+    func installUpdate()
+    func openReleasePage()
 }
 
 // MARK: - Sidebar
@@ -444,6 +451,10 @@ final class GeneralPage: NSView {
         let startup = GadgetDetailView.card([loginRow(), launchWindowRow(), dotRow()])
         stack.addArrangedSubview(startup)
         stack.setCustomSpacing(18, after: startup)
+        stack.addArrangedSubview(UI.sectionTitle("Updates"))
+        let updates = GadgetDetailView.card([updateRow(), autoUpdateRow()])
+        stack.addArrangedSubview(updates)
+        stack.setCustomSpacing(18, after: updates)
         stack.addArrangedSubview(UI.sectionTitle("Settings"))
         let data = GadgetDetailView.card([fileRow(), resetRow()])
         stack.addArrangedSubview(data)
@@ -544,6 +555,62 @@ final class GeneralPage: NSView {
         }
         let note = UI.label("When a gadget needs a permission or has an error.", style: .subheadline, color: UI.secondaryText)
         return row([titled("Dot on the Menu Bar Icon", note), UI.spacer(), toggle])
+    }
+
+    private func updateRow() -> NSView {
+        let note = UI.wrapLabel("", width: cardInner - 200, style: .subheadline, color: UI.secondaryText)
+        let check = UI.pushButton("Check Now", small: true) { [weak self] in self?.host?.checkForUpdatesNow() }
+        check.setAccessibilityIdentifier("general-update-check")
+        let install = UI.pushButton("Update…", primary: true, small: true) { [weak self] in self?.host?.installUpdate() }
+        install.setAccessibilityIdentifier("general-update-install")
+        let notes = UI.pushButton("Release Notes", small: true) { [weak self] in self?.host?.openReleasePage() }
+        notes.setAccessibilityIdentifier("general-update-notes")
+        let summary = UI.wrapLabel("", width: cardInner, style: .subheadline, color: UI.secondaryText)
+        let warning = UI.wrapLabel(UpdateController.permissionNote, width: cardInner, style: .subheadline,
+                                   color: UI.tertiaryText)
+        let title = UI.label("Nacho Combo", style: .callout)
+        refreshers.append { [weak self, weak note, weak check, weak install, weak notes, weak summary, weak warning, weak title] in
+            guard let host = self?.host else { return }
+            title?.stringValue = "Nacho Combo \(host.currentVersion)"
+            var available = false
+            var busy = false
+            switch host.updateState {
+            case .idle: note?.stringValue = "Looks for a new release on GitHub."
+            case .checking: note?.stringValue = "Checking…"; busy = true
+            case .upToDate: note?.stringValue = "This is the latest version."
+            case .available(let version, let text):
+                available = true
+                note?.stringValue = "Version \(version) is available."
+                summary?.stringValue = text
+            case .installing(let step): note?.stringValue = step; busy = true
+            case .failed(let message): note?.stringValue = message
+            }
+            if case .failed = host.updateState { note?.textColor = UI.attentionText } else { note?.textColor = UI.secondaryText }
+            check?.isEnabled = !busy
+            install?.isHidden = !available
+            install?.isEnabled = !busy
+            notes?.isHidden = !available
+            summary?.isHidden = !available || (summary?.stringValue.isEmpty ?? true)
+            warning?.isHidden = !available
+        }
+        let top = row([UI.vstack([title, note], spacing: 2), UI.spacer(), notes, install, check])
+        return UI.vstack([top, summary, warning], spacing: 6)
+    }
+
+    private func autoUpdateRow() -> NSView {
+        let toggle = NSSwitch()
+        toggle.setAccessibilityLabel("Check for updates automatically")
+        toggle.setAccessibilityIdentifier("general-update-auto")
+        let target = SwitchTarget { [weak self] on in self?.host?.gadgetManager.update { $0.checkForUpdates = on } }
+        toggle.target = target
+        toggle.action = #selector(SwitchTarget.changed(_:))
+        objc_setAssociatedObject(toggle, &SwitchTarget.key, target, .OBJC_ASSOCIATION_RETAIN)
+        refreshers.append { [weak self, weak toggle] in
+            toggle?.state = (self?.host?.gadgetManager.settings.checkForUpdates ?? true) ? .on : .off
+        }
+        let note = UI.label("At launch and once a day. Nothing is installed until you click Update.", style: .subheadline,
+                            color: UI.secondaryText)
+        return row([titled("Check Automatically", note), UI.spacer(), toggle])
     }
 
     private func fileRow() -> NSView {

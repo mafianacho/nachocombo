@@ -62,6 +62,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+          persist-credentials: false
+          sparse-checkout: docs/release-notes
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
@@ -77,6 +82,12 @@ jobs:
         run: |
           cat > notes.md <<NOTES
           Nacho Combo $VERSION for macOS 12 (Monterey) or later. Universal binary (Apple Silicon + Intel).
+          NOTES
+          # What is new in this version, when the repository has notes for it (docs/release-notes/vX.Y.Z.md).
+          if [ -f "src/docs/release-notes/$TAG.md" ]; then
+            { echo; cat "src/docs/release-notes/$TAG.md"; } >> notes.md
+          fi
+          cat >> notes.md <<NOTES
 
           **Not notarized.** This build is ad-hoc signed, not signed with an Apple Developer ID.
           On first launch macOS Gatekeeper will block it: right-click the app, choose Open, then
