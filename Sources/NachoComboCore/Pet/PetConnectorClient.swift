@@ -47,6 +47,8 @@ public enum ConnectorBinding {
     }
 
     static func secretKey(scope: String, agentID: String) -> String { "connector|\(scope)|\(agentID.lowercased())" }
+    /// Which Nacho the stored binding belongs to, so signing out can delete it even when the chat is not connected.
+    static func agentKey(scope: String) -> String { "connector-agent|\(scope)" }
 }
 
 public enum ConnectorFrames {

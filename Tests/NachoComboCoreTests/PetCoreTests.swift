@@ -576,6 +576,17 @@ final class PetSessionTests: XCTestCase {
         XCTAssertTrue(secrets.keys.isEmpty, "tokens and the connector binding are gone")
     }
 
+    func testSignOutInALaterLaunchAlsoForgetsTheConnectorBinding() {
+        let s = session()
+        s.signIn(); settle(s)
+        factory.with(path: "/ws/chat")[0].deliver(ready); settle(s)
+        XCTAssertNotNil(secrets.read(ConnectorBinding.secretKey(scope: s.settings.accountScope, agentID: agent)))
+        s.shutdown()
+        let later = session()  // a new launch: nothing connected, the agent id only on disk
+        later.signOut(); settle(later)
+        XCTAssertTrue(secrets.keys.isEmpty)
+    }
+
     func testShutdownClosesEverything() {
         let s = session()
         s.signIn(); settle(s)

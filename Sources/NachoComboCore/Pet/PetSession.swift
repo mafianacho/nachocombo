@@ -201,9 +201,12 @@ public final class PetSession {
 
     public func signOut() {
         queue.async {
-            if let agent = self.connectorAgent ?? self.state.chat.agentID {
-                self.secrets.delete(ConnectorBinding.secretKey(scope: self.settings.accountScope, agentID: agent))
+            let scope = self.settings.accountScope
+            let stored = self.secrets.read(ConnectorBinding.agentKey(scope: scope)).flatMap { String(data: $0, encoding: .utf8) }
+            for agent in Set([self.connectorAgent, self.state.chat.agentID, stored].compactMap { $0 }) {
+                self.secrets.delete(ConnectorBinding.secretKey(scope: scope, agentID: agent))
             }
+            self.secrets.delete(ConnectorBinding.agentKey(scope: scope))
             self.dropClients(keepChat: false)
             self.state.pending = []
             self.state.auth = .signedOut
@@ -424,6 +427,7 @@ public final class PetSession {
                         return
                     }
                     try? self.secrets.write(key, Data(token.utf8))
+                    try? self.secrets.write(ConnectorBinding.agentKey(scope: self.settings.accountScope), Data(agentID.utf8))
                     self.startConnector(token: token, endpoint: endpoint, executor: executor, agentID: agentID)
                     self.publish()
                 }
@@ -459,6 +463,11 @@ public final class PetSession {
 
     /// Commands Nacho ran on this Mac (diagnostics).
     public var handledCommands: [String] { queue.sync { connector?.handled ?? [] } }
+
+    /// A fresh access token (nil when signed out) for a one-off REST call such as `GET /api/v1/me`.
+    public func withAccessToken(_ body: @escaping (String?) -> Void) {
+        queue.async { self.auth.validAccessToken { body(try? $0.get()) } }
+    }
 
     // MARK: connections screen
 
