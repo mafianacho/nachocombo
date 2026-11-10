@@ -27,6 +27,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     private var chatWindow: PetChatWindow?
     private var faceTimer: Timer?
     let dictation = PetDictationController()
+    let serverRecorder = PetServerRecorder()
     private(set) var dictationState = DictationState()
     private(set) var commandsRun = 0
 
@@ -68,6 +69,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     func stop() {
         faceTimer?.invalidate()
         faceTimer = nil
+        serverRecorder.cancel()
         dictation.stop()
         dictationState.stop()
         login.cancel()
@@ -154,6 +156,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     }
 
     func closeChat() {
+        serverRecorder.cancel()
         dictation.stop()
         dictationState.stop()
         chatWindow?.orderOut(nil)
@@ -163,6 +166,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     func signOut() { session.signOut() }
 
     func send(_ text: String, completion: @escaping (String?) -> Void) {
+        serverRecorder.cancel()
         dictation.stop()
         dictationState.stop()
         session.send(text: text) { refusal in DispatchQueue.main.async { completion(refusal) } }
@@ -170,13 +174,18 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
 
     func stopTurn() { session.stop() }
 
+    /// The server's dictation (ADR 0014) when it offers it (`/client/config` dictation.enabled), else on-device Speech.
+    var usesServerDictation: Bool { state.config?.dictationEnabled == true && state.auth == .signedIn }
+
     func toggleDictation(existingText: String, update: @escaping (String) -> Void) {
+        if serverRecorder.isRecording { serverRecorder.stop(); return }  // hands the audio to the server
         if dictationState.isListening || dictationState.phase == .requestingPermission {
             dictation.stop()
             dictationState.stop()
             chatWindow?.render()
             return
         }
+        if usesServerDictation { serverDictation(existingText: existingText, update: update); return }
         dictationState = DictationState()
         dictationState.start(existingText: existingText)
         chatWindow?.render()
@@ -191,6 +200,68 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
             }
             self.refreshFace()
             self.chatWindow?.render()
+        }
+    }
+
+    private func serverDictation(existingText: String, update: @escaping (String) -> Void) {
+        dictationState = DictationState()
+        dictationState.start(existingText: existingText)
+        chatWindow?.render()
+        let maxSec = state.config?.dictationMaxSec ?? 60
+        serverRecorder.start(maxSec: maxSec, granted: { [weak self] ok in
+            guard let self = self else { return }
+            if ok { self.dictationState.permissionGranted() } else { self.dictationState.permissionDenied(.microphone) }
+            self.refreshFace()
+            self.chatWindow?.render()
+        }, finished: { [weak self] data, seconds in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                guard let data = data, !data.isEmpty else { self.dictationState.stop(); self.chatWindow?.render(); return }
+                self.session.dictate(audio: data, mime: "audio/mp4", fileName: "dictation.m4a", durationSec: min(seconds, Double(maxSec))) { r in
+                    DispatchQueue.main.async {
+                        switch r {
+                        case let .success(text):
+                            // Into the input field only; never sent by itself (spec/dictation.tsp).
+                            if text.isEmpty { self.dictationState.stop() } else { self.dictationState.hypothesis(text, isFinal: true); update(self.dictationState.text) }
+                        case let .failure(e):
+                            self.dictationState.stop()
+                            self.chatWindow?.flash(e.text)
+                        }
+                        self.refreshFace()
+                        self.chatWindow?.render()
+                    }
+                }
+            }
+        })
+    }
+
+    // MARK: server features (record, memory, cards)
+
+    func loadOlderHistory() { session.loadOlderHistory() }
+    func forgetMemory(_ updateID: String) { session.forgetMemory(updateID: updateID) }
+    func undoForget(_ updateID: String) { session.undoForget(updateID: updateID) }
+    func canUndoForget(_ updateID: String) -> Bool { session.canUndoForget(updateID: updateID) }
+
+    func answerCard(_ id: String, action: String, options: [String]) {
+        session.answerCard(id: id, action: action, optionIDs: options) { [weak self] refusal in
+            DispatchQueue.main.async { if let r = refusal { self?.chatWindow?.flash(r) } }
+        }
+    }
+
+    /// "기억이 틀렸어요": asks what is wrong, then sends it as memory feedback for that answer.
+    func askMemoryFeedback(turnID: String) {
+        let alert = NSAlert()
+        alert.messageText = "나초가 잘못 기억한 게 있나요?"
+        alert.informativeText = "바르게 알려 주면 나초가 기억을 고쳐요."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.placeholderString = "예: 이제 매운 음식은 못 먹어"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "알려 주기")
+        alert.addButton(withTitle: "취소")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        session.sendMemoryFeedback(turnID: turnID, text: field.stringValue) { [weak self] refusal in
+            DispatchQueue.main.async { self?.chatWindow?.flash(refusal ?? "알려 줘서 고마워요. 기억을 고칠게요.") }
         }
     }
 
@@ -297,7 +368,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     }
 
     var face: PetFace {
-        PetFace.derive(dictating: dictationState.isListening, chat: state.chat, now: Date(), lastInteraction: state.lastInteraction)
+        PetFace.derive(dictating: dictationState.isListening || state.dictating, chat: state.chat, now: Date(), lastInteraction: state.lastInteraction)
     }
 
     private func refreshFace() { petWindow?.show(face) }

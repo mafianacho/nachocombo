@@ -489,16 +489,29 @@ groups you switched on.
 
 ### Nacho Pet
 
-> **Not yet tried on a real Mac.** The Core (login, chat, uploads, commands) is covered by `swift test` and a real round
-> trip against the mock server (`scripts/pet-roundtrip.sh`); the macOS part has only been compiled in CI. The checklist
+> **Not yet tried on a real Mac.** The Core (login, chat, uploads, commands, history, tasks, memory, dictation) is covered
+> by `swift test` and a real round trip against the mock server (`scripts/pet-roundtrip.sh`); the macOS part has only been
+> compiled in CI. The server calls follow nacho-server's spec; `scripts/check-server-contract.sh <nacho-server>` checks
+> that every route the pet uses is still there (see [docs/pet-server-gap.md](docs/pet-server-gap.md)). The checklist
 > for a Mac is [below](#nacho-pet-on-a-mac-checklist).
 
 Nacho, the Nachotown character, sits in the bottom-right corner of the screen from the
 first launch. It is **on by default**, needs no permission and connects to nothing until you open the chat.
 
-- **Chat:** click Nacho to open the bubble. Type, or press the mic for Korean dictation (macOS speech recognition; asks
-  for the microphone and speech recognition the first time). Answers stream in; the button turns into **멈추기** (stop)
-  while Nacho answers. The **연결** tab shows what your Nacho is connected to.
+- **Chat:** click Nacho to open the bubble. Type, or press the mic for dictation. Answers stream in; the button turns into
+  **멈추기** (stop) while Nacho answers. The **연결** tab shows what your Nacho is connected to.
+- **Picks up where you left off:** the bubble shows the earlier talk of your Nacho room (**이전 대화 더 보기** loads more),
+  messages sent from the phone app, and answers that finished while the connection was down.
+- **Shows the work:** the tools Nacho uses, its "still working on it" lines, files it made (click to open) and, when a
+  request becomes a task, the task's progress and its answer when it is done. Choice questions (e.g. which time) can be
+  answered in the bubble; approvals, logins and codes are answered in the phone app.
+- **Memory:** "🧠 기억했어요" lines with **잊어 줘** (and **되돌리기** for 10 seconds); under an answer that used memories,
+  **기억이 틀렸어요** tells Nacho what to correct.
+- **Dictation:** when the server offers it (`/client/config`), the mic records up to 60 seconds and the server writes it
+  out (no credits); otherwise macOS speech recognition. Either way the text goes into the field and is never sent by
+  itself. The first time macOS asks for the microphone (and speech recognition for the on-device way).
+- **Credits:** the status line and the bubble show the remaining credits and today's light chats (read only; buying is in
+  the phone app). Server errors are shown in Korean (docs/error-codes.md of nacho-server).
 - **Account:** the first time, **나초 계정으로 로그인** opens `auth.nachotown.com` in the system's browser sheet (Keycloak,
   client `nacho-gadget-app`, PKCE). Nacho Combo never sees the password; the session is kept in the Keychain and is
   refreshed by itself. Sign out from the pet's right-click menu or the Settings tab.
@@ -528,15 +541,18 @@ its login page signs you in at once.
 2. **Input:** click Nacho → the bubble opens next to it with the text field focused; Esc closes it.
 3. **Login:** 나초 계정으로 로그인 → browser sheet → back in the bubble as signed in; relaunch → still signed in.
 4. **Streaming:** send a message → Nacho's face goes thinking → answering; text streams in; 멈추기 stops a long answer.
-5. **Dictation:** press the mic → macOS asks for the microphone and speech recognition once → spoken Korean appears in
-   the field; pressing again stops.
-6. **Capture → Nacho:** take a capture float, right-click ▸ Ask Nacho About This… → the chip appears; send "이거 뭐야?".
-7. **Shelf → Nacho:** right-click a shelf file ▸ Give to Nacho (and drop a file on Nacho) → chip → send.
-8. **Window command:** with Window Snap's Accessibility allowed, ask "창 왼쪽으로 붙여 줘" with another app in front → that
+5. **Dictation:** press the mic → macOS asks for the microphone once → speak → press again → the text appears in the
+   field (server dictation; with a server that does not offer it, macOS speech recognition as before).
+6. **History and tasks:** reopen the bubble after a relaunch → earlier messages are there; with the mock server, send
+   `/task 예약해 줘` → progress lines, a choice question you can click, then the answer; `/remember 고양이` → 🧠 line,
+   잊어 줘 → 되돌리기.
+7. **Capture → Nacho:** take a capture float, right-click ▸ Ask Nacho About This… → the chip appears; send "이거 뭐야?".
+8. **Shelf → Nacho:** right-click a shelf file ▸ Give to Nacho (and drop a file on Nacho) → chip → send.
+9. **Window command:** with Window Snap's Accessibility allowed, ask "창 왼쪽으로 붙여 줘" with another app in front → that
    window moves; "킵 어웨이크 켜 줘" switches Keep Awake on in the gallery; "컴퓨터 사용 켜 줘" is refused.
-9. **Hide / OFF:** right-click ▸ 나초 숨기기 → Nacho disappears, the gadget shows Off, `ctl dump` shows the sockets
+10. **Hide / OFF:** right-click ▸ 나초 숨기기 → Nacho disappears, the gadget shows Off, `ctl dump` shows the sockets
    closed; switching it on brings Nacho back where it was.
-10. **Other gadgets:** the gallery, combos, Window Snap, Capture Float and File Shelf behave as before.
+11. **Other gadgets:** the gallery, combos, Window Snap, Capture Float and File Shelf behave as before.
 
 ## Shortcuts
 Defaults; every one can be changed or removed on the gadget's page ▸ Shortcuts.

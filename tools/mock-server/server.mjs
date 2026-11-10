@@ -4,7 +4,10 @@
 //   - OIDC: /realms/nachotown/protocol/openid-connect/{auth,token,logout} with PKCE S256 checks for the public client
 //     `nacho-gadget-app` and redirect `nachogadget://auth/callback` (the login page auto-approves: no password).
 //   - REST: /api/v1/me, /api/v1/connections, /api/v1/tools, POST /api/v1/media/uploads (JSON),
-//     POST /api/v1/agents/{id}/connector-binding.
+//     POST /api/v1/agents/{id}/connector-binding, GET /client/config, GET /api/v1/me/usage,
+//     GET /api/v1/rooms/{id}/history|delta (view=app, X-Has-More), POST /api/v1/dictation (multipart),
+//     POST /api/v1/memory/feedback, DELETE /api/v1/memory/facts/{id}, POST /api/v1/memory/{id}/restore (10 s),
+//     GET|POST /api/v1/chat/requests/{id}[/answer] (expected_version, 409s).
 //   - WS: /ws/chat (ready, turn_started, activity, text_delta, message, usage, turn_meta, done, error, pong, stop,
 //     client_msg_id idempotency, attachments) and /ws/connector (hello → ready, request/response, replaced).
 // Contract source (read only): nacho-server docs/ws-protocol.md, spec/media.tsp, docs/keycloak-nacho-gadget-app.md.
@@ -12,7 +15,10 @@
 // connector round trip runs end to end; pictures are "seen" by reading the PNG header (width × height).
 //
 // usage: node tools/mock-server/server.mjs [--port 8787] [--log path.jsonl] [--delay-ms 60] [--access-ttl 300]
-// magic texts: "/error" -> error frame, "/drop" -> server closes socket mid-stream, "/long" -> long answer (for stop)
+// magic texts: "/error" -> error frame, "/drop" -> server closes socket mid-stream but finishes and stores the answer,
+// "/long" -> long answer (for stop), "/task …" -> handed to a task (task_update, interim, choice card, task_result),
+// "/remember …" -> memory_update + an answer that used a memory, "/search …" -> tool call with an interim line.
+// The room keeps every message (seq) so history/delta answer like nacho-server; 3 earlier messages are seeded.
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -103,9 +109,24 @@ const TOOLS = {
   ],
 };
 const media = new Map();      // attachment_id -> { kind, name, mime, bytes, png?, text? }
+// ---- the 1:1 room (shared by every /ws/chat socket = "devices") ----
+let roomSeq = 0;
+const roomMsgs = [];
+const chatSockets = new Set(); // out functions
+const storeMsg = (m) => { const full = { id: uuid(), room_id: ROOM, seq: ++roomSeq, sender_kind: m.role === 'user' ? 'user' : 'agent', client_msg_id: `srv-${uuid()}`, content: { type: 'text', text: m.text || '' }, used_memory_ids: [], redactions: [], attachments: [], created_at: now(), ...m }; roomMsgs.push(full); return full; };
+const hub = (obj) => { for (const o of chatSockets) o(obj); };
+storeMsg({ role: 'user', text: '어제 파스타집 알아봐 줬지?', client_msg_id: 'seed-1' });
+storeMsg({ role: 'assistant', text: '네, 강남역 근처 세 곳을 찾아 드렸어요.' });
+storeMsg({ role: 'system', sender_kind: 'system', text: '나초가 문서를 만들었어요', content: { type: 'system_note', kind: 'page_created', text: '나초가 문서를 만들었어요' } });
+const facts = new Map();       // memory id -> { text, forgottenAt? }
+const cards = new Map();       // card id -> CardRequest
+const taskWaiters = new Map(); // card id -> (answer) => void
+const appView = (m) => ['text', 'card', 'system_note'].includes(m.content.type);
 const bindings = new Map();   // nct token -> agent id
 let connector = null;         // { socket, out, capabilities, pending: Map(id -> resolve) }
 
+const USAGE = () => ({ plan_id: 'free', plan_rank: 0, allowance: 200, period: 'day', remaining: 180, available_to_start: 170, reset_at: now(),
+  exhausted: false, low_balance: false, limits: [{ kind: 'light_chat', used: 3, cap: 50, reset_at: now() }], pools: [], billing_enabled: false, credit_packs_enabled: false });
 const pngSize = (buf) => (buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47 && buf.toString('ascii', 12, 16) === 'IHDR')
   ? { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) } : null;
 
@@ -164,7 +185,104 @@ const server = http.createServer(async (req, res) => {
       log('oidc', { event: 'logout', known_session: known });
       res.writeHead(204); return res.end();
     }
+    if (req.method === 'GET' && url.pathname === '/client/config') {
+      return send(200, { min_version: '0.0.0', update_notes: [], service_status: { state: 'ok' }, invite_only: false, billing_enabled: false,
+        credit_packs_enabled: false, features: {}, dictation: { enabled: true, max_sec: 60, max_bytes: 2_000_000 }, voice: { enabled: false },
+        media_max_bytes: 20_971_520, message_requests_enabled: false });
+    }
     if (!bearerOk(req)) return send(401, { error: { code: 'unauthorized', message: 'invalid token' } });
+    if (req.method === 'GET' && url.pathname === '/api/v1/me/usage') return send(200, USAGE());
+    const hist = /^\/api\/v1\/rooms\/([0-9a-f-]{36})\/(history|delta)$/.exec(url.pathname);
+    if (req.method === 'GET' && hist) {
+      if (hist[1] !== ROOM) return send(404, { error: { code: 'not_member', message: 'not your room' } });
+      const view = url.searchParams.get('view');
+      if (view !== null && view !== 'app' && view !== 'full') return send(400, { error: { code: 'validation_error', message: 'view' } });
+      const visible = roomMsgs.filter((m) => view !== 'app' || appView(m));
+      if (hist[2] === 'delta') {
+        const since = Number(url.searchParams.get('since_seq') || 0);
+        const msgs = visible.filter((m) => m.seq > since).slice(0, 500);
+        log('room', { event: 'delta', since, count: msgs.length });
+        return send(200, { room_id: ROOM, messages: msgs, last_seq: roomSeq, read_seq: 0, has_more: false });
+      }
+      const limit = Math.min(Number(url.searchParams.get('limit') || 100), view === 'app' ? 1000 : 500);
+      const before = url.searchParams.get('before_seq');
+      if (before !== null && Number(before) < 1) return send(400, { error: { code: 'validation_error', message: 'before_seq' } });
+      const pool = before !== null ? visible.filter((m) => m.seq < Number(before)) : visible;
+      const page = pool.slice(Math.max(0, pool.length - limit));
+      log('room', { event: 'history', before: before === null ? null : Number(before), limit, count: page.length });
+      return send(200, JSON.stringify(page), { 'x-has-more': String(pool.length > page.length) });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/v1/dictation') {
+      const ct = String(req.headers['content-type'] || '');
+      const bm = /^multipart\/form-data;\s*boundary=(.+)$/.exec(ct);
+      if (!bm) return send(400, { error: { code: 'invalid_input', message: 'multipart required' } });
+      const raw = await readBody(req, 3_000_000);
+      const parts = {};
+      for (const chunk of raw.toString('latin1').split('--' + bm[1])) {
+        const head = /^\r\nContent-Disposition: form-data; name="([^"]+)"(?:; filename="[^"]*")?\r\n(?:Content-Type: ([^\r]+)\r\n)?\r\n/.exec(chunk);
+        if (head) parts[head[1]] = { type: head[2] || null, body: Buffer.from(chunk.slice(head[0].length, chunk.length - 2), 'latin1') };
+      }
+      const f = parts.file;
+      if (!f || f.body.length === 0) return send(400, { error: { code: 'invalid_input', message: 'file missing' } });
+      if (f.body.length > 2_000_000) return send(413, { error: { code: 'payload_too_large', message: 'too large' } });
+      const base = String(f.type || '').split(';')[0].trim();
+      if (!['audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/wav', 'audio/webm', 'audio/mpeg'].includes(base)) {
+        return send(415, { error: { code: 'unsupported_media_type', message: 'audio type' } });
+      }
+      const dur = parts.duration_sec ? Number(parts.duration_sec.body.toString()) : null;
+      if (dur !== null && !(dur > 0 && dur <= 61)) return send(400, { error: { code: 'invalid_input', message: 'duration' } });
+      const language = parts.language ? parts.language.body.toString().toLowerCase() : 'ko';
+      // Same rule as nacho-server's mock provider: "NACHO-STT:<text>" -> that text.
+      const s = f.body.toString('utf8');
+      const text = s.startsWith('NACHO-STT:') ? s.slice(10) : '모의 받아쓰기 문장이에요';
+      log('dictation', { event: 'transcribed', type: base, bytes: f.body.length, language, duration_sec: dur });
+      return send(200, { text, language, ...(dur !== null ? { duration_sec: dur } : {}) });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/v1/memory/feedback') {
+      let body; try { body = JSON.parse((await readBody(req, 100_000)).toString('utf8')); } catch { return send(400, { error: { code: 'validation_error', message: 'json' } }); }
+      if (typeof body.text !== 'string' || !body.text.trim()) return send(400, { error: { code: 'validation_error', message: 'text' } });
+      const ids = Array.isArray(body.memory_ids) ? body.memory_ids : [];
+      for (const id of ids) if (!facts.has(id)) return send(404, { error: { code: 'not_found', message: 'memory' } });
+      if (ids.length === 1 && body.kind === 'correction') facts.get(ids[0]).text = body.text;
+      log('memory', { event: 'feedback', kind: body.kind || 'unclassified', memory_ids: ids, room_id: body.room_id || null, idempotency_key: req.headers['idempotency-key'] ? 'present' : 'missing', text_chars: body.text.length });
+      return send(201, { id: uuid(), kind: body.kind || 'unclassified', classified_by: body.kind ? 'client' : 'rule', actions: ids.length ? ids.map((id) => ({ action: 'updated', memory_id: id })) : [{ action: 'created', memory_id: uuid() }], created_at: now() });
+    }
+    const forget = /^\/api\/v1\/memory\/(facts|episodes)\/([0-9a-f-]{36})$/.exec(url.pathname);
+    if (req.method === 'DELETE' && forget) {
+      const f = facts.get(forget[2]);
+      if (!f || f.forgottenAt) return send(404, { error: { code: 'not_found', message: 'memory' } });
+      f.forgottenAt = Date.now();
+      log('memory', { event: 'forgotten', id: forget[2] });
+      hub({ type: 'memory_update', room_id: ROOM, update: { update_id: uuid(), action: 'forgotten', memory_ids: [forget[2]], kind: 'fact', preview: '', source: 'user', always_show: true, items: [{ memory_id: forget[2], kind: 'fact', preview: '' }] } });
+      res.writeHead(204); return res.end();
+    }
+    const restore = /^\/api\/v1\/memory\/([0-9a-f-]{36})\/restore$/.exec(url.pathname);
+    if (req.method === 'POST' && restore) {
+      const f = facts.get(restore[1]);
+      if (!f || !f.forgottenAt) return send(404, { error: { code: 'not_found', message: 'memory' } });
+      if (Date.now() - f.forgottenAt > 10_000) return send(410, { error: { code: 'restore_expired', message: 'too late' } });
+      delete f.forgottenAt;
+      log('memory', { event: 'restored', id: restore[1] });
+      hub({ type: 'memory_update', room_id: ROOM, update: { update_id: uuid(), action: 'restored', memory_ids: [restore[1]], kind: 'fact', preview: f.text, source: 'user', always_show: true, items: [{ memory_id: restore[1], kind: 'fact', preview: f.text }] } });
+      return send(200, { kind: 'fact', item: { id: restore[1], text: f.text } });
+    }
+    const card = /^\/api\/v1\/chat\/requests\/([0-9a-f-]{36})(\/answer)?$/.exec(url.pathname);
+    if (card && (req.method === 'GET' || (req.method === 'POST' && card[2]))) {
+      const c = cards.get(card[1]);
+      if (!c) return send(404, { error: { code: 'not_found', message: 'card' } });
+      if (req.method === 'GET') return send(200, c);
+      let body; try { body = JSON.parse((await readBody(req, 100_000)).toString('utf8')); } catch { return send(400, { error: { code: 'validation_error', message: 'json' } }); }
+      if (c.status !== 'pending') return send(409, { error: { code: c.status === 'answered' ? 'already_answered' : c.status, message: 'closed' } });
+      if (body.expected_version !== c.version) return send(409, { error: { code: 'version_conflict', message: 'version' } });
+      const okAction = c.kind === 'choice' ? ['choose', 'dismiss'] : ['approve', 'deny', 'dismiss'];
+      if (!okAction.includes(body.action)) return send(400, { error: { code: 'validation_error', message: 'action' } });
+      if (body.action === 'choose' && !c.payload.options.some((o) => o.id === body.option_id)) return send(400, { error: { code: 'validation_error', message: 'option' } });
+      Object.assign(c, { status: body.action === 'dismiss' ? 'dismissed' : 'answered', answered_action: body.action, version: c.version + 1, answer: { action: body.action, option_id: body.option_id, answered_at: now() }, answered_at: now() });
+      log('card', { event: 'answered', id: c.id, action: body.action, option_id: body.option_id || null });
+      hub({ type: 'card_update', room_id: ROOM, request: c });
+      const w = taskWaiters.get(c.id); if (w) { taskWaiters.delete(c.id); w(c); }
+      return send(200, c);
+    }
     if (req.method === 'GET' && url.pathname === '/api/v1/me') return send(200, { id: USER, display_name: '모의 사용자' });
     if (req.method === 'GET' && url.pathname === '/api/v1/connections') return send(200, CONNECTIONS);
     if (req.method === 'GET' && url.pathname === '/api/v1/tools') {
@@ -331,7 +449,6 @@ function planTool(text) {
 }
 
 function handleChat(socket) {
-  let seq = 0;
   let active = null;               // { clientId, timer, partial }
   const seen = new Map();          // client_msg_id -> true (idempotency)
   const out = (obj) => {
@@ -339,29 +456,39 @@ function handleChat(socket) {
     if (!socket.destroyed) socket.write(encodeFrame(1, JSON.stringify(obj)));
   };
   log('ws', { event: 'open' });
+  chatSockets.add(out);
   out({ type: 'ready', user_id: USER, agent_id: AGENT, agent_name: '나초', room_id: ROOM });
   const activity = (kind, clientId, tool = null) => out({ type: 'activity', room_id: ROOM, activity: { room_id: ROOM, agent_id: AGENT, kind, tool, tool_used: !!tool, updated_at: now() }, client_id: clientId });
 
   const finish = (stopped) => {
     if (!active) return;
+    const active0 = active;
     const { clientId, timer, partial, turnId } = active;
     clearInterval(timer);
     active = null;
-    const mid = uuid();
     activity('idle', clientId);
-    out({ type: 'message', room_id: ROOM, message: { id: mid, room_id: ROOM, seq: ++seq, role: 'assistant', sender_kind: 'agent', client_msg_id: `srv-${mid}`, text: partial, content: { type: 'text', text: partial }, created_at: now() }, client_id: clientId });
-    out({ type: 'usage', room_id: ROOM, remaining: 180, client_id: clientId });
+    const stored = storeMsg({ role: 'assistant', text: partial, used_memory_ids: active0.used || [] });
+    const mid = stored.id;
+    out({ type: 'message', room_id: ROOM, message: stored, client_id: clientId });
+    for (const u of active0.memory || []) out({ type: 'memory_update', room_id: ROOM, update: u, client_id: clientId });
+    out({ type: 'usage', room_id: ROOM, remaining: 180, available_to_start: 170, light_chat_used: 4, light_chat_cap: 50, state: USAGE(), client_id: clientId });
     out({ type: 'turn_meta', room_id: ROOM, turn_id: turnId, message_id: mid, model: 'mock', stopped, client_id: clientId });
     out({ type: 'done', room_id: ROOM, message_id: mid, task_id: null, stopped, client_id: clientId });
   };
 
-  const stream = (reply, clientId, turnId, text) => {
+  const stream = (reply, clientId, turnId, text, extra = {}) => {
     const chunks = reply.match(/.{1,8}/gsu) || [reply];
-    active = { clientId, turnId, partial: '', timer: null };
+    active = { clientId, turnId, partial: '', timer: null, ...extra };
     let i = 0, typing = false;
     active.timer = setInterval(() => {
       if (!active) return;
-      if (text === '/drop' && i === 3) { log('ws', { event: 'drop' }); socket.destroy(); return; }
+      if (text === '/drop' && i === 3) {
+        // The socket goes away; like nacho-server, the turn still runs to the end and is stored.
+        clearInterval(active.timer); active = null;
+        storeMsg({ role: 'assistant', text: reply });
+        log('ws', { event: 'drop', stored_seq: roomSeq });
+        socket.destroy(); return;
+      }
       if (i >= chunks.length) { finish(false); return; }
       if (!typing) { typing = true; activity('typing', clientId); }
       active.partial += chunks[i];
@@ -372,8 +499,12 @@ function handleChat(socket) {
 
   const startTurn = async (text, clientId, items) => {
     const turnId = uuid();
-    out({ type: 'turn_started', room_id: ROOM, turn_id: turnId, user_message_id: uuid(), agent_id: AGENT, task_id: null, duplicate: false, client_id: clientId });
-    out({ type: 'message', room_id: ROOM, message: { id: uuid(), room_id: ROOM, seq: ++seq, role: 'user', client_msg_id: clientId, text, attachments: items.map((a) => ({ attachment_id: a.id, kind: a.kind, name: a.name, mime: a.mime, bytes: a.bytes })), created_at: now() }, client_id: clientId });
+    const isTask = text.startsWith('/task');
+    const taskId = isTask ? uuid() : null;
+    out({ type: 'turn_started', room_id: ROOM, turn_id: turnId, user_message_id: uuid(), agent_id: AGENT, task_id: taskId, duplicate: false, client_id: clientId });
+    const userMsg = storeMsg({ role: 'user', client_msg_id: clientId, text, attachments: items.map((a) => ({ attachment_id: a.id, kind: a.kind, name: a.name, mime: a.mime, bytes: a.bytes })) });
+    out({ type: 'message', room_id: ROOM, message: userMsg, client_id: clientId });
+    if (isTask) return void runTask(text, clientId, taskId);
     activity('thinking', clientId);
     if (text === '/error') {
       activity('idle', clientId);
@@ -395,6 +526,22 @@ function handleChat(socket) {
     } else if (items.length) {
       const desc = items.map((a) => a.png ? `${a.name} (사진 ${a.png.width}×${a.png.height}, ${a.bytes}바이트)` : a.text !== null ? `${a.name} (글: "${a.text.slice(0, 20)}")` : `${a.name} (${a.mime}, 내용은 못 열어요)`).join(', ');
       reply = `(모의) 받은 첨부: ${desc}. 질문: "${text}"`;
+    } else if (text.startsWith('/remember')) {
+      const what = text.replace('/remember', '').trim() || '매운 음식을 좋아함';
+      const id = uuid();
+      facts.set(id, { text: what });
+      const used = [...facts.entries()].filter(([, f]) => !f.forgottenAt).map(([k]) => k);
+      reply = `알겠어요. "${what}" 기억해 둘게요.`;
+      return void stream(reply, clientId, turnId, text, { used, memory: [{ update_id: uuid(), action: 'created', memory_ids: [id], kind: 'fact', preview: what, source: 'chat', always_show: false, after_seq: userMsg.seq, items: [{ memory_id: id, kind: 'fact', preview: what }] }] });
+    } else if (text.startsWith('/search')) {
+      activity('tool', clientId, 'search_web');
+      const callId = 'call_' + rand(6);
+      out({ type: 'tool_call_started', room_id: ROOM, call_id: callId, name: 'search_web', arguments: { query: '(redacted)' }, client_id: clientId });
+      const interim = storeMsg({ role: 'assistant', text: '웹에서 찾아보고 있어요', interim: true });
+      out({ type: 'message', room_id: ROOM, message: interim, client_id: clientId });
+      await new Promise((r) => setTimeout(r, DELAY * 2));
+      out({ type: 'tool_call_finished', room_id: ROOM, call_id: callId, name: 'search_web', preview: '결과 3건', meta: { source: 'builtin', is_error: false, duration_ms: DELAY * 2 }, client_id: clientId });
+      reply = '(모의) 찾아봤어요. 결과는 3건이에요.';
     } else if (text === '/long') {
       reply = Array.from({ length: 200 }, (_, i) => `문장 ${i + 1}. `).join('');
     } else {
@@ -403,13 +550,41 @@ function handleChat(socket) {
     stream(reply, clientId, turnId, text);
   };
 
+  // Like nacho-server's task path: the turn ends at once (done{task_id}); the work and its answer come through the hub.
+  const runTask = (text, clientId, taskId) => {
+    out({ type: 'usage', room_id: ROOM, remaining: 180, available_to_start: 160, state: USAGE(), client_id: clientId });
+    out({ type: 'done', room_id: ROOM, message_id: null, task_id: taskId, stopped: false, client_id: clientId });
+    const task = (state, extra = {}) => hub({ type: 'task_update', room_id: ROOM, task: { id: taskId, agent_id: AGENT, room_id: ROOM, kind: 'task', state, title: '파스타집 예약', request_text: text, plan_mode: 'inline', steps: [], credit: { used: 0, refund_status: 'none' }, accessed_items: [], plan_blocks: [], result_blocks: [], version: 1, ...extra } });
+    setTimeout(() => {
+      task('running', { current_step: { text: '자리 찾는 중', index: 1, total: 2 } });
+      const interim = storeMsg({ role: 'assistant', text: '자리를 알아보고 있어요', interim: true, task_id: taskId });
+      hub({ type: 'message', room_id: ROOM, message: interim });
+      const cardId = uuid();
+      const c = { id: cardId, request_id: cardId, user_id: USER, room_id: ROOM, task_id: taskId, kind: 'choice', status: 'pending', version: 1,
+                  payload: { question: '어느 시간이 좋아요?', options: [{ id: 'seven', label: '저녁 7시' }, { id: 'eight', label: '저녁 8시' }] }, created_at: now() };
+      cards.set(cardId, c);
+      storeMsg({ role: 'assistant', text: '', content: { type: 'card', request_id: cardId, kind: 'choice' }, card: c, task_id: taskId });
+      task('waiting', { wait_reason: 'input', pending_request_id: cardId });
+      hub({ type: 'card_update', room_id: ROOM, request: c });
+      taskWaiters.set(cardId, (answered) => {
+        const opt = answered.payload.options.find((o) => o.id === answered.answer.option_id);
+        task('running', { current_step: { text: '예약하는 중', index: 2, total: 2 } });
+        setTimeout(() => {
+          const result = storeMsg({ role: 'assistant', text: `${opt ? opt.label : '고른 시간'}으로 예약했어요.`, task_id: taskId, task_result: true });
+          hub({ type: 'message', room_id: ROOM, message: result });
+          task('done');
+        }, DELAY);
+      });
+    }, DELAY);
+  };
+
   frameLoop(socket, (txt) => {
     let m;
     try { m = JSON.parse(txt); } catch { return out({ type: 'error', code: 'bad_frame', message: 'invalid json' }); }
     log('in', m);
     switch (m && m.type) {
       case 'ping': return out({ type: 'pong' });
-      case 'read': return;
+      case 'read': log('room', { event: 'read', seq: m.seq }); return;
       case 'stop': return finish(true);
       case 'message': {
         const text = typeof m.text === 'string' ? m.text.trim() : '';
@@ -433,7 +608,7 @@ function handleChat(socket) {
       default: return out({ type: 'error', code: 'bad_frame', message: 'unknown type' });
     }
   });
-  socket.on('close', () => { if (active && active.timer) clearInterval(active.timer); log('ws', { event: 'close' }); });
+  socket.on('close', () => { chatSockets.delete(out); if (active && active.timer) clearInterval(active.timer); log('ws', { event: 'close' }); });
 }
 
 server.listen(PORT, HOST, () => log('server', { event: 'listening', url: `http://${HOST}:${PORT}` }));

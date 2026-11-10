@@ -14,14 +14,6 @@ public struct ReadyInfo: Equatable {
     public var roomID: String
 }
 
-public struct ChatMessage: Equatable {
-    public var id: String
-    public var seq: Int?
-    public var role: String  // "user" | "assistant" | ...
-    public var text: String
-    public var clientMsgID: String?
-}
-
 public struct ErrorInfo: Equatable {
     public var code: String
     public var message: String
@@ -34,7 +26,13 @@ public enum ServerEvent: Equatable {
     case textDelta(String)
     case activity(ActivityKind, tool: String?)
     case message(ChatMessage)
-    case usage(remaining: Int?)
+    case usage(PetUsage)
+    case toolStarted(callID: String, name: String)
+    case toolFinished(callID: String, name: String, isError: Bool, durationMs: Int?)
+    case card(PetCard)
+    case task(PetTask)
+    case memory(PetMemoryNote)
+    case notification(kind: String, title: String, body: String?)
     case done(messageID: String?, stopped: Bool)
     case error(ErrorInfo)
     case pong
@@ -46,11 +44,14 @@ public struct ServerFrame: Equatable {
     public var roomID: String?
     public var clientID: String?
     public var event: ServerEvent
+    /// `task_id` of `turn_started` / `done` (the turn was handed to a task) and of task-scoped events.
+    public var taskID: String?
 
-    public init(roomID: String?, clientID: String?, event: ServerEvent) {
+    public init(roomID: String?, clientID: String?, event: ServerEvent, taskID: String? = nil) {
         self.roomID = roomID
         self.clientID = clientID
         self.event = event
+        self.taskID = taskID
     }
 
     /// Returns nil when `text` is not a JSON object with a string `type`.
@@ -80,14 +81,24 @@ public struct ServerFrame: Equatable {
             event = .activity(kind, tool: act?["tool"] as? String)
         case "message":
             guard let m = obj["message"] as? [String: Any] else { event = .unknown(type: type); break }
-            event = .message(
-                ChatMessage(
-                    id: (m["id"] as? String) ?? "", seq: m["seq"] as? Int,
-                    role: (m["role"] as? String) ?? "",
-                    text: (m["text"] as? String) ?? "",
-                    clientMsgID: m["client_msg_id"] as? String))
+            event = .message(ChatMessage.decode(m))
         case "usage":
-            event = .usage(remaining: obj["remaining"] as? Int)
+            event = PetUsage.decode(obj).map { .usage($0) } ?? .unknown(type: type)
+        case "tool_call_started":
+            event = .toolStarted(callID: str("call_id") ?? "", name: str("name") ?? "")
+        case "tool_call_finished":
+            let meta = obj["meta"] as? [String: Any] ?? [:]
+            event = .toolFinished(callID: str("call_id") ?? "", name: str("name") ?? "", isError: meta.bool("is_error") ?? false,
+                                  durationMs: meta.int("duration_ms"))
+        case "card_update":
+            event = (obj["request"] as? [String: Any]).map { .card(PetCard.decode($0)) } ?? .unknown(type: type)
+        case "task_update":
+            event = (obj["task"] as? [String: Any]).map { .task(PetTask.decode($0)) } ?? .unknown(type: type)
+        case "memory_update":
+            event = (obj["update"] as? [String: Any]).map { .memory(PetMemoryNote.decode($0)) } ?? .unknown(type: type)
+        case "notification":
+            let n = obj["notification"] as? [String: Any] ?? [:]
+            event = .notification(kind: n.str("kind") ?? "", title: n.str("title") ?? "", body: n.str("body"))
         case "done":
             event = .done(messageID: str("message_id"), stopped: (obj["stopped"] as? Bool) ?? false)
         case "error":
@@ -97,7 +108,7 @@ public struct ServerFrame: Equatable {
         default:
             event = .unknown(type: type)
         }
-        return ServerFrame(roomID: room, clientID: client, event: event)
+        return ServerFrame(roomID: room, clientID: client, event: event, taskID: obj["task_id"] as? String)
     }
 }
 

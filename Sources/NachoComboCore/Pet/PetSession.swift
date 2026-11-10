@@ -26,6 +26,10 @@ public struct PetSessionState: Equatable {
     /// Last message for the user that is not part of a turn (Korean).
     public var notice: String?
     public var lastInteraction = Date()
+    /// `GET /client/config` (dictation on/off and limits, service status). Nil until loaded.
+    public var config: PetClientConfig?
+    public var loadingHistory = false
+    public var dictating = false
     public init() {}
 }
 
@@ -257,7 +261,10 @@ public final class PetSession {
 
     private func chatChanged(_ st: ChatState) {
         let wasDone = state.chat.lastFinishedAt
+        let wasConnected = state.chat.phase == .connected
         state.chat = st
+        if st.phase == .connected, !wasConnected { afterConnected() }
+        if st.lastFinishedAt != wasDone, st.lastFinishedAt != nil { markRead() }
         if st.lastFinishedAt != wasDone { state.lastInteraction = now() }
         switch st.phase {
         case .connected:
@@ -478,6 +485,298 @@ public final class PetSession {
             self.auth.validAccessToken { tok in
                 guard case let .success(token) = tok else { completion(.failure(.unauthorized)); return }
                 ConnectorsAPI(endpoint: endpoint, fetcher: http, token: { token }).load(completion: completion)
+            }
+        }
+    }
+}
+
+// MARK: - server features besides the socket (history, recovery, usage, dictation, memory, cards)
+
+extension PetSession {
+    /// Runs `body` on `queue` with calls carrying a fresh token; reports sign-in problems itself.
+    private func withCalls(_ body: @escaping (PetServerCalls?) -> Void) {
+        guard let endpoint = settings.endpoint else { body(nil); return }
+        let auth = self.auth
+        let http = self.http
+        auth.validAccessToken { [weak self] tok in
+            guard let self = self else { return }
+            self.queue.async {
+                guard auth === self.auth, case let .success(token) = tok else { body(nil); return }
+                body(PetServerCalls(endpoint: endpoint, http: http, bearer: token))
+            }
+        }
+    }
+
+    private func failed(_ e: PetAPIError) {
+        if e.isUnauthorized { state.auth = .signedOut }
+        state.notice = e.text
+        publish()
+    }
+
+    /// The socket is (again) usable: load the record once, then fill gaps from the delta; usage and server config.
+    private func afterConnected() {
+        if state.config == nil { loadClientConfig() }
+        refreshUsage()
+        guard let room = state.chat.roomID, !room.isEmpty else { return }
+        if !state.chat.historyLoaded {
+            loadHistory(roomID: room, beforeSeq: nil)
+        } else {
+            let since = state.chat.lastSeq
+            withCalls { calls in
+                calls?.delta(roomID: room, sinceSeq: since) { r in
+                    self.queue.async {
+                        guard case let .success(d) = r, let chat = self.chat else { return }
+                        chat.update { s in
+                            guard s.roomID == room else { return }
+                            s.recover(d.messages)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadHistory(roomID: String, beforeSeq: Int?) {
+        guard !state.loadingHistory else { return }
+        state.loadingHistory = true
+        publish()
+        withCalls { calls in
+            guard let calls = calls else { self.state.loadingHistory = false; self.publish(); return }
+            calls.history(roomID: roomID, beforeSeq: beforeSeq) { r in
+                self.queue.async {
+                    self.state.loadingHistory = false
+                    switch r {
+                    case let .failure(e): self.failed(e)
+                    case let .success(page):
+                        self.chat?.update { s in
+                            guard s.roomID == roomID else { return }
+                            s.mergeHistory(page.messages, hasMore: page.hasMore, older: beforeSeq != nil)
+                        }
+                        self.publish()
+                    }
+                }
+            }
+        }
+    }
+
+    /// "이전 대화 더 보기": the page before the oldest message shown.
+    public func loadOlderHistory() {
+        queue.async {
+            guard let room = self.state.chat.roomID, !room.isEmpty, self.state.chat.hasMoreHistory else { return }
+            let oldest = self.state.chat.history.compactMap { $0.seq }.min()
+                ?? self.state.chat.turns.compactMap { $0.userSeq }.min()
+            self.loadHistory(roomID: room, beforeSeq: oldest)
+        }
+    }
+
+    /// The read mark follows what the pet showed, so the phone app does not count it as unread.
+    private func markRead() {
+        chat?.markRead(seq: state.chat.lastSeq)
+    }
+
+    public func refreshUsage() {
+        queue.async {
+            guard self.state.auth == .signedIn else { return }
+            self.withCalls { calls in
+                calls?.usage { r in
+                    self.queue.async {
+                        guard case let .success(u) = r else { return }
+                        self.chat?.update { $0.usage = u }
+                        self.state.chat.usage = u
+                        self.publish()
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadClientConfig() {
+        guard let endpoint = settings.endpoint else { return }
+        PetServerCalls(endpoint: endpoint, http: http, bearer: nil).clientConfig { r in
+            self.queue.async {
+                guard case let .success(c) = r else { return }
+                self.state.config = c
+                if let n = c.serviceNotice { self.state.notice = n }
+                self.publish()
+            }
+        }
+    }
+
+    /// Server dictation (ADR 0014): recorded audio → text for the input field. Free; the server limits it per minute/day.
+    /// `completion` (on `queue`): the text, or the Korean reason.
+    public func dictate(audio: Data, mime: String, fileName: String, durationSec: Double?,
+                        completion: @escaping (Result<String, PetAPIError>) -> Void) {
+        queue.async {
+            let config = self.state.config ?? .fallback
+            let refuse: (String) -> Void = { text in completion(.failure(PetAPIError(status: 0, code: "refused", text: text))) }
+            guard config.dictationEnabled else { refuse("이 서버는 받아쓰기를 지원하지 않아요."); return }
+            guard !audio.isEmpty else { refuse("녹음된 소리가 없어요."); return }
+            guard audio.count <= config.dictationMaxBytes else { refuse("녹음이 너무 길어요. \(config.dictationMaxSec)초 안으로 말해 주세요."); return }
+            if let d = durationSec, d > Double(config.dictationMaxSec) + 1 { refuse("녹음이 너무 길어요. \(config.dictationMaxSec)초 안으로 말해 주세요."); return }
+            let base = mime.split(separator: ";").first.map(String.init) ?? mime
+            guard PetServerAPI.dictationTypes.contains(base) else { refuse(ErrorText.userMessage(code: "unsupported_media_type", reason: nil, fallback: "")); return }
+            guard !self.state.dictating else { refuse("받아쓰는 중이에요."); return }
+            self.state.dictating = true
+            self.publish()
+            self.withCalls { calls in
+                guard let calls = calls else {
+                    self.state.dictating = false
+                    self.publish()
+                    completion(.failure(PetAPIError(status: 401, code: "unauthorized", text: AuthProblem.signedOut.koreanMessage)))
+                    return
+                }
+                calls.dictate(audio: audio, mime: mime, fileName: fileName, durationSec: durationSec) { r in
+                    self.queue.async {
+                        self.state.dictating = false
+                        if case let .failure(e) = r, e.isUnauthorized { self.state.auth = .signedOut }
+                        self.publish()
+                        completion(r)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: memory
+
+    /// "잊어줘" on a "기억했어요" line: forgets its memories (undo possible for 10 seconds).
+    public func forgetMemory(updateID: String) {
+        queue.async {
+            guard let note = self.state.chat.memoryNotes.first(where: { $0.updateID == updateID }), note.forgottenAt == nil else { return }
+            let at = self.now()
+            self.chat?.update { s in
+                if let i = s.memoryNotes.firstIndex(where: { $0.updateID == updateID }) { s.memoryNotes[i].forgottenAt = at; s.memoryNotes[i].action = "forgotten" }
+            }
+            self.withCalls { calls in
+                guard let calls = calls else { return }
+                let group = DispatchGroup()
+                var errors: [PetAPIError] = []
+                for item in note.items {
+                    group.enter()
+                    calls.forget(memoryID: item.memoryID, kind: item.kind) { r in
+                        self.queue.async {
+                            if case let .failure(e) = r, e.code != "not_found" { errors.append(e) }
+                            group.leave()
+                        }
+                    }
+                }
+                group.notify(queue: self.queue) {
+                    guard let e = errors.first else { return }
+                    self.chat?.update { s in
+                        if let i = s.memoryNotes.firstIndex(where: { $0.updateID == updateID }) {
+                            s.memoryNotes[i].forgottenAt = nil
+                            s.memoryNotes[i].action = note.action
+                        }
+                    }
+                    self.failed(e)
+                }
+            }
+        }
+    }
+
+    /// Seconds the server keeps a forgotten memory restorable (spec/memory.tsp: 10 s).
+    public static let restoreWindow: TimeInterval = 10
+
+    public func canUndoForget(updateID: String) -> Bool {
+        queue.sync {
+            guard let at = state.chat.memoryNotes.first(where: { $0.updateID == updateID })?.forgottenAt else { return false }
+            return now().timeIntervalSince(at) < Self.restoreWindow
+        }
+    }
+
+    public func undoForget(updateID: String) {
+        queue.async {
+            guard let note = self.state.chat.memoryNotes.first(where: { $0.updateID == updateID }), let at = note.forgottenAt else { return }
+            guard self.now().timeIntervalSince(at) < Self.restoreWindow else {
+                self.state.notice = ErrorText.userMessage(code: "restore_expired", reason: nil, fallback: "")
+                self.publish()
+                return
+            }
+            self.withCalls { calls in
+                guard let calls = calls else { return }
+                let group = DispatchGroup()
+                var errors: [PetAPIError] = []
+                for item in note.items {
+                    group.enter()
+                    calls.restore(memoryID: item.memoryID) { r in
+                        self.queue.async {
+                            if case let .failure(e) = r { errors.append(e) }
+                            group.leave()
+                        }
+                    }
+                }
+                group.notify(queue: self.queue) {
+                    if let e = errors.first { self.failed(e); return }
+                    self.chat?.update { s in
+                        if let i = s.memoryNotes.firstIndex(where: { $0.updateID == updateID }) {
+                            s.memoryNotes[i].forgottenAt = nil
+                            s.memoryNotes[i].action = "created"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// "기억이 틀렸어요" under an answer: a correction about the memories that answer used (or general feedback).
+    public func sendMemoryFeedback(turnID: String, text: String, completion: ((String?) -> Void)? = nil) {
+        queue.async {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed.count <= 2000 else { completion?("고칠 내용을 2000자 안으로 써 주세요."); return }
+            let turn = self.state.chat.turns.first { $0.clientMsgID == turnID }
+            let ids = turn?.usedMemoryIDs ?? []
+            let room = self.state.chat.roomID
+            let agent = self.state.chat.agentID
+            let key = "pet-fb-\(turnID)-\(String(trimmed.utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 }, radix: 16))"
+            self.withCalls { calls in
+                guard let calls = calls else { completion?(AuthProblem.signedOut.koreanMessage); return }
+                calls.feedback(text: trimmed, kind: ids.isEmpty ? "preference" : "correction", memoryIDs: ids, roomID: room,
+                               agentID: agent, idempotencyKey: key) { r in
+                    self.queue.async {
+                        switch r {
+                        case .success:
+                            self.state.notice = "알려 줘서 고마워요. 기억을 고칠게요."
+                            self.publish()
+                            completion?(nil)
+                        case let .failure(e):
+                            self.failed(e)
+                            completion?(e.text)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: cards
+
+    /// Answers an approval / choice card: approve | deny | choose (+ options) | dismiss.
+    public func answerCard(id: String, action: String, optionIDs: [String] = [], completion: ((String?) -> Void)? = nil) {
+        queue.async {
+            guard let card = self.state.chat.cards.first(where: { $0.id == id }) else { completion?("이 요청을 찾지 못했어요."); return }
+            guard card.isPending else { completion?(card.statusText); return }
+            self.withCalls { calls in
+                guard let calls = calls else { completion?(AuthProblem.signedOut.koreanMessage); return }
+                calls.answer(card: card, action: action, optionIDs: optionIDs) { r in
+                    self.queue.async {
+                        switch r {
+                        case let .success(updated):
+                            self.chat?.update { $0.upsert(card: updated) }
+                            completion?(nil)
+                        case let .failure(e):
+                            // Closed or changed meanwhile: show the server's current card.
+                            if ["already_answered", "expired", "superseded", "version_conflict"].contains(e.code ?? "") {
+                                calls.http.send(.get(PetServerAPI.url(calls.endpoint, "/api/v1/chat/requests/\(id)"), bearer: calls.bearer)) { rr in
+                                    guard case let .success(resp) = rr, (200..<300).contains(resp.status),
+                                          let c = PetServerAPI.decodeCard(resp.body) else { return }
+                                    self.chat?.update { $0.upsert(card: c) }
+                                }
+                            }
+                            self.failed(e)
+                            completion?(e.text)
+                        }
+                    }
+                }
             }
         }
     }
