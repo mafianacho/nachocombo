@@ -63,7 +63,7 @@ publish() { # version [corrupt|tampered]
 JSON
 }
 
-cli() { local name="$1"; shift; "$CLI" "$@" --root "$ROOT" --target "$TARGET" --feed "$FEED" "${SIGN[@]}" > "$OUT/$name.log" 2>&1; echo "rc=$?" >> "$OUT/$name.log"; }
+cli() { local name="$1"; shift; "$CLI" "$@" --root "$ROOT" --target "$TARGET" --feed "$FEED" ${SIGN[@]+"${SIGN[@]}"} > "$OUT/$name.log" 2>&1; echo "rc=$?" >> "$OUT/$name.log"; }
 apps_kept() { find "$ROOT" -name NachoCombo.app -maxdepth 2 2>/dev/null | wc -l | tr -d ' '; }
 beside() { ls -A "$OUT/Applications" | tr '\n' ' '; }
 
