@@ -123,11 +123,12 @@ final class UpdatePlanTests: XCTestCase {
         XCTAssertEqual(UpdatePlan.zipName(for: SemanticVersion("v1.2.3")!), "NachoCombo-1.2.3-macos.zip")
     }
 
-    func testDailyCheckSchedule() {
+    func testSixHourCheckSchedule() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         XCTAssertTrue(UpdatePlan.isCheckDue(last: nil, now: now))
         XCTAssertFalse(UpdatePlan.isCheckDue(last: now.addingTimeInterval(-3600), now: now))
-        XCTAssertTrue(UpdatePlan.isCheckDue(last: now.addingTimeInterval(-24 * 3600), now: now))
+        XCTAssertFalse(UpdatePlan.isCheckDue(last: now.addingTimeInterval(-5 * 3600), now: now))
+        XCTAssertTrue(UpdatePlan.isCheckDue(last: now.addingTimeInterval(-6 * 3600), now: now))
         XCTAssertTrue(UpdatePlan.isCheckDue(last: now.addingTimeInterval(3600), now: now), "a clock set back still checks")
     }
 
@@ -191,17 +192,21 @@ final class SHA256SumsTests: XCTestCase {
 final class UpdateSettingsTests: XCTestCase {
     func testAutomaticChecksDefaultOnAndOlderFilesKeepThem() throws {
         XCTAssertTrue(AppSettings.defaults.checkForUpdates)
+        XCTAssertTrue(AppSettings.defaults.autoInstallUpdates)
         let old = "{\"version\":1,\"enabledModules\":{\"focusDim\":true},\"menuBarCollapsed\":false}"
         let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(old.utf8))
         XCTAssertTrue(decoded.checkForUpdates)
+        XCTAssertTrue(decoded.autoInstallUpdates, "0.5.0 settings files install automatically from now on")
         XCTAssertTrue(decoded.isEnabled(.focusDim))
         XCTAssertEqual(decoded.computerUse, ComputerUseSettings())
         XCTAssertFalse(decoded.isEnabled(.computerUse))
 
         var off = AppSettings.defaults
         off.checkForUpdates = false
+        off.autoInstallUpdates = false
         let round = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(off))
         XCTAssertFalse(round.checkForUpdates)
+        XCTAssertFalse(round.autoInstallUpdates)
     }
 
     func testABrokenComputerUseSectionFallsBackToEverythingOff() throws {

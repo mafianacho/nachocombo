@@ -61,9 +61,13 @@ protocol SettingsHost: GadgetHost {
     var updateState: UpdateController.State { get }
     var currentVersion: String { get }
     func checkForUpdatesNow()
-    /// Shows the confirmation, then downloads, verifies and installs. Only from the user's click.
+    /// Shows the confirmation, then installs (downloading first if needed) and restarts.
     func installUpdate()
     func openReleasePage()
+    /// The kept copy of the version before, if any.
+    var previousVersion: String? { get }
+    /// Revert to Previous Version (asks first).
+    func revertUpdate()
 }
 
 // MARK: - Sidebar
@@ -452,7 +456,7 @@ final class GeneralPage: NSView {
         stack.addArrangedSubview(startup)
         stack.setCustomSpacing(18, after: startup)
         stack.addArrangedSubview(UI.sectionTitle("Updates"))
-        let updates = GadgetDetailView.card([updateRow(), autoUpdateRow()])
+        let updates = GadgetDetailView.card([updateRow(), autoUpdateRow(), autoInstallRow(), revertRow()])
         stack.addArrangedSubview(updates)
         stack.setCustomSpacing(18, after: updates)
         stack.addArrangedSubview(UI.sectionTitle("Settings"))
@@ -582,11 +586,17 @@ final class GeneralPage: NSView {
                 available = true
                 note?.stringValue = "Version \(version) is available."
                 summary?.stringValue = text
+            case .downloading(let step): note?.stringValue = step; busy = true
+            case .ready(let version, let text):
+                available = true
+                note?.stringValue = "Version \(version) is downloaded and installs when Nacho Combo quits."
+                summary?.stringValue = text
             case .installing(let step): note?.stringValue = step; busy = true
             case .failed(let message): note?.stringValue = message
             }
             if case .failed = host.updateState { note?.textColor = UI.attentionText } else { note?.textColor = UI.secondaryText }
             check?.isEnabled = !busy
+            if case .ready = host.updateState { install?.title = "Restart to Update" } else { install?.title = "Update…" }
             install?.isHidden = !available
             install?.isEnabled = !busy
             notes?.isHidden = !available
@@ -608,9 +618,39 @@ final class GeneralPage: NSView {
         refreshers.append { [weak self, weak toggle] in
             toggle?.state = (self?.host?.gadgetManager.settings.checkForUpdates ?? true) ? .on : .off
         }
-        let note = UI.label("At launch and once a day. Nothing is installed until you click Update.", style: .subheadline,
-                            color: UI.secondaryText)
+        let note = UI.label("At launch and every 6 hours, on GitHub Releases.", style: .subheadline, color: UI.secondaryText)
         return row([titled("Check Automatically", note), UI.spacer(), toggle])
+    }
+
+    private func autoInstallRow() -> NSView {
+        let toggle = NSSwitch()
+        toggle.setAccessibilityLabel("Download and install updates automatically")
+        toggle.setAccessibilityIdentifier("general-update-auto-install")
+        let target = SwitchTarget { [weak self] on in self?.host?.gadgetManager.update { $0.autoInstallUpdates = on } }
+        toggle.target = target
+        toggle.action = #selector(SwitchTarget.changed(_:))
+        objc_setAssociatedObject(toggle, &SwitchTarget.key, target, .OBJC_ASSOCIATION_RETAIN)
+        refreshers.append { [weak self, weak toggle] in
+            toggle?.state = (self?.host?.gadgetManager.settings.autoInstallUpdates ?? true) ? .on : .off
+        }
+        let note = UI.wrapLabel("Downloads a new version in the background and installs it when Nacho Combo quits, never while "
+                                + "you use it. Off: nothing is installed until you click Update.",
+                                width: cardInner - 80, style: .subheadline, color: UI.secondaryText)
+        return row([titled("Install Automatically", note), UI.spacer(), toggle])
+    }
+
+    private func revertRow() -> NSView {
+        let note = UI.wrapLabel("", width: cardInner - 200, style: .subheadline, color: UI.secondaryText)
+        let revert = UI.pushButton("Revert…", small: true) { [weak self] in self?.host?.revertUpdate() }
+        revert.setAccessibilityIdentifier("general-update-revert")
+        refreshers.append { [weak self, weak note, weak revert] in
+            let previous = self?.host?.previousVersion
+            note?.stringValue = previous.map { "Version \($0) is kept. Going back removes this version and skips it in automatic updates." }
+                ?? "No earlier version is kept on this Mac. Older versions stay on the GitHub Releases page."
+            revert?.isEnabled = previous != nil
+            revert?.title = previous.map { "Revert to \($0)…" } ?? "Revert…"
+        }
+        return row([titled("Previous Version", note), UI.spacer(), revert])
     }
 
     private func fileRow() -> NSView {

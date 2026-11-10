@@ -5,11 +5,14 @@ var products: [Product] = [
     .library(name: "NachoComboCore", targets: ["NachoComboCore"]),
     // Dev/test client of the Nacho Pet core (scripts/pet-roundtrip.sh against tools/mock-server). Not shipped.
     .executable(name: "nacho-pet-cli", targets: ["NachoPetCLI"]),
+    // Dev/test driver of the update engine (scripts/update-roundtrip.sh against tools/mock-server/releases.mjs).
+    .executable(name: "nacho-update-cli", targets: ["NachoUpdateCLI"]),
 ]
 var targets: [Target] = [
     // Foundation-only logic (settings, module lifecycle, math). Testable on any OS.
     .target(name: "NachoComboCore"),
     .executableTarget(name: "NachoPetCLI", dependencies: ["NachoComboCore"]),
+    .executableTarget(name: "NachoUpdateCLI", dependencies: ["NachoComboCore"]),
     .testTarget(name: "NachoComboCoreTests", dependencies: ["NachoComboCore"]),
 ]
 
