@@ -3,12 +3,12 @@
 # BUILD_MODE=spm   (default) uses SwiftPM (needs a toolchain whose PackageDescription module is present)
 # BUILD_MODE=swiftc uses swiftc directly (works with a bare Command Line Tools install)
 # UNIVERSAL=1      (spm mode) builds a universal binary (arm64 + x86_64)
-# VERSION=x.y.z    sets CFBundleShortVersionString (default 0.3.0)
+# VERSION=x.y.z    sets CFBundleShortVersionString (default 0.4.0)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MODE="${BUILD_MODE:-spm}"
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.3.0}"
+VERSION="${VERSION:-0.4.0}"
 APP="build/NachoCombo.app"
 mkdir -p build
 if [ "$MODE" = "spm" ]; then
