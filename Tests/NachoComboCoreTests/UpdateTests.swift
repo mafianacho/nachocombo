@@ -214,7 +214,8 @@ final class UpdateSettingsTests: XCTestCase {
 
     func testCombosNeverTouchComputerUse() {
         XCTAssertFalse(ModuleID.comboGadgets.contains(.computerUse))
-        XCTAssertEqual(ModuleID.comboGadgets.count, ModuleID.allCases.count - 1)
+        XCTAssertEqual(ModuleID.comboGadgets.count, ModuleID.allCases.count - 2)
+        XCTAssertFalse(ModuleID.comboGadgets.contains(.nachoPet))
         for combo in ComboCatalog.presets { XCTAssertFalse(combo.gadgets.contains(.computerUse), combo.id) }
         var settings = AppSettings.defaults
         settings.setEnabled(.computerUse, true)

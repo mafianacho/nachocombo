@@ -49,7 +49,9 @@ public struct AppSettings: Codable, Equatable {
     /// Updates: look for a new release at launch and once a day. Missing in older files (= on).
     public var checkForUpdates: Bool
 
-    /// First launch: every module is OFF, so no permission prompt or monitoring starts before opt-in.
+    /// First launch: every module is OFF except Nacho Pet (`ModuleID.enabledByDefault`), so no permission prompt or
+    /// monitoring starts before opt-in. The pet needs no permission and starts nothing that leaves the Mac until the
+    /// user signs in.
     public static let defaults = AppSettings(
         version: currentVersion, enabledModules: [:], menuBarCollapsed: false)
 
@@ -122,7 +124,7 @@ public struct AppSettings: Codable, Equatable {
     public func isPinned(_ id: ModuleID) -> Bool { pinnedTools[id.rawValue] ?? false }
     public func shortcut(for id: ModuleID) -> ToolShortcut? { toolShortcuts[id.rawValue] }
 
-    public func isEnabled(_ id: ModuleID) -> Bool { enabledModules[id.rawValue] ?? false }
+    public func isEnabled(_ id: ModuleID) -> Bool { enabledModules[id.rawValue] ?? id.enabledByDefault }
 
     public mutating func setEnabled(_ id: ModuleID, _ enabled: Bool) {
         enabledModules[id.rawValue] = enabled

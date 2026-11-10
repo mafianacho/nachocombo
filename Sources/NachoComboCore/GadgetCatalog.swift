@@ -133,6 +133,7 @@ public enum GadgetCatalog {
         case .mouseTune: return mouseTune
         case .calendarClock: return calendarClock
         case .diskMap: return diskMap
+        case .nachoPet: return nachoPet
         case .computerUse: return computerUse
         }
     }
@@ -448,6 +449,27 @@ public extension GadgetCatalog {
             "Cloned files share their space on APFS but count in full at each place, so folders can add up to more than is used.",
             "Files kept only in the cloud count as nothing, and looking at them downloads nothing.",
             "Full Disk Access takes effect after Nacho Combo restarts, and rebuilding the app (ad-hoc signature) asks for it again.",
+        ])
+
+    static let nachoPet = GadgetInfo(
+        id: .nachoPet,
+        tagline: "Nacho sits in the corner of your screen. Click to chat, hand it a capture or a file, or ask it to arrange windows.",
+        features: [
+            f("bubble.left.and.bubble.right", "Chat", "Click Nacho to type or dictate; answers stream in and can be stopped."),
+            f("person.badge.key", "Nacho Account", "Sign in once with your Nacho account in the browser sheet; the session is kept in the Keychain."),
+            f("viewfinder", "Ask About a Capture", "Ask Nacho on a floating capture sends the picture with your question."),
+            f("tray", "Hand Over Files", "Give to Nacho on a shelf item, or drop files on Nacho: pictures, PDF, text and mp4."),
+            f("rectangle.split.2x1", "Arranges for You", "Ask Nacho to snap the front window or switch a gadget on or off."),
+            f("hand.draw", "Stays Where You Put It", "Drag Nacho anywhere; it comes back to the same place next time."),
+        ],
+        tips: [t("", "Click Nacho", "Open the chat"), t("", "Drag Nacho", "Move it"), t("Esc", "", "Close the chat")],
+        permissions: [],
+        permissionNote: "No permission needed to show Nacho. Dictation asks for the microphone and speech recognition the first time you press the mic. Arranging windows uses Window Snap and its Accessibility permission.",
+        limits: [
+            "Chatting needs a Nacho account and the internet; what you send goes to the Nacho server (nacho.nachotown.com).",
+            "Nacho sees pictures up to 5 MB and reads txt, md and csv; PDF and video are passed on but not opened.",
+            "Nacho can switch gadgets on or off and snap windows, never Computer Use, and never asks for a permission by itself.",
+            "The Nacho character is not open source: see TRADEMARKS.md.",
         ])
 
     static let computerUse = GadgetInfo(
