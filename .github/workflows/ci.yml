@@ -30,6 +30,11 @@ jobs:
         run: |
           lipo -archs build/NachoCombo.app/Contents/MacOS/NachoCombo
           codesign --verify --verbose build/NachoCombo.app
+          # Privacy permissions must survive updates: every slice carries the stable bundle-id requirement.
+          for arch in arm64 x86_64; do
+            codesign -d -r- --arch "$arch" build/NachoCombo.app 2>&1 | tee /dev/stderr \
+              | grep -F 'designated => identifier "com.mafianacho.nachocombo"'
+          done
           if strings -a build/NachoCombo.app/Contents/MacOS/NachoCombo | grep -E '/Users/|/home/'; then
             echo "build-machine path embedded in binary" >&2; exit 1
           fi

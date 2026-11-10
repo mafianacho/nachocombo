@@ -8,7 +8,10 @@ import NachoComboCore
 /// private peers only) lets other computers on the same local network connect. OFF contract: `stop()` closes the port,
 /// drops every connection, releases the emergency hotkey and the sleep guard and
 /// stops a running shell command. Starting it asks the OS only for the permissions of the tool groups that are
-/// switched on; if one is missing nothing is registered and the state says which one (no workaround).
+/// switched on. A group whose permission is missing is left out of this run (its tools are not listed and calls to
+/// it are refused); the server opens with the other groups, and stays closed only when every switched-on group is
+/// blocked. The owner re-checks the permissions (app activation and a short poll) and restarts the module when one
+/// is allowed, so the blocked groups join without a manual step.
 ///
 /// Not run on a Mac yet - see docs/COMPUTER-USE-MCP.md for what is unverified.
 final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
@@ -33,6 +36,9 @@ final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
     private let snapshotLock = NSLock()
     private var snapshot = ComputerUseSettings()
     private var promptedSinceEnabled = Set<OSPermission>()
+    /// Permissions that were missing at the last start, and the switched-on groups left out because of them.
+    private(set) var lastMissing: [OSPermission] = []
+    private(set) var blockedGroups: [ToolGroup] = []
     private let sleepGuard = SleepGuard()
     private(set) var endpoint = "-"
     /// Mode of the running server (nil while stopped) and, in LAN mode, the TLS certificate that clients pin.
@@ -76,12 +82,37 @@ final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
 
     static func permissionMessage(_ missing: [OSPermission]) -> String {
         let names = missing.map { $0.displayName }.joined(separator: ", ")
-        return "Permissions needed by the enabled tool groups are missing: \(names). Allow Nacho Combo in System Settings ▸ Privacy & Security, then click “Check Permissions Again”. The server will not open until they are allowed."
+        return "Permissions needed by the enabled tool groups are missing: \(names). Every switched-on tool group needs one of them, so the server is not open yet. Allow Nacho Combo in System Settings ▸ Privacy & Security: the server opens by itself within a few seconds (or click “Check Permissions Again”)."
     }
 
-    /// Permissions that the switched-on tool groups need and the system has not granted.
+    /// Permissions that the switched-on tool groups need and the system has not granted (asked live, never cached).
     var missingPermissions: [OSPermission] {
         currentSettings().requiredPermissions.filter { !ComputerUseModule.hasPermission($0) }
+    }
+
+    /// True when the permissions macOS reports now differ from the ones the last start saw (one was allowed or
+    /// taken away), so a restart would change what the server serves.
+    var permissionsChangedSinceStart: Bool { missingPermissions != lastMissing }
+
+    /// Clears this app's entry for one permission with tccutil, then asks macOS for it again (the Accessibility
+    /// dialog). Returns a problem to show, or nil when tccutil succeeded.
+    static func resetPermission(_ permission: OSPermission) -> String? {
+        guard let args = PermissionReset.arguments(for: permission, bundleID: Bundle.main.bundleIdentifier) else {
+            return "This copy has no usable bundle id, so its permission cannot be reset."
+        }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        task.arguments = args
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        do { try task.run() } catch { return "Could not run tccutil (\(error.localizedDescription))." }
+        task.waitUntilExit()
+        guard task.terminationStatus == 0 else {
+            return "tccutil could not reset \(permission.displayName) (exit \(task.terminationStatus)). Remove Nacho Combo "
+                + "from the list in System Settings with the − button, then add it again with +."
+        }
+        request(permission)
+        return nil
     }
 
     // MARK: FeatureModule
@@ -92,15 +123,16 @@ final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
         let config = currentSettings()
         snapshotLock.lock(); snapshot = config; snapshotLock.unlock()
 
-        var missing: [OSPermission] = []
-        for permission in config.requiredPermissions where !ComputerUseModule.hasPermission(permission) {
-            missing.append(permission)
-            if allowPermissionPrompt && !promptedSinceEnabled.contains(permission) {
-                promptedSinceEnabled.insert(permission)       // once per ON switch; re-checks never prompt again
-                ComputerUseModule.request(permission)
-            }
+        let plan = config.permissionPlan { ComputerUseModule.hasPermission($0) }
+        lastMissing = plan.missing
+        blockedGroups = plan.blockedGroups
+        for permission in plan.missing where allowPermissionPrompt && !promptedSinceEnabled.contains(permission) {
+            promptedSinceEnabled.insert(permission)       // once per ON switch; re-checks never prompt again
+            ComputerUseModule.request(permission)
         }
-        if !missing.isEmpty { return .needsPermission(ComputerUseModule.permissionMessage(missing)) }
+        if !plan.canOpen { return .needsPermission(ComputerUseModule.permissionMessage(plan.missing)) }
+        // Tools of blocked groups are neither listed nor callable in this run; the saved settings keep them on.
+        snapshotLock.lock(); snapshot = plan.servable; snapshotLock.unlock()
 
         // LAN mode needs its TLS identity first. If it cannot be loaded or created nothing is opened: no plain HTTP.
         var identity: ComputerUseTLSIdentity?
@@ -142,6 +174,8 @@ final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
     func stop() {
         tearDown()
         promptedSinceEnabled.removeAll()
+        lastMissing = []
+        blockedGroups = []
     }
 
     private func tearDown() {
@@ -174,6 +208,12 @@ final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
         values["bonjour"] = "\(server?.isAdvertising ?? false)"
         values["emergencyHotkeys"] = "\(hotKeys.registeredCount)"
         values["enabledGroups"] = settingsSnapshot().enabledToolGroups.map { $0.rawValue }.joined(separator: ",")
+        values["blockedGroups"] = blockedGroups.map { $0.rawValue }.joined(separator: ",")
+        values["accessibilityTrusted"] = "\(AXIsProcessTrusted())"
+        values["screenRecordingAllowed"] = "\(CGPreflightScreenCaptureAccess())"
+        values["bundlePath"] = Bundle.main.bundleURL.path
+        values["bundleID"] = Bundle.main.bundleIdentifier ?? "-"
+        values["designatedRequirement"] = CodeSignature.designatedRequirement ?? "-"
         return values
     }
 }

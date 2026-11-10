@@ -37,9 +37,27 @@ enum Diagnostics {
     }
 }
 
-/// This copy's code signature hash (cdhash). The app is ad-hoc signed, so every build has a new one; macOS ties a
-/// privacy permission to it, which is why an update needs the permission again.
+/// This copy's code signature hash (cdhash). The app is ad-hoc signed, so every build has a new one. Builds up to
+/// 0.5.0 had the default ad-hoc designated requirement (`cdhash H"…"`), so macOS tied a privacy permission to one
+/// build; later builds carry `designated => identifier "com.mafianacho.nachocombo"` (scripts/build-app.sh), so a
+/// permission allowed once survives updates.
 enum CodeSignature {
+    /// The designated requirement of the running copy as text, e.g. `identifier "com.mafianacho.nachocombo"`.
+    static let designatedRequirement: String? = {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code = code else { return nil }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let s = staticCode else { return nil }
+        var requirement: SecRequirement?
+        guard SecCodeCopyDesignatedRequirement(s, [], &requirement) == errSecSuccess, let r = requirement else { return nil }
+        var text: CFString?
+        guard SecRequirementCopyString(r, [], &text) == errSecSuccess, let t = text else { return nil }
+        return t as String
+    }()
+
+    /// True when the designated requirement is tied to one build (the default for ad-hoc signing).
+    static var requirementIsPerBuild: Bool { designatedRequirement?.hasPrefix("cdhash") ?? false }
+
     static let current: String? = {
         var code: SecCode?
         guard SecCodeCopySelf([], &code) == errSecSuccess, let code = code else { return nil }

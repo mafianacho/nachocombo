@@ -80,5 +80,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>NSSpeechRecognitionUsageDescription</key><string>Nacho Pet turns what you dictate into text in the message box (macOS speech recognition, Korean). You send it yourself.</string>
 </dict></plist>
 PLIST
-codesign --force --sign - "$APP"
+# Ad-hoc signing gives every build a new cdhash. By default its designated requirement is that cdhash, and macOS
+# (TCC) stores the requirement with each privacy permission, so an update silently lost Accessibility / Screen
+# Recording: the old entry stays switched on in System Settings but no longer matches. A stable requirement on the
+# bundle id keeps a permission across updates. Trade-off (docs/COMPUTER-USE-MCP.md): any app signed with this bundle
+# id would match it too, which a properly signed (Developer ID) build would not allow. STABLE_REQUIREMENT=0 keeps
+# the old per-build requirement.
+BUNDLE_ID="com.mafianacho.nachocombo"
+if [ "${STABLE_REQUIREMENT:-1}" = "1" ]; then
+  codesign --force --sign - --requirements "=designated => identifier \"$BUNDLE_ID\"" "$APP"
+else
+  codesign --force --sign - "$APP"
+fi
 echo "built $APP"

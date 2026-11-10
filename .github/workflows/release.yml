@@ -41,6 +41,11 @@ jobs:
         run: |
           lipo -archs build/NachoCombo.app/Contents/MacOS/NachoCombo
           codesign --verify --verbose build/NachoCombo.app
+          # Privacy permissions must survive updates: every slice carries the stable bundle-id requirement.
+          for arch in arm64 x86_64; do
+            codesign -d -r- --arch "$arch" build/NachoCombo.app 2>&1 | tee /dev/stderr \
+              | grep -F 'designated => identifier "com.mafianacho.nachocombo"'
+          done
           if strings -a build/NachoCombo.app/Contents/MacOS/NachoCombo | grep -E '/Users/|/home/'; then
             echo "build-machine path embedded in binary" >&2; exit 1
           fi
@@ -91,9 +96,10 @@ jobs:
 
           **Not notarized.** This build is ad-hoc signed, not signed with an Apple Developer ID.
           On first launch macOS Gatekeeper will block it: right-click the app, choose Open, then
-          Open again (or allow it under System Settings > Privacy & Security). Rebuilding or
-          updating changes the code signature, so the Accessibility permission for window
-          snapping must be granted again.
+          Open again (or allow it under System Settings > Privacy & Security). Builds after 0.5.0
+          keep a stable signature requirement, so a privacy permission (Accessibility, Screen
+          Recording) allowed once stays valid across later updates. The first update from 0.5.0
+          or older may still need it allowed again once.
 
           Verify your download against \`SHA256SUMS.txt\`:
           \`shasum -a 256 -c SHA256SUMS.txt\`

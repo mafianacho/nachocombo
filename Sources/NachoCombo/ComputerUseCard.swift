@@ -16,6 +16,8 @@ final class ComputerUseCard: NSObject {
     /// Opens the System Settings pane of one permission.
     var openPermissionPane: ((OSPermission) -> Void)?
     var recheckPermissions: (() -> Void)?
+    /// Clears this app's Accessibility entry and asks again; returns a problem to show, or nil.
+    var resetAccessibility: (() -> String?)?
     /// A group switch or the port changed: the owner re-applies the running module.
     var settingsChanged: (() -> Void)?
     var emergencyStop: (() -> Void)?
@@ -27,6 +29,13 @@ final class ComputerUseCard: NSObject {
     private let portMessage: NSTextField
     private let permissionRow = NSStackView()
     private var permissionButtons: [OSPermission: NSButton] = [:]
+    // Permission diagnostics: what macOS says about this very copy, so a stale or misplaced grant can be told apart.
+    private let blockedLabel: NSTextField
+    private let diagnosticsBox = NSStackView()
+    private let diagnosticsLabel: NSTextField
+    private let locationLabel: NSTextField
+    private let resetMessage: NSTextField
+    private let resetButton = NSButton(title: "Reset Accessibility Permission…", target: nil, action: nil)
     private let keyList = NSStackView()
     private var keyListSignature = ""
     private let newKeyField = NSTextField()
@@ -65,6 +74,10 @@ final class ComputerUseCard: NSObject {
         sanNoticeLabel = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
         fingerprintChangedLabel = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
         logLabel = UI.wrapLabel("", width: width, style: .caption1, color: UI.secondaryText)
+        blockedLabel = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
+        diagnosticsLabel = UI.wrapLabel("", width: width, style: .caption1, color: UI.secondaryText)
+        locationLabel = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
+        resetMessage = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
         view = NSStackView()
         super.init()
         build()
@@ -112,6 +125,10 @@ final class ComputerUseCard: NSObject {
         view.addArrangedSubview(portMessage)
         buildLANSection()
         view.addArrangedSubview(permissionRow)
+        blockedLabel.setAccessibilityIdentifier("computer-use-blocked-groups")
+        blockedLabel.isHidden = true
+        view.addArrangedSubview(blockedLabel)
+        buildDiagnostics()
 
         // normal tool groups
         view.addArrangedSubview(sectionTitle("Tool Groups (tools in groups that are off are not listed and calls to them are refused)"))
@@ -383,6 +400,68 @@ final class ComputerUseCard: NSObject {
         board.setString(text, forType: .string)
     }
 
+    private func buildDiagnostics() {
+        diagnosticsBox.orientation = .vertical
+        diagnosticsBox.alignment = .leading
+        diagnosticsBox.spacing = 6
+        diagnosticsBox.addArrangedSubview(sectionTitle("Permission Diagnostics (this copy of the app)"))
+        diagnosticsLabel.setAccessibilityIdentifier("computer-use-permission-diagnostics")
+        diagnosticsBox.addArrangedSubview(diagnosticsLabel)
+        locationLabel.setAccessibilityIdentifier("computer-use-location-warning")
+        diagnosticsBox.addArrangedSubview(locationLabel)
+        resetButton.target = self
+        resetButton.action = #selector(resetClicked)
+        resetButton.setAccessibilityIdentifier("computer-use-reset-accessibility")
+        diagnosticsBox.addArrangedSubview(resetButton)
+        resetMessage.isHidden = true
+        diagnosticsBox.addArrangedSubview(resetMessage)
+        diagnosticsBox.isHidden = true
+        view.addArrangedSubview(diagnosticsBox)
+    }
+
+    /// Shown while a needed permission is missing or the copy runs from a place that confuses permissions.
+    private func refreshDiagnostics(enabled: Bool, missing: [OSPermission]) {
+        let bundle = Bundle.main
+        let location = AppLocationDiagnosis.diagnose(bundlePath: bundle.bundleURL.path, home: NSHomeDirectory())
+        let axTrusted = ComputerUseModule.hasPermission(.accessibility)
+        let screen = ComputerUseModule.hasPermission(.screenRecording)
+        diagnosticsBox.isHidden = !enabled || (missing.isEmpty && module.blockedGroups.isEmpty && location.warnings.isEmpty)
+        guard !diagnosticsBox.isHidden else { return }
+        let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
+        var lines = [
+            "App: \(location.path)",
+            "Bundle ID: \(bundle.bundleIdentifier ?? "-") · Version \(version)",
+            "Accessibility (AXIsProcessTrusted): \(axTrusted ? "allowed" : "not allowed") · Screen Recording: \(screen ? "allowed" : "not allowed")",
+            "Signature requirement: \(CodeSignature.designatedRequirement ?? "unknown")",
+        ]
+        if CodeSignature.requirementIsPerBuild {
+            lines.append("This build's permission is tied to this exact build, so an entry left from another version stays switched on in System Settings but does not apply. Use Reset below.")
+        }
+        setWrapped(diagnosticsLabel, lines.joined(separator: "\n"), style: .caption1, color: UI.secondaryText)
+        if let warning = location.warnings.first {
+            locationLabel.attributedStringValue = UI.notice(AppLocationDiagnosis.message(for: warning),
+                                                            tint: warning == .outsideApplications ? .systemOrange : .systemRed,
+                                                            style: .callout)
+            locationLabel.isHidden = false
+        } else {
+            locationLabel.isHidden = true
+        }
+        resetButton.isHidden = axTrusted
+    }
+
+    @objc private func resetClicked() {
+        guard confirm("Reset the Accessibility permission of Nacho Combo?",
+                      "This removes Nacho Combo from the Accessibility list (Window Snap, App Switcher and Mouse Tune lose it too) and asks again. Then turn Nacho Combo on in System Settings ▸ Privacy & Security ▸ Accessibility. If macOS asks for your password, that is System Settings, not this app.",
+                      "Reset") else { return }
+        if let problem = resetAccessibility?() {
+            resetMessage.attributedStringValue = UI.notice(problem, tint: .systemOrange, style: .callout)
+        } else {
+            resetMessage.attributedStringValue = UI.notice("Reset. Turn Nacho Combo on in the Accessibility list; the server picks it up within a few seconds.",
+                                                           tint: .systemGreen, style: .callout)
+        }
+        resetMessage.isHidden = false
+    }
+
     private func sectionTitle(_ text: String) -> NSView {
         let label = UI.wrapLabel(text, width: width, style: .callout, color: .labelColor)
         label.font = UI.font(.callout, weight: .semibold)
@@ -451,8 +530,19 @@ final class ComputerUseCard: NSObject {
         // Permission guidance: only the missing ones.
         var missing: [OSPermission] = []
         if case .needsPermission = state { missing = module.missingPermissions }
+        if case .running = state, !module.blockedGroups.isEmpty { missing = module.missingPermissions }
         permissionRow.isHidden = missing.isEmpty && !isNeedsPermission(state)
         for (permission, button) in permissionButtons { button.isHidden = !missing.contains(permission) }
+        if case .running = state, !module.blockedGroups.isEmpty {
+            let groups = module.blockedGroups.map { $0.displayName }.joined(separator: ", ")
+            let perms = module.lastMissing.map { $0.displayName }.joined(separator: ", ")
+            blockedLabel.attributedStringValue = UI.notice("Open without \(groups): those tools wait for \(perms) and join by themselves once it is allowed.",
+                                                           tint: .systemOrange, style: .callout)
+            blockedLabel.isHidden = false
+        } else {
+            blockedLabel.isHidden = true
+        }
+        refreshDiagnostics(enabled: enabled, missing: missing)
 
         emergencyButton.isEnabled = module.isRunning
 
