@@ -133,6 +133,7 @@ public enum GadgetCatalog {
         case .mouseTune: return mouseTune
         case .calendarClock: return calendarClock
         case .diskMap: return diskMap
+        case .computerUse: return computerUse
         }
     }
 
@@ -447,6 +448,35 @@ public extension GadgetCatalog {
             "Cloned files share their space on APFS but count in full at each place, so folders can add up to more than is used.",
             "Files kept only in the cloud count as nothing, and looking at them downloads nothing.",
             "Full Disk Access takes effect after Nacho Combo restarts, and rebuilding the app (ad-hoc signature) asks for it again.",
+        ])
+
+    static let computerUse = GadgetInfo(
+        id: .computerUse,
+        tagline: "Lets an MCP client that holds your key see and control this Mac. Experimental, off by default.",
+        features: [
+            f("server.rack", "MCP Server", "A Model Context Protocol server on this Mac (127.0.0.1 by default). Clients must send a key you made here."),
+            f("key", "Your Keys", "Make, name and revoke keys. Only a hash is kept on disk; the key itself is shown once."),
+            f("switch.2", "Tool Groups", "Screen, Apps & Windows, Input, Clipboard, Open and System Info: each group has its own switch and all start off."),
+            f("exclamationmark.shield", "High-Risk Tools Apart", "AppleScript, shell commands, reading and writing files and force-quitting processes are separate groups that ask before they turn on."),
+            f("stop.circle", "Emergency Stop", "⌃⌥⌘. refuses every call at once and turns the gadget off."),
+            f("wifi", "LAN Mode (Optional)", "Other computers on the same private network can connect over TLS with a pinned self-signed certificate."),
+            f("list.bullet.rectangle", "Call Log", "Every call is listed with its tool, its client and whether it was allowed."),
+        ],
+        tips: [t("⌃⌥⌘.", "", "Emergency stop: refuse every call and turn the gadget off")],
+        permissions: [
+            GadgetPermissionNeed(permission: .screenRecording,
+                                 reason: "Only when the Screen group is on, so a client can take screenshots.",
+                                 optional: true, purpose: "takes screenshots for the MCP client"),
+            GadgetPermissionNeed(permission: .accessibility,
+                                 reason: "Only when the Input or Apps & Windows group is on, so a client can click, type and move windows.",
+                                 optional: true, purpose: "clicks, types and moves windows for the MCP client"),
+        ],
+        permissionNote: "No permission is needed until you switch a tool group on; then only that group's permission is asked for. With Run AppleScript on, macOS asks about each app it controls (Automation).",
+        limits: [
+            "Experimental: not yet tried on a real Mac. See docs/COMPUTER-USE-MCP.md for what is unverified.",
+            "Anyone who holds a key can control this Mac while the gadget is on. Keep keys secret and revoke the ones you do not use.",
+            "LAN mode needs TLS and a key; it only accepts clients from private addresses and never opens without encryption.",
+            "Combos never switch this gadget on or off.",
         ])
 }
 

@@ -477,7 +477,7 @@ final class ComboPage: NSView, NSTextFieldDelegate {
         let columns = 4
         let slotWidth = floor((width - CGFloat(columns - 1) * 8) / CGFloat(columns))
         var slots: [NSView] = []
-        for id in ModuleID.allCases {
+        for id in ModuleID.comboGadgets {
             let lit = gadgets.contains(id)
             let lock = id.info.requiredPermission.flatMap { host.gadgetPermissionGranted($0) == true ? nil : $0.displayName }
             let slot = TraySlotView(module: id, lit: lit, lock: lit ? lock : nil)

@@ -14,6 +14,7 @@ public enum ModuleID: String, Codable, CaseIterable {
     case mouseTune
     case calendarClock
     case diskMap
+    case computerUse
 
     public var displayName: String {
         switch self {
@@ -30,6 +31,7 @@ public enum ModuleID: String, Codable, CaseIterable {
         case .mouseTune: return "Mouse Tune"
         case .calendarClock: return "Calendar Clock"
         case .diskMap: return "Disk Map"
+        case .computerUse: return "Computer Use"
         }
     }
 
@@ -41,6 +43,13 @@ public enum ModuleID: String, Codable, CaseIterable {
         default: return false
         }
     }
+
+    /// Combos never switch this gadget on or off: it lets other computers control the Mac, so it is only ever turned
+    /// on by its own switch.
+    public var inCombos: Bool { self != .computerUse }
+
+    /// The gadgets a combo can hold, in gallery order.
+    public static var comboGadgets: [ModuleID] { allCases.filter { $0.inCombos } }
 }
 
 public enum ModuleState: Equatable {
@@ -219,6 +228,17 @@ public final class ModuleManager {
                 settings.actionShortcuts[action.id] = ActionBinding(shortcut: nil)
             }
         }
+        try? store.save(settings)
+        onChange?()
+    }
+
+    /// Changes the Computer Use settings (port, listen mode, tool group switches...) and saves them. Starting or
+    /// stopping the module is a separate step: the caller decides whether a running module must be re-applied.
+    public func setComputerUse(_ change: (inout ComputerUseSettings) -> Void) {
+        var value = settings.computerUse
+        change(&value)
+        guard value != settings.computerUse else { return }
+        settings.computerUse = value
         try? store.save(settings)
         onChange?()
     }

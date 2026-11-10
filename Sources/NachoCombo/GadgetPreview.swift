@@ -46,6 +46,7 @@ enum GadgetPreview {
             case .mouseTune: picture = mouse(inputs, dark: dark)
             case .calendarClock: picture = calendar(inputs, dark: dark)
             case .diskMap: picture = diskMap()
+            case .computerUse: picture = computerUse(dark: dark)
             }
         }
         return picture
@@ -459,6 +460,33 @@ enum GadgetPreview {
             place(.blocks, in: NSRect(x: 196, y: 48, width: 194, height: 168))
         }
         return Picture(image: image, caption: "The gadget's two pictures, drawn from a sample disk. Open it to map your own.")
+    }
+
+    private static func computerUse(dark: Bool) -> Picture {
+        let size = NSSize(width: width, height: 220)
+        let image = canvas(size) { rect in
+            Stage.wallpaper(rect, dark: dark)
+            Stage.window(NSRect(x: 18, y: 30, width: 196, height: 170), dark: dark, title: "MCP Client", style: .text)
+            let card = NSRect(x: 196, y: 52, width: 188, height: 132)
+            Stage.shadowed(card, radius: 10) {
+                (dark ? NSColor(white: 0.16, alpha: 0.97) : NSColor(white: 0.99, alpha: 0.97)).setFill()
+                NSBezierPath(roundedRect: card, xRadius: 10, yRadius: 10).fill()
+            }
+            let ink = dark ? NSColor(white: 1, alpha: 0.9) : NSColor(white: 0, alpha: 0.85)
+            let soft = dark ? NSColor(white: 1, alpha: 0.55) : NSColor(white: 0, alpha: 0.5)
+            Draw.text("127.0.0.1:\(ComputerUseSettings.defaultPort)/mcp", in: NSRect(x: card.minX + 12, y: card.minY + 12, width: card.width - 24, height: 16),
+                      font: Brand.mono(10), color: ink)
+            let lines: [(String, Bool)] = [("Screen", true), ("Apps & Windows", true), ("Input", false), ("Run Shell Commands", false)]
+            for (index, line) in lines.enumerated() {
+                let y = card.minY + 36 + CGFloat(index) * 22
+                (line.1 ? Brand.guac : soft).setFill()
+                NSBezierPath(ovalIn: NSRect(x: card.minX + 14, y: y + 3, width: 8, height: 8)).fill()
+                Draw.text(line.0, in: NSRect(x: card.minX + 28, y: y, width: card.width - 40, height: 15),
+                          font: .systemFont(ofSize: 11), color: line.1 ? ink : soft)
+            }
+            Stage.caption("⌃⌥⌘. stops every call", at: NSPoint(x: 24, y: 206), small: true)
+        }
+        return Picture(image: image, caption: "A client with your key calls only the tool groups you switched on. Drawn, not a recording.")
     }
 
     private static func calendar(_ inputs: GadgetPreviewInputs, dark: Bool) -> Picture {

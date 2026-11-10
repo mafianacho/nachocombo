@@ -21,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private var mouse: MouseTuneModule!
     private var clock: CalendarClockModule!
     private var disk: DiskMapModule!
+    private var computerUse: ComputerUseModule!
+    private var computerUseCard: ComputerUseCard?
+    private let updater = UpdateController()
     private var mainItem: NSStatusItem!
     private var settingsWindow: SettingsWindowController!
     private var panel: PanelController!
@@ -70,8 +73,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         mouse = MouseTuneModule()
         clock = CalendarClockModule()
         disk = DiskMapModule()
+        computerUse = ComputerUseModule()
         manager = ModuleManager(store: store, modules: [organizer, monitor, snap, shelf, capture, dim, keepAwake, clipboard,
-                                                        devices, appSwitch, mouse, clock, disk])
+                                                        devices, appSwitch, mouse, clock, disk, computerUse])
+        computerUse.currentSettings = { [weak self] in self?.manager.settings.computerUse ?? ComputerUseSettings() }
+        computerUse.onActivity = { [weak self] in self?.stateChanged() }
+        computerUse.onEmergencyStop = { [weak self] in self?.manager.setEnabled(.computerUse, false) }
+        let card = ComputerUseCard(module: computerUse, manager: manager, width: GadgetDetailView.cardInner)
+        card.openPermissionPane = { [weak self] permission in self?.openComputerUsePermission(permission) }
+        card.recheckPermissions = { [weak self] in self?.manager.retry(.computerUse) }
+        card.settingsChanged = { [weak self] in self?.reapplyComputerUse() }
+        card.emergencyStop = { [weak self] in self?.computerUse.emergencyStop() }
+        computerUseCard = card
         panel = PanelController(host: self)
 
         // Created first, so it is the right-most item and never swallowed by the divider.
@@ -181,6 +194,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         AlertNotifier.refreshStatus { [weak self] in self?.stateChanged() }
         syncPins()
         manager.bootstrap()
+        updater.automaticChecks = { [weak self] in self?.manager.settings.checkForUpdates ?? false }
+        updater.onChange = { [weak self] in self?.stateChanged() }
+        updater.relaunch = { [weak self] in self?.relaunch() }
+        updater.startSchedule()
         notePermissionGrants()
         startPermissionWatchIfNeeded()
         // The first launch always shows the window; later launches follow General ▸ Show This Window at Launch.
@@ -221,6 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     }
 
     private func stateChanged() {
+        computerUseCard?.refresh(state: manager.states[.computerUse] ?? .off)
         applyActionShortcuts()
         panel.refresh()
         settingsWindow.refresh()
@@ -285,6 +303,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             guard case .needsPermission = manager.states[id] ?? .off else { continue }
             manager.retry(id)
             if manager.states[id] == .running { started.append(id) }
+        }
+        // Computer Use needs a permission only for the tool groups that are on, so it is not among permissionGadgets.
+        if manager.settings.isEnabled(.computerUse), case .needsPermission = manager.states[.computerUse] ?? .off {
+            manager.retry(.computerUse)
         }
         notePermissionGrants()
         for id in started {
@@ -384,6 +406,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             self?.manager.setEnabled(id, true)
             self?.startPermissionWatchIfNeeded(restart: true)
         }, cancelled: { [weak self] in self?.stateChanged() })
+    }
+
+    /// A tool group switch, the port or the listen mode changed while Computer Use is on: rebuild it from the saved
+    /// settings. This is the moment a newly switched-on group may ask for its permission (never at launch or on a
+    /// plain re-check).
+    private func reapplyComputerUse() {
+        guard manager.settings.isEnabled(.computerUse) else { stateChanged(); return }
+        computerUse.allowPermissionPrompt = true
+        let state = computerUse.start()
+        computerUse.allowPermissionPrompt = false
+        manager.report(.computerUse, state: state)
+    }
+
+    private func openComputerUsePermission(_ permission: OSPermission) {
+        switch permission {
+        case .screenRecording: gadgetOpenPermissionSettings(.screenRecording)
+        case .accessibility: gadgetOpenPermissionSettings(.accessibility)
+        case .automation:
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     /// Starts a fresh copy once this one has quit (macOS applies Screen Recording to a new process).
@@ -538,6 +582,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         comboItem.submenu = combos
         menu.addItem(comboItem)
         menu.addItem(.separator())
+        if case .available(let version, _) = updater.state {
+            let update = NSMenuItem(title: "Update to \(version)…", action: #selector(menuInstallUpdate), keyEquivalent: "")
+            update.target = self
+            menu.addItem(update)
+        }
         let settings = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -766,6 +815,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .diskMap:
             let space = samplePreviews ? DiskSample.tree().space : disk.startupSpace
             return space.map { "\(DiskFormat.size($0.free)) free" } ?? "On"
+        case .computerUse:
+            return computerUse.endpoint
         }
     }
 
@@ -869,6 +920,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .diskMap:
             if samplePreviews { return "No scan yet" }
             return disk.statusLine
+        case .computerUse:
+            let groups = manager.settings.computerUse.enabledToolGroups.count
+            let keys = computerUse.keys.records.count
+            return "\(computerUse.endpoint) · \(groups) tool group\(groups == 1 ? "" : "s") on · \(keys) key\(keys == 1 ? "" : "s")"
         }
     }
 
@@ -1081,6 +1136,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
 
     func gadgetDevices() -> DeviceSnapshot { devices.snapshot }
 
+    func gadgetComputerUseView() -> NSView? { computerUseCard?.view }
+
     func gadgetCommandState(_ command: GadgetCommand) -> (on: Bool, enabled: Bool) {
         switch command {
         case .toggleKeepAwake: return (keepAwake.manual && keepAwake.decision.holds, true)
@@ -1117,6 +1174,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     }
 
     func quitApp() { NSApp.terminate(nil) }
+
+    var updateState: UpdateController.State { updater.state }
+    var currentVersion: String { updater.currentVersion }
+    func checkForUpdatesNow() { updater.check(manual: true) }
+    func installUpdate() { updater.confirmAndInstall(window: settingsWindow.isVisible ? settingsWindow.window : nil) }
+    func openReleasePage() {
+        NSWorkspace.shared.open(updater.releasePage ?? URL(string: "https://github.com/mafianacho/nachocombo/releases/latest")!)
+    }
+    @objc private func menuInstallUpdate() { installUpdate() }
 
     func orderCombo(_ id: String) {
         guard let combo = ComboCatalog.combo(id, in: manager.settings) else { return }
@@ -1262,6 +1328,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .showDiskMap:
             panel.close()
             disk.showWindow()
+        case .computerUseEmergencyStop:
+            computerUse.emergencyStop()
         }
         stateChanged()
     }

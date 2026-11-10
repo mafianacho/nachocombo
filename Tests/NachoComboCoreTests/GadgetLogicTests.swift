@@ -247,7 +247,8 @@ final class GadgetLogicTests: XCTestCase {
     }
 
     func testEveryGadgetHasAMomentForCustomCombos() {
-        for id in ModuleID.allCases {
+        // Computer Use never goes in a combo, so it has no moment.
+        for id in ModuleID.comboGadgets {
             XCTAssertFalse(ComboCatalog.moments(for: [id]).isEmpty, id.rawValue)
         }
         let meeting = ComboCatalog.combo("meeting")

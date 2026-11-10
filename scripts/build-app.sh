@@ -69,6 +69,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>NSNetworkVolumesUsageDescription</key><string>Disk Map reads the names and sizes on this volume to map it. Nothing leaves this Mac.</string>
 <key>NSFileProviderDomainUsageDescription</key><string>Disk Map reads the names and sizes of your cloud folders to map your disk. Nothing is downloaded.</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
+<key>NSLocalNetworkUsageDescription</key><string>Only when Computer Use's LAN mode is on: Nacho Combo opens its server to other computers on the same network (and, if you choose, announces it with Bonjour).</string>
+<key>NSBonjourServices</key><array><string>_nacho-mcp._tcp</string></array>
 </dict></plist>
 PLIST
 codesign --force --sign - "$APP"

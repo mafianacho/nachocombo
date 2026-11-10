@@ -58,6 +58,7 @@ enum GadgetIcon {
         case .mouseTune: drawMouse()
         case .calendarClock: drawCalendar()
         case .diskMap: drawDiskMap()
+        case .computerUse: drawComputerUse()
         }
         NSGraphicsContext.restoreGraphicsState()
         NSColor.white.withAlphaComponent(0.12).setStroke()
@@ -85,6 +86,7 @@ enum GadgetIcon {
         case .mouseTune: return (rgb(0xD8F27A), rgb(0x6E9E10))
         case .calendarClock: return (rgb(0xFFFFFF), rgb(0xDCDCE2))
         case .diskMap: return (rgb(0x3F2E20), rgb(0x1E1610))
+        case .computerUse: return (rgb(0x5B6CFF), rgb(0x1B2A8F))
         }
     }
 
@@ -420,6 +422,25 @@ enum GadgetIcon {
         free.setLineDash([2.4, 2.4], count: 2, phase: 0)
         DiskPalette.free.withAlphaComponent(0.55).setStroke()
         free.stroke()
+    }
+
+    /// A display with a pointer on it, driven from elsewhere: Computer Use.
+    private static func drawComputerUse() {
+        fill(CGRect(x: 16, y: 22, width: 68, height: 46), radius: 6, NSColor.white.withAlphaComponent(0.95))
+        fill(CGRect(x: 21, y: 27, width: 58, height: 36), radius: 3, NSColor(srgbRed: 0.11, green: 0.16, blue: 0.45, alpha: 1))
+        fill(CGRect(x: 44, y: 68, width: 12, height: 8), radius: 1, NSColor.white.withAlphaComponent(0.85))
+        fill(CGRect(x: 32, y: 76, width: 36, height: 5), radius: 2.5, NSColor.white.withAlphaComponent(0.85))
+        let arrow = NSBezierPath()
+        arrow.move(to: NSPoint(x: 44, y: 33))
+        arrow.line(to: NSPoint(x: 44, y: 55))
+        arrow.line(to: NSPoint(x: 49, y: 50))
+        arrow.line(to: NSPoint(x: 53, y: 58))
+        arrow.line(to: NSPoint(x: 56, y: 56.5))
+        arrow.line(to: NSPoint(x: 52, y: 48.5))
+        arrow.line(to: NSPoint(x: 59, y: 48.5))
+        arrow.close()
+        NSColor.white.setFill()
+        arrow.fill()
     }
 
     /// Dimmed windows behind one bright front window.
