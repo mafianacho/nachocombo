@@ -208,7 +208,13 @@ button { font: inherit; color: inherit; }
   padding: 0 var(--space-m); color: var(--color-text); white-space: nowrap; overflow: hidden; }
 .field.focus { box-shadow: 0 0 0 2px var(--color-focus-ring), 0 0 0 1px var(--color-accent); }
 .field .ph { color: var(--color-text-tertiary); }
-.field .listen { display: flex; align-items: center; gap: var(--space-s); color: var(--color-danger); }
+.field .listen { display: flex; align-items: center; gap: var(--space-s); color: var(--color-danger); min-width: 0; }
+.ell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hello { align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: var(--space-s); text-align: center; }
+.hello b { font-size: var(--font-title); font-weight: var(--font-weight-semibold); }
+.examples { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-xs); }
+.ex { height: var(--size-chip-height); padding: 0 var(--space-m); border-radius: var(--radius-chip); border: 0; cursor: pointer;
+  background: var(--color-surface); color: var(--color-text-secondary); font-size: var(--font-caption); box-shadow: 0 0 0 1px var(--color-separator); }
 .wave { display: flex; gap: 2px; align-items: center; }
 .wave i { width: 3px; border-radius: 2px; background: var(--color-danger); display: block; }
 .send { width: var(--size-send-button); height: var(--size-send-button); border-radius: calc(var(--size-send-button) / 2); border: 0;

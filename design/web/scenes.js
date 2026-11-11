@@ -56,9 +56,9 @@ const composer = ({ text = '', focus = true, send = 'off', mic = '', listening =
   <div class="composer">
     <button class="ibtn" title="파일 주기">${icon('clip')}</button>
     <div class="field ${focus ? 'focus' : ''}">${listening
-      ? `<span class="listen">${wave()}<span>듣고 있어요 · 다 말하면 마이크를 다시 눌러 주세요</span></span>`
+      ? `<span class="listen">${wave()}<span class="ell">듣고 있어요</span></span>`
       : text ? esc(text) : '<span class="ph">나초에게 말하기…</span>'}</div>
-    <button class="ibtn ${mic}" title="받아쓰기">${icon('mic')}</button>
+    <button class="ibtn ${mic}" title="${listening ? '다 말하면 다시 누르세요' : '받아쓰기'}">${icon('mic')}</button>
     <button class="send ${send}" title="${send === 'stop' ? '멈추기' : '보내기'}">${icon(send === 'stop' ? 'stop' : 'send')}</button>
   </div>`;
 const wave = () => `<span class="wave">${[6, 12, 9, 15, 7, 11].map((h) => `<i style="height:${h}px"></i>`).join('')}</span>`;
@@ -85,11 +85,11 @@ scene('hover', '호버 (이름표 · 살짝 떠오름) · 파일 끌어다 놓�
   + `<div class="nametag" style="right:auto;left:112px;transform:translateX(-50%)"><b>나초에게 주기</b><span class="k">· 놓으면 첨부돼요</span></div>`,
   { w: 420, h: 260 }));
 scene('chat-empty', '입력 말풍선 (처음 열었을 때)', () => chatScene({
-  log: `<div class="note">무엇을 도와드릴까요?</div>
-        <div class="line notice" style="justify-content:center">예: “창 왼쪽으로 붙여 줘”, “킵 어웨이크 켜 줘”, 캡처 우클릭 ▸ 나초에게 묻기</div>`,
+  log: `<div class="hello"><b>무엇을 도와드릴까요?</b>
+        <div class="examples"><button class="ex">창 왼쪽으로 붙여 줘</button><button class="ex">킵 어웨이크 켜 줘</button><button class="ex">이 캡처 뭐야?</button></div></div>`,
 }));
 scene('dictation', '받아쓰기 (듣는 중)', () => chatScene({
-  log: mine('창 왼쪽으로 붙여 줘') + nacho('앞의 창을 왼쪽 절반에 붙였어요.') + line('', 'wrench', '창 배치 <span class="ok">✓</span>'),
+  log: mine('창 왼쪽으로 붙여 줘') + nacho('앞의 창을 왼쪽 절반에 붙였어요.') + line('', 'wrench', '<span title="combo_arrange_window">창 배치</span> <span class="ok">✓</span>'),
   comp: { listening: true, mic: 'rec', send: 'off' },
 }, 'listening'));
 scene('streaming', '스트리밍 답 (멈추기 버튼)', () => chatScene({
@@ -100,7 +100,7 @@ scene('streaming', '스트리밍 답 (멈추기 버튼)', () => chatScene({
 scene('tools', '도구 진행 줄 · 중간 답', () => chatScene({
   headOpts: { status: '웹에서 찾는 중', dot: 'busy' },
   log: mine('요즘 맥북 배터리 오래 쓰는 법 찾아줘')
-    + line('', 'wrench', '웹 검색 <span class="ok">✓</span> <span class="sep">·</span> 페이지 읽기 …')
+    + line('', 'wrench', '<span title="search_web">웹 검색</span> <span class="ok">✓</span> <span class="sep">·</span> <span title="read_page">페이지 읽기</span> …')
     + line('', 'spark', '웹에서 찾아보고 있어요')
     + line('', 'spark', '두 군데 더 읽고 있어요'),
   comp: { send: 'stop', focus: false },
