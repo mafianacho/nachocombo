@@ -114,6 +114,13 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
     private func fitBoard() {
         let w = scroll.contentSize.width
         board.padding = editing ? 24 : Brand.Bento.padding
+        board.topPadding = 4
+        // Edit mode keeps six columns next to the panel with narrower cells (b3).
+        board.minCell = editing ? 118 : Brand.Bento.minCell
+        // Rows fill the window when they fit (the design's 4 rows in 770 pt), else they keep a readable height and scroll.
+        let rows = CGFloat(max(1, board.rows(forWidth: w)))
+        let room = scroll.contentSize.height - board.topPadding - board.padding - (rows - 1) * Brand.Bento.gap
+        board.rowHeight = min(200, max(editing ? 120 : 140, floor(room / rows)))
         let h = max(board.height(forWidth: w), scroll.contentSize.height)
         board.frame = NSRect(x: 0, y: 0, width: w, height: h)
         board.relayout(animated: false)

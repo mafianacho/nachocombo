@@ -25,6 +25,8 @@ final class BentoBuilderTests: XCTestCase {
         XCTAssertEqual(BentoFormat.weekday(4), "수요일")
         XCTAssertEqual(BentoFormat.oneLine("회의는\n금요일   오후 3시"), "회의는 금요일 오후 3시")
         XCTAssertEqual(BentoRing(label: "CPU", fraction: nil, tone: .green).text, "—")
+        XCTAssertEqual(BentoFormat.name(.menuBar), "Menu Bar")
+        XCTAssertEqual(BentoFormat.name(.clipboard), ModuleID.clipboard.displayName)
         XCTAssertEqual(BentoRing(label: "CPU", fraction: 0.374, tone: .green).text, "37%")
     }
 

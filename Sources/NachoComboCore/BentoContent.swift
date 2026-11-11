@@ -137,6 +137,11 @@ public enum BentoDot: String, Equatable {
 
 /// Number and time text of the widgets.
 public enum BentoFormat {
+    /// The widget header's name: the tool's name, shortened where the cell is narrow ("Menu Bar").
+    public static func name(_ id: ModuleID) -> String {
+        id == .menuBar ? "Menu Bar" : id.displayName
+    }
+
     /// Decimal units like Finder and Activity Monitor: 1_200_000 → "1.2MB/s", 84_000 → "84KB/s", 0 → "0B/s".
     public static func rate(_ bytesPerSecond: Double) -> String { size(bytesPerSecond) + "/s" }
 

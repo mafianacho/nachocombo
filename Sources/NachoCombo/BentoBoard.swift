@@ -62,7 +62,8 @@ final class BentoCardView: NSView {
         nameLabel.font = BentoDraw.font(compact ? 12 : 12, .semibold)
         nameLabel.textColor = Brand.Bento.ink
         nameLabel.lineBreakMode = .byTruncatingTail
-        nameLabel.stringValue = module.displayName
+        nameLabel.stringValue = BentoFormat.name(module)
+        nameLabel.toolTip = module.displayName
         shortcutLabel.font = BentoDraw.mono(11)
         shortcutLabel.textColor = Brand.Bento.ink2
         shortcutLabel.alignment = .right
@@ -331,8 +332,11 @@ final class BentoRemoveBadge: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func draw(_ dirtyRect: NSRect) {
-        Brand.Bento.selected.setFill()
+        // A light ring keeps it visible on the selected card's dark outline.
+        NSColor.white.setFill()
         NSBezierPath(ovalIn: bounds).fill()
+        Brand.Bento.selected.setFill()
+        NSBezierPath(ovalIn: bounds.insetBy(dx: 1.5, dy: 1.5)).fill()
         Brand.Bento.buttonInk.setFill()
         NSRect(x: 5, y: 8, width: 8, height: 2).fill()
     }
@@ -349,6 +353,10 @@ final class BentoBoardView: NSView {
     var onSelectionChange: ((ModuleID?) -> Void)?
     var onOpenHiddenMenu: ((NSView) -> Void)?
     var padding: CGFloat = Brand.Bento.padding
+    /// The window's top bar already leaves room above the board.
+    var topPadding: CGFloat = 0
+    var rowHeight: CGFloat = Brand.Bento.rowHeight
+    var minCell: CGFloat = Brand.Bento.minCell
     private var cards: [ModuleID: BentoCardView] = [:]
     private var badges: [ModuleID: BentoRemoveBadge] = [:]
     private let addCard = BentoAddCard()
@@ -454,29 +462,32 @@ final class BentoBoardView: NSView {
     }
 
     /// The height the board needs at this width (rows of `Brand.Bento.rowHeight`).
-    func height(forWidth width: CGFloat) -> CGFloat {
+    func rows(forWidth width: CGFloat) -> Int {
         let inner = width - 2 * padding
-        let cols = BentoPacker.columns(forWidth: Double(inner), minCell: Double(Brand.Bento.minCell), gap: Double(Brand.Bento.gap))
-        let items = (host?.bentoLayout.visible ?? [])
-        let rows = BentoPacker.pack(items, columns: cols, extra: ["add"]).rows
-        return 2 * padding + CGFloat(rows) * Brand.Bento.rowHeight + CGFloat(max(0, rows - 1)) * Brand.Bento.gap
+        let cols = BentoPacker.columns(forWidth: Double(inner), minCell: Double(minCell), gap: Double(Brand.Bento.gap))
+        return BentoPacker.pack(host?.bentoLayout.visible ?? [], columns: cols, extra: ["add"]).rows
+    }
+
+    func height(forWidth width: CGFloat) -> CGFloat {
+        let rows = rows(forWidth: width)
+        return topPadding + padding + CGFloat(rows) * rowHeight + CGFloat(max(0, rows - 1)) * Brand.Bento.gap
     }
 
     func relayout(animated: Bool) {
         guard let host = host else { return }
         let inner = bounds.width - 2 * padding
         guard inner > 0 else { return }
-        columns = BentoPacker.columns(forWidth: Double(inner), minCell: Double(Brand.Bento.minCell), gap: Double(Brand.Bento.gap))
+        columns = BentoPacker.columns(forWidth: Double(inner), minCell: Double(minCell), gap: Double(Brand.Bento.gap))
         let gap = Brand.Bento.gap
         let cellW = (inner - CGFloat(columns - 1) * gap) / CGFloat(columns)
-        let rowH = Brand.Bento.rowHeight
+        let rowH = rowHeight
         let placed = BentoPacker.pack(host.bentoLayout.visible, columns: columns, extra: ["add"]).placements
         let animate = animated && !UI.reduceMotion
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = animate ? 0.2 : 0
             ctx.allowsImplicitAnimation = animate
             for p in placed {
-                let f = NSRect(x: padding + CGFloat(p.column) * (cellW + gap), y: padding + CGFloat(p.row) * (rowH + gap),
+                let f = NSRect(x: padding + CGFloat(p.column) * (cellW + gap), y: topPadding + CGFloat(p.row) * (rowH + gap),
                                width: CGFloat(p.columns) * cellW + CGFloat(p.columns - 1) * gap,
                                height: CGFloat(p.rows) * rowH + CGFloat(p.rows - 1) * gap)
                 if p.id == "add" { addCard.frame = f; continue }
