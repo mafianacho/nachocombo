@@ -119,7 +119,9 @@ final class BentoCardView: NSView {
 
     override func layout() {
         super.layout()
-        let padX: CGFloat = compact ? 12 : 16, padY: CGFloat = compact ? 10 : 14
+        // Edit mode's narrower cells (b3) get the design's tighter padding and a smaller name.
+        let padX: CGFloat = compact || editing ? 12 : 16, padY: CGFloat = compact ? 10 : 14
+        nameLabel.font = BentoDraw.font(editing ? 11.5 : 12, .semibold)
         let headerH: CGFloat = 17
         var right = bounds.width - padX
         let showSwitch = !compact && !editing
@@ -136,7 +138,7 @@ final class BentoCardView: NSView {
             right -= w + 6
         }
         dot.frame = NSRect(x: padX, y: padY + 4.5, width: 12, height: 8)
-        let nameX = padX + 19
+        let nameX = padX + (editing ? 17 : 19)
         nameLabel.frame = NSRect(x: nameX, y: padY, width: max(10, right - nameX), height: headerH)
         let bodyTop = padY + headerH + 8
         let body = NSRect(x: padX, y: bodyTop, width: bounds.width - 2 * padX, height: max(0, bounds.height - bodyTop - padY))

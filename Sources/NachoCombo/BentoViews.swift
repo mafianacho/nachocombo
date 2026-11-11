@@ -411,7 +411,8 @@ final class BentoBodyView: NSView {
     }
 
     private func layouts(_ shapes: [BentoSnapShape], _ caption: String?, _ r: NSRect) {
-        let capH: CGFloat = caption == nil ? 0 : 20
+        let capF = BentoDraw.font(11)
+        let capH: CGFloat = caption.map { BentoDraw.wrappedHeight($0, width: r.width, lines: 2, font: capF) + 6 } ?? 0
         let cellH: CGFloat = 26
         let gap: CGFloat = 6
         let cols = 2
@@ -430,7 +431,7 @@ final class BentoBodyView: NSView {
                               width: inner.width * CGFloat(s.w), height: inner.height * CGFloat(s.h))
             BentoDraw.rounded(fill, 3, fill: Brand.Bento.dotOn)
         }
-        if let c = caption { BentoDraw.text(c, at: NSPoint(x: r.minX, y: r.maxY - 16), width: r.width, font: BentoDraw.font(11), color: sub) }
+        if let c = caption { BentoDraw.wrapped(c, at: NSPoint(x: r.minX, y: r.maxY - capH + 6), width: r.width, lines: 2, font: capF, color: sub) }
     }
 
     private func timer(_ fraction: Double?, _ big: String, _ caption: String, _ r: NSRect) {
@@ -439,12 +440,13 @@ final class BentoBodyView: NSView {
             BentoDraw.text(caption, at: NSPoint(x: r.minX, y: r.maxY - 16), width: r.width, font: BentoDraw.font(11), color: sub)
             return
         }
-        let d: CGFloat = 56
+        let narrow = r.width < 130
+        let d: CGFloat = narrow ? 40 : 56
         let c = NSPoint(x: r.minX + d / 2, y: r.maxY - d / 2)
         BentoDraw.ring(center: c, radius: d * 15 / 36, width: d * 3 / 36, fraction: fraction, color: Brand.Bento.coffee)
         BentoDraw.symbol("cup.and.saucer.fill", in: NSRect(x: c.x - 9, y: c.y - 8, width: 18, height: 16), color: ink)
-        let x = r.minX + d + 10
-        let bf = BentoDraw.font(20, .bold)
+        let x = r.minX + d + (narrow ? 6 : 10)
+        let bf = BentoDraw.font(narrow ? 17 : 20, .bold)
         BentoDraw.text(big, at: NSPoint(x: x, y: c.y - 22), width: r.maxX - x, font: bf, color: ink)
         BentoDraw.wrapped(caption, at: NSPoint(x: x, y: c.y + 4), width: r.maxX - x, lines: 2, font: BentoDraw.font(11), color: sub)
     }
@@ -514,7 +516,7 @@ final class BentoBodyView: NSView {
                 NSGraphicsContext.restoreGraphicsState()
             }
         }
-        BentoDraw.text(caption, at: NSPoint(x: r.minX, y: r.maxY - 16), width: r.width, font: BentoDraw.font(11), color: sub)
+        BentoDraw.wrapped(caption, at: NSPoint(x: r.minX, y: r.maxY - 16), width: r.width, lines: 1, font: BentoDraw.font(11), color: sub)
     }
 
     private func level(_ fraction: Double, _ low: String, _ high: String, _ caption: String, _ r: NSRect) {
