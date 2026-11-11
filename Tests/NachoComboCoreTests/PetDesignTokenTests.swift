@@ -58,8 +58,9 @@ final class PetDesignTokenTests: XCTestCase {
                 line = "  --color-\(kebab(p[2])): \(value);"
                 block = p[1] == "dark" ? dark : lightAndBase
             } else {
-                let unit = p[0] == "font" && p[1] == "family" || unitless.contains(key) ? "" : (p[0] == "motion" ? "ms" : "px")
-                line = "  --\(p[0])-\(kebab(p[1])): \(value)\(unit);"
+                let raw = p[0] == "font" && p[1] == "family" || p[0] == "curve" || p[0] == "motionAmount" || unitless.contains(key)
+                let unit = raw ? "" : (p[0] == "motion" ? "ms" : "px")
+                line = "  --\(kebab(p[0]))-\(kebab(p[1])): \(value)\(unit);"
                 block = lightAndBase
             }
             XCTAssertTrue(block.contains(line + "\n"), "missing in tokens.css: \(line)")

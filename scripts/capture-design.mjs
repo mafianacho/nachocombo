@@ -46,7 +46,7 @@ for (const scale of [1, 2]) {
   for (const s of scenes) for (const [name, qs] of variants) {
     await page.goto(`${base}?scene=${s}${qs}`);
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0));
+    await page.waitForFunction(() => [...document.images].every((i) => !i.getAttribute('src') || (i.complete && i.naturalWidth > 0)));
     const el = await page.$('#capture');
     const file = path.join(out, `${s}-${name}@${scale}x.png`);
     await el.screenshot({ path: file });

@@ -44,15 +44,13 @@ button { font: inherit; color: inherit; }
   width: var(--size-pet); height: var(--size-pet); cursor: pointer;
   transition: transform var(--motion-base) ease-out;
 }
-.pet img {
-  position: absolute; inset: var(--size-pet-art-inset);
-  width: calc(var(--size-pet) - 2 * var(--size-pet-art-inset)); height: calc(var(--size-pet) - 2 * var(--size-pet-art-inset));
+.pet .figure { /* motion.js moves this box: translate, rotate and scale around the bottom centre */
+  position: absolute; inset: var(--size-pet-art-inset); transform-origin: 50% 100%;
   filter: drop-shadow(0 var(--shadow-pet-y) var(--shadow-pet-blur) rgb(0 0 0 / var(--shadow-pet-opacity)));
-  animation: breath var(--motion-pet-breath) ease-in-out infinite;
+}
+.pet .figure img { position: absolute; inset: 0; width: 100%; height: 100%;
   transform-origin: 50% 90%;
 }
-.pet.thinking img { animation-duration: calc(var(--motion-pet-breath) / 2); }
-.pet.sleeping img, .pet.tired img { animation-duration: calc(var(--motion-pet-breath) * 1.6); }
 .pet.hover { transform: translateY(calc(-1 * var(--size-pet-hover-lift))); }
 .pet .badge { /* small state mark top-right: mic while listening, dots while thinking */
   position: absolute; top: 8px; left: 6px; height: 20px; min-width: 20px; padding: 0 6px; border-radius: 10px;
@@ -75,7 +73,6 @@ button { font: inherit; color: inherit; }
 .nametag .k { opacity: .85; }
 .drop-ring { position: absolute; inset: 8px 4px 0; border-radius: 50%; border: 2px dashed var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
-@keyframes breath { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
 @keyframes dot { 0%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
 @keyframes blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -133,7 +130,8 @@ button { font: inherit; color: inherit; }
   justify-content: flex-end; }
 .row { display: flex; }
 .row.mine { justify-content: flex-end; }
-.bubble { max-width: var(--size-bubble-max-width); padding: var(--space-s) var(--space-m); border-radius: var(--radius-bubble); }
+.bubble { max-width: var(--size-bubble-max-width); padding: var(--space-s) var(--space-m); border-radius: var(--radius-bubble);
+  word-break: keep-all; overflow-wrap: break-word; text-wrap: pretty; }
 .mine .bubble { background: var(--color-mine-bubble); color: var(--color-mine-text); border-bottom-right-radius: var(--radius-bubble-tail); }
 .nacho .bubble { background: var(--color-nacho-bubble); color: var(--color-nacho-text); border-bottom-left-radius: var(--radius-bubble-tail); }
 .bubble.past { opacity: .78; }
@@ -147,7 +145,6 @@ button { font: inherit; color: inherit; }
 .line .err { color: var(--color-danger); }
 .line.task { color: var(--color-info); }
 .line.memory { color: var(--color-text-secondary); }
-.line.memory svg { color: var(--color-memory); }
 .line.notice { color: var(--color-text-secondary); }
 .line.danger { color: var(--color-danger); }
 .line.usage { justify-content: flex-end; }
@@ -176,10 +173,12 @@ button { font: inherit; color: inherit; }
 
 .file { display: inline-flex; align-items: center; gap: var(--space-xs); height: var(--size-chip-height); padding: 0 var(--space-s);
   border-radius: var(--radius-chip); background: var(--color-surface-raised); box-shadow: 0 0 0 0.5px var(--color-separator);
-  font-size: var(--font-caption); color: var(--color-link); max-width: 100%; }
+  font-size: var(--font-caption); color: var(--color-link); max-width: 100%; text-decoration: none; }
+a.file .fn { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--color-link) 55%, transparent); }
 .file svg { width: 13px; height: 13px; flex: none; }
-.file .by { color: var(--color-text-tertiary); }
-.file.gone { color: var(--color-text-tertiary); text-decoration: line-through; }
+.file .by { color: var(--color-text-tertiary); text-decoration: none; }
+.file.gone { color: var(--color-text-tertiary); opacity: .7; }
 .mine .file { background: color-mix(in srgb, var(--color-surface-raised) 70%, transparent); color: var(--color-mine-text); }
 
 /* pending attachments above the composer */
@@ -264,3 +263,14 @@ button { font: inherit; color: inherit; }
 .check i svg { width: 10px; height: 10px; }
 .cap2 { font-size: var(--font-caption); color: var(--color-text-secondary); }
 .cap3 { font-size: var(--font-caption); color: var(--color-text-tertiary); }
+
+/* ---------- motion preview ---------- */
+.motion-stage { position: relative; }
+.motion-stage .pet { right: 50%; transform: translateX(50%); bottom: 56px; }
+.motion-caption { position: absolute; left: 0; right: 0; bottom: var(--space-l); text-align: center; font-size: var(--font-body);
+  color: var(--color-text); font-weight: var(--font-weight-medium); }
+.motion-bar { position: absolute; left: var(--space-xl); right: var(--space-xl); top: var(--space-l); height: 4px; border-radius: 2px;
+  background: var(--color-separator); }
+.motion-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--color-accent); }
+.motion-bar b { position: absolute; top: 8px; transform: translateX(-50%); font-size: var(--font-caption); font-weight: var(--font-weight-regular);
+  color: var(--color-text-tertiary); white-space: nowrap; }

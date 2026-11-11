@@ -73,6 +73,44 @@ public enum PetTokens {
         public static let happyHold: Double = 4000
         public static let tiredAfter: Double = 600000
         public static let sleepAfter: Double = 1800000
+        public static let transition: Double = 200
+        public static let blinkMin: Double = 2000
+        public static let blinkMax: Double = 5200
+        public static let blink: Double = 130
+        public static let listenPeriod: Double = 900
+        public static let thinkPeriod: Double = 1800
+        public static let speakPeriod: Double = 520
+        public static let happyHop: Double = 420
+        public static let drowsePeriod: Double = 4200
+        public static let drowseClosed: Double = 1400
+        public static let press: Double = 110
+        public static let land: Double = 280
+        public static let frameInterval: Double = 33
+    }
+
+    public enum MotionAmount {
+        public static let transitionScale: Double = 0.04
+        public static let breathLift: Double = 1.5
+        public static let breathScale: Double = 0.02
+        public static let listenLift: Double = 2
+        public static let listenTilt: Double = 2
+        public static let thinkTilt: Double = 3
+        public static let thinkLift: Double = 0.8
+        public static let speakLift: Double = 1.2
+        public static let speakScale: Double = 0.012
+        public static let happyHopHeight: Double = 9
+        public static let tiredBreathSlow: Double = 1.6
+        public static let sleepBreathSlow: Double = 2.2
+        public static let pressScale: Double = 0.94
+        public static let dragTiltPerSpeed: Double = 0.012
+        public static let dragTiltMax: Double = 8
+        public static let landSquash: Double = 0.08
+    }
+
+    public enum Curve {
+        public static let standard = "cubic-bezier(0.2, 0, 0, 1)"
+        public static let emphasized = "cubic-bezier(0.3, 0, 0, 1.3)"
+        public static let exit = "cubic-bezier(0.4, 0, 1, 1)"
     }
 
     public struct Palette: Equatable {
@@ -100,7 +138,6 @@ public enum PetTokens {
         public let dangerSoft: String
         public let onDanger: String
         public let info: String
-        public let memory: String
         public let focusRing: String
         public let tooltip: String
         public let onTooltip: String
@@ -133,7 +170,6 @@ public enum PetTokens {
         dangerSoft: "#FBE5E2",
         onDanger: "#FFFFFF",
         info: "#2C6FBF",
-        memory: "#7A4FB5",
         focusRing: "#C2530A40",
         tooltip: "#2A2521F0",
         onTooltip: "#FFFFFF",
@@ -165,7 +201,6 @@ public enum PetTokens {
         dangerSoft: "#45231F",
         onDanger: "#2A0D0A",
         info: "#7FB1F2",
-        memory: "#C4A3F0",
         focusRing: "#FF8A3D4D",
         tooltip: "#F4EFE9F0",
         onTooltip: "#1F1B17",
@@ -230,6 +265,38 @@ public enum PetTokens {
         d["motion.happyHold"] = text(Motion.happyHold)
         d["motion.tiredAfter"] = text(Motion.tiredAfter)
         d["motion.sleepAfter"] = text(Motion.sleepAfter)
+        d["motion.transition"] = text(Motion.transition)
+        d["motion.blinkMin"] = text(Motion.blinkMin)
+        d["motion.blinkMax"] = text(Motion.blinkMax)
+        d["motion.blink"] = text(Motion.blink)
+        d["motion.listenPeriod"] = text(Motion.listenPeriod)
+        d["motion.thinkPeriod"] = text(Motion.thinkPeriod)
+        d["motion.speakPeriod"] = text(Motion.speakPeriod)
+        d["motion.happyHop"] = text(Motion.happyHop)
+        d["motion.drowsePeriod"] = text(Motion.drowsePeriod)
+        d["motion.drowseClosed"] = text(Motion.drowseClosed)
+        d["motion.press"] = text(Motion.press)
+        d["motion.land"] = text(Motion.land)
+        d["motion.frameInterval"] = text(Motion.frameInterval)
+        d["motionAmount.transitionScale"] = text(MotionAmount.transitionScale)
+        d["motionAmount.breathLift"] = text(MotionAmount.breathLift)
+        d["motionAmount.breathScale"] = text(MotionAmount.breathScale)
+        d["motionAmount.listenLift"] = text(MotionAmount.listenLift)
+        d["motionAmount.listenTilt"] = text(MotionAmount.listenTilt)
+        d["motionAmount.thinkTilt"] = text(MotionAmount.thinkTilt)
+        d["motionAmount.thinkLift"] = text(MotionAmount.thinkLift)
+        d["motionAmount.speakLift"] = text(MotionAmount.speakLift)
+        d["motionAmount.speakScale"] = text(MotionAmount.speakScale)
+        d["motionAmount.happyHopHeight"] = text(MotionAmount.happyHopHeight)
+        d["motionAmount.tiredBreathSlow"] = text(MotionAmount.tiredBreathSlow)
+        d["motionAmount.sleepBreathSlow"] = text(MotionAmount.sleepBreathSlow)
+        d["motionAmount.pressScale"] = text(MotionAmount.pressScale)
+        d["motionAmount.dragTiltPerSpeed"] = text(MotionAmount.dragTiltPerSpeed)
+        d["motionAmount.dragTiltMax"] = text(MotionAmount.dragTiltMax)
+        d["motionAmount.landSquash"] = text(MotionAmount.landSquash)
+        d["curve.standard"] = Curve.standard
+        d["curve.emphasized"] = Curve.emphasized
+        d["curve.exit"] = Curve.exit
         d["color.light.desktop"] = light.desktop
         d["color.light.window"] = light.window
         d["color.light.surface"] = light.surface
@@ -254,7 +321,6 @@ public enum PetTokens {
         d["color.light.dangerSoft"] = light.dangerSoft
         d["color.light.onDanger"] = light.onDanger
         d["color.light.info"] = light.info
-        d["color.light.memory"] = light.memory
         d["color.light.focusRing"] = light.focusRing
         d["color.light.tooltip"] = light.tooltip
         d["color.light.onTooltip"] = light.onTooltip
@@ -284,7 +350,6 @@ public enum PetTokens {
         d["color.dark.dangerSoft"] = dark.dangerSoft
         d["color.dark.onDanger"] = dark.onDanger
         d["color.dark.info"] = dark.info
-        d["color.dark.memory"] = dark.memory
         d["color.dark.focusRing"] = dark.focusRing
         d["color.dark.tooltip"] = dark.tooltip
         d["color.dark.onTooltip"] = dark.onTooltip

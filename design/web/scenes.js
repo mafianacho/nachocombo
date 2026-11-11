@@ -2,6 +2,7 @@
 // URL: index.html?scene=<id>&theme=light|dark   ·   &pair=1 → light and dark side by side   ·   no scene → index.
 // Texts are the app's (Sources/NachoComboCore/Pet, Sources/NachoCombo/Pet). Art: Resources/Nacho (© Mafianacho).
 const ART = '../../Resources/Nacho/';
+const ART_FILE = (a) => `${ART}${a}${a === 'calling-eyeless' ? '.webp' : '.png'}`;
 const FACE = { idle: 'idle', listening: 'calling', thinking: 'thinking', speaking: 'working', happy: 'happy', waiting: 'waiting',
   tired: 'tired', sleeping: 'eyes-closed' };
 
@@ -40,7 +41,7 @@ const pet = (face = 'idle', extra = '') => {
   if (face === 'thinking') badge = '<span class="badge dots"><i></i><i></i><i></i></span>';
   if (face === 'speaking') badge = `<span class="badge">${icon('bubble')}</span>`;
   if (face === 'sleeping') badge = '<span class="badge">z</span>';
-  return `<div class="pet ${face} ${extra}" data-face="${face}" role="button" aria-label="나초 펫"><img src="${ART}${FACE[face]}.png" alt="">${badge}</div>`;
+  return `<div class="pet ${face} ${extra}" data-face="${face}" role="button" aria-label="나초 펫"><div class="figure"><img class="prev" alt="" style="opacity:0"><img class="cur" src="${ART}${FACE[face]}.png" alt=""></div>${badge}</div>`;
 };
 const head = ({ status = '연결됨', dot = '', credits = '크레딧 180', tab = 0 } = {}) => `
   <header class="chat-head">
@@ -51,7 +52,7 @@ const head = ({ status = '연결됨', dot = '', credits = '크레딧 180', tab =
 const mine = (text, attach = '') => `<div class="row mine"><div class="bubble">${esc(text)}${attach}</div></div>`;
 const nacho = (html, past = false) => `<div class="row nacho"><div class="bubble ${past ? 'past' : ''}">${html}</div></div>`;
 const line = (kind, ic, html) => `<div class="line ${kind}">${ic ? icon(ic) : ''}<span>${html}</span></div>`;
-const file = (name, by = true, kind = 'doc') => `<a class="file" href="#">${icon(kind)}<span>${esc(name)}</span>${by ? '<span class="by">· 나초가 만듦</span>' : ''}</a>`;
+const file = (name, by = true, kind = 'doc') => `<a class="file" href="#">${icon(kind)}<span class="fn">${esc(name)}</span>${by ? '<span class="by">· 나초가 만듦</span>' : ''}</a>`;
 const composer = ({ text = '', focus = true, send = 'off', mic = '', listening = false } = {}) => `
   <div class="composer">
     <button class="ibtn" title="파일 주기">${icon('clip')}</button>
@@ -106,29 +107,26 @@ scene('tools', '도구 진행 줄 · 중간 답', () => chatScene({
   comp: { send: 'stop', focus: false },
 }, 'thinking'));
 scene('task', '일 턴 진행 (선택 질문 대기)', () => chatScene({
-  headOpts: { status: '답을 기다려요', dot: 'wait' },
+  headOpts: { status: '파스타집 예약 · 답을 기다려요', dot: 'wait', credits: '' },
   log: mine('내일 저녁 파스타집 예약해 줘')
     + nacho('일로 맡았어요. 진행 상황은 여기에 보여 드릴게요.')
     + line('', 'spark', '자리를 알아보고 있어요')
     + `<div class="card"><div class="q">${icon('question')}<span>어느 시간이 좋아요?</span></div>
-        <div class="opts"><button class="opt">저녁 7시</button><button class="opt">저녁 8시</button></div>
-        <div class="st wait">골라 주세요</div></div>`
-    + line('task', 'task', '파스타집 예약 <span class="sep">·</span> 답을 기다려요'),
+        <div class="opts"><button class="opt">저녁 7시</button><button class="opt">저녁 8시</button></div></div>`,
 }, 'idle'));
 scene('task-done', '일 턴 결과', () => chatScene({
+  headOpts: { status: '파스타집 예약 · 끝냈어요', dot: '', credits: '' },
   log: mine('내일 저녁 파스타집 예약해 줘')
     + nacho('일로 맡았어요. 진행 상황은 여기에 보여 드릴게요.')
     + `<div class="card"><div class="q">${icon('question')}<span>어느 시간이 좋아요?</span></div>
         <div class="opts"><button class="opt chosen">저녁 7시</button><button class="opt">저녁 8시</button></div>
         <div class="st">골랐어요</div></div>`
-    + nacho('내일 저녁 7시, 파스타 리코에 2명으로 예약했어요. 취소는 오후 5시까지 돼요.')
-    + line('task', 'task', '파스타집 예약 <span class="sep">·</span> 끝냈어요 <span class="ok">✓</span>'),
+    + nacho('내일 저녁 7시, 파스타 리코에 2명으로 예약했어요. 취소는 오후 5시까지 돼요.'),
 }, 'happy'));
 scene('choice', '선택 질문 · 승인 요청(폰에서)', () => chatScene({
   log: mine('주말에 부모님 선물 보내 줘')
     + `<div class="card"><div class="q">${icon('question')}<span>어떤 걸로 할까요?</span></div>
-        <div class="opts"><button class="opt">과일 바구니</button><button class="opt">홍삼 세트</button><button class="opt">꽃다발</button></div>
-        <div class="st wait">골라 주세요</div></div>`
+        <div class="opts"><button class="opt">과일 바구니</button><button class="opt">홍삼 세트</button><button class="opt">꽃다발</button></div></div>`
     + `<div class="card"><div class="q">${icon('phone')}<span>결제할까요?</span></div>
         <div class="detail">선물가게 · 39,000원 · 배송 전까지 취소할 수 있어요</div>
         <div class="st wait">휴대폰의 나초 앱에서 승인해 주세요</div></div>`,
@@ -145,17 +143,19 @@ scene('attach', '첨부: 캡처 → 펫 · 선반 → 펫', () => chatScene({
 scene('files', '나초가 만든 파일 링크', () => chatScene({
   log: mine('회의 메모를 표로 정리해 줘')
     + nacho('정리했어요. 결정 3개, 할 일 5개예요.')
-    + `<div class="row nacho" style="gap:var(--space-xs);flex-wrap:wrap">${file('회의 정리.csv')}${file('회의 요약')}</div>`
-    + `<div class="row nacho"><span class="file gone">${icon('image')}<span>예전 캡처.png (지워짐)</span></span></div>`,
+    + `<div class="row nacho" style="gap:var(--space-xs);flex-wrap:wrap">${file('회의 정리.csv')}${file('회의 요약.md')}</div>`
+    + `<div class="row nacho"><span class="file gone">${icon('image')}<span>예전 캡처.png</span><span class="by">· 지워짐</span></span></div>`,
 }, 'happy'));
-scene('memory', '기억 줄 · 잊어 줘 · 되돌리기 · 기억이 틀렸어요', () => chatScene({
+scene('memory', '기억 줄: 잊은 줄(10초 되돌리기) · 쓴 기억 · 새 기억', () => chatScene({
   log: mine('나 요즘 고양이 키워')
     + nacho('와, 좋겠어요! 이름이 뭐예요?')
-    + line('memory', 'memory', '기억했어요: 고양이를 키워요 <span class="sep">·</span> <a class="link">잊어 줘</a>')
+    + line('memory', 'memory', '잊었어요: 고양이를 키워요 <span class="sep">·</span> <a class="link">10초 안에 되돌리기</a>')
     + mine('내가 좋아하는 음식 알아?')
     + nacho('매운 음식을 좋아하신다고 기억해요.')
-    + line('memory', 'memory', '잊었어요: 매운 음식을 좋아함 <span class="sep">·</span> <a class="link">되돌리기</a> <span class="sep">(10초)</span>')
-    + line('memory', 'memory', '이 답에 기억 1개를 썼어요 <span class="sep">·</span> <a class="link">기억이 틀렸어요</a>'),
+    + line('memory', 'memory', '이 답에 기억 1개를 썼어요 <span class="sep">·</span> <a class="link">기억이 틀렸어요</a>')
+    + mine('요즘은 덜 매운 게 좋아')
+    + nacho('알겠어요. 순한 맛으로 기억할게요.')
+    + line('memory', 'memory', '기억했어요: 덜 매운 음식을 좋아함 <span class="sep">·</span> <a class="link">잊어 줘</a>'),
 }, 'idle'));
 scene('history', '이전 대화 이어보기 · 폰에서 보낸 말', () => chatScene({
   log: `<button class="older">${icon('up')}이전 대화 더 보기</button>`
@@ -168,7 +168,7 @@ scene('history', '이전 대화 이어보기 · 폰에서 보낸 말', () => cha
 }, 'idle'));
 scene('signin', '로그인 요청', () => desk(`<div class="chat" role="dialog">${head({ status: '로그인 전', dot: 'off', credits: '' })}
   <div class="signin"><img src="${ART}happy.png" alt=""><h2>안녕하세요, 나초예요.</h2>
-  <p>나초 계정으로 로그인하면 여기서 대화할 수 있어요. 캡처나 선반의 파일을 건네거나, 창 배치와 가젯 켜기·끄기도 부탁할 수 있어요.</p>
+  <p>나초 계정으로 로그인하면 여기서 대화할 수 있어요. 캡처나 선반의 파일을 건네거나, 창 배치나 가젯을 켜고 끄는 일도 부탁할 수 있어요.</p>
   <button class="primary">${icon('person')}나초 계정으로 로그인</button>
   <small>로그인은 브라우저 창(auth.nachotown.com)에서 해요. 비밀번호는 콤보가 보지 않아요.</small></div></div>${pet('waiting')}`));
 scene('error', '오류 · 점검 안내', () => chatScene({
@@ -203,6 +203,52 @@ scene('settings', '설정의 나초 펫 카드', () => `<div class="stage" style
     <span class="cap3">The Nacho character is © Mafianacho, all rights reserved: it is not part of the MIT-licensed source code (see TRADEMARKS.md).</span>
   </div></div></div>`);
 
+scene('motion', '모션 미리보기 (16초: 상태 순환 · 클릭 · 끌기 · 졸음)', () => {
+  const P = window.PetMotionPreview;
+  const ticks = P.events.filter((e) => e[1] === 'face').map(([t, , f]) =>
+    `<b style="left:${(t / P.length) * 100}%">${{ idle: '대기', listening: '듣기', thinking: '생각', speaking: '답변', happy: '완료', tired: '졸음', sleeping: '잠' }[f]}</b>`).join('');
+  return `<div class="stage motion-stage" style="width:420px;height:300px"><div class="motion-bar"><i></i>${ticks}</div>${pet('idle')}<div class="motion-caption"></div></div>`;
+});
+
+// ---------- motion: every pet on the page follows design/web/motion.js ----------
+function applyPose(el, p) {
+  const fig = el.querySelector('.figure'), cur = el.querySelector('img.cur'), prev = el.querySelector('img.prev');
+  const src = ART_FILE(p.asset);
+  if (!cur.src.endsWith(src.slice(5))) cur.src = src;
+  if (p.previous) { const ps = ART_FILE(p.previous); if (!prev.src.endsWith(ps.slice(5))) prev.src = ps; prev.style.opacity = String(1 - p.mix); }
+  else prev.style.opacity = '0';
+  cur.style.opacity = String(p.mix);
+  fig.style.transform = `translate(${p.dx}px, ${-p.dy}px) rotate(${p.rotation}deg) scale(${p.scaleX}, ${p.scaleY})`;
+}
+const MOTION_FACE = { idle: 'idle', listening: 'listening', thinking: 'thinking', speaking: 'speaking', happy: 'happy', waiting: 'waiting', tired: 'tired', sleeping: 'sleeping' };
+function previewAt(root, ms) {  // deterministic: replays the preview's events up to `ms`
+  const P = window.PetMotionPreview, el = root.querySelector('.motion-stage .pet');
+  const m = new PetMotion({ face: 'idle', at: 0, seed: P.seed, reduceMotion: root.dataset.reduce === '1' });
+  let caption = '';
+  for (const [at, op, arg, label] of P.events) {
+    if (at > ms) break;
+    if (op === 'face') m.setFace(arg, at); else if (op === 'drag') m.drag(arg, at); else m[op](at);
+    if (label) caption = label;
+  }
+  applyPose(el, m.pose(ms));
+  root.querySelector('.motion-caption').textContent = caption;
+  root.querySelector('.motion-bar i').style.width = `${Math.min(100, (ms / P.length) * 100)}%`;
+  for (const b of root.querySelectorAll('.badge')) b.remove();
+}
+function livePets(root) {  // interactive pets: press, drag (tilt) and drop (landing), like the app
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  for (const el of root.querySelectorAll('.pet')) {
+    if (el.closest('.motion-stage')) continue;
+    const m = new PetMotion({ face: MOTION_FACE[el.dataset.face] || 'idle', at: performance.now(), seed: 5, reduceMotion: reduce });
+    let last = null, down = false;
+    el.addEventListener('pointerdown', (e) => { down = true; last = [e.clientX, performance.now()]; m.press(performance.now()); el.setPointerCapture(e.pointerId); });
+    el.addEventListener('pointermove', (e) => { if (!down) return; const now = performance.now(); const v = ((e.clientX - last[0]) / Math.max(1, now - last[1])) * 1000; last = [e.clientX, now]; m.drag(v, now); });
+    el.addEventListener('pointerup', () => { down = false; const now = performance.now(); m.drop(now); m.release(now); });
+    const tick = () => { const now = performance.now(); applyPose(el, m.pose(now)); if (m.isAnimating(now) || down) requestAnimationFrame(tick); else setTimeout(() => requestAnimationFrame(tick), 250); };
+    requestAnimationFrame(tick);
+  }
+}
+
 // ---------- page ----------
 const q = new URLSearchParams(location.search);
 const id = q.get('scene');
@@ -220,4 +266,11 @@ if (!id || !S[id]) {
   document.documentElement.dataset.theme = theme;
   root.innerHTML = `<div id="capture" style="display:inline-block">${S[id].render()}</div>`;
 }
+window.renderAt = (ms) => { for (const r of document.querySelectorAll('.motion-stage')) previewAt(r.parentElement, ms); };
+window.PRELOAD = ['idle', 'eyes-closed', 'calling', 'calling-eyeless', 'thinking', 'working', 'happy', 'waiting', 'tired'].map((a) => {
+  const i = new Image(); i.src = ART_FILE(a); return i; });
+if (id === 'motion') {
+  if (q.get('still') !== '0') window.renderAt(Number(q.get('t') || 1000));
+  else { const t0 = performance.now(); const loop = () => { window.renderAt((performance.now() - t0) % window.PetMotionPreview.length); requestAnimationFrame(loop); }; loop(); }
+} else if (q.get('still') === '0') livePets(document);
 window.SCENES = Object.fromEntries(Object.entries(S).map(([k, v]) => [k, v.title]));
