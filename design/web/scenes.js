@@ -89,7 +89,7 @@ scene('chat-empty', '입력 말풍선 (처음 열었을 때)', () => chatScene({
         <div class="line notice" style="justify-content:center">예: “창 왼쪽으로 붙여 줘”, “킵 어웨이크 켜 줘”, 캡처 우클릭 ▸ 나초에게 묻기</div>`,
 }));
 scene('dictation', '받아쓰기 (듣는 중)', () => chatScene({
-  log: mine('창 왼쪽으로 붙여 줘') + nacho('앞의 창을 왼쪽 절반에 붙였어요.') + line('', 'wrench', 'combo_arrange_window <span class="ok">✓</span>'),
+  log: mine('창 왼쪽으로 붙여 줘') + nacho('앞의 창을 왼쪽 절반에 붙였어요.') + line('', 'wrench', '창 배치 <span class="ok">✓</span>'),
   comp: { listening: true, mic: 'rec', send: 'off' },
 }, 'listening'));
 scene('streaming', '스트리밍 답 (멈추기 버튼)', () => chatScene({
@@ -100,7 +100,7 @@ scene('streaming', '스트리밍 답 (멈추기 버튼)', () => chatScene({
 scene('tools', '도구 진행 줄 · 중간 답', () => chatScene({
   headOpts: { status: '웹에서 찾는 중', dot: 'busy' },
   log: mine('요즘 맥북 배터리 오래 쓰는 법 찾아줘')
-    + line('', 'wrench', 'search_web <span class="ok">✓</span> <span class="sep">·</span> read_page …')
+    + line('', 'wrench', '웹 검색 <span class="ok">✓</span> <span class="sep">·</span> 페이지 읽기 …')
     + line('', 'spark', '웹에서 찾아보고 있어요')
     + line('', 'spark', '두 군데 더 읽고 있어요'),
   comp: { send: 'stop', focus: false },
@@ -130,7 +130,7 @@ scene('choice', '선택 질문 · 승인 요청(폰에서)', () => chatScene({
         <div class="opts"><button class="opt">과일 바구니</button><button class="opt">홍삼 세트</button><button class="opt">꽃다발</button></div>
         <div class="st wait">골라 주세요</div></div>`
     + `<div class="card"><div class="q">${icon('phone')}<span>결제할까요?</span></div>
-        <div class="detail">선물가게 · 39000원 · 배송 전까지 취소할 수 있어요</div>
+        <div class="detail">선물가게 · 39,000원 · 배송 전까지 취소할 수 있어요</div>
         <div class="st wait">휴대폰의 나초 앱에서 승인해 주세요</div></div>`,
 }, 'idle'));
 scene('attach', '첨부: 캡처 → 펫 · 선반 → 펫', () => chatScene({
