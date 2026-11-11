@@ -12,6 +12,12 @@ public struct PetPose: Equatable {
     public var scaleX: Double = 1
     public var scaleY: Double = 1
     public var rotation: Double = 0
+
+    public init(asset: String, previous: String? = nil, mix: Double = 1, dx: Double = 0, dy: Double = 0, scaleX: Double = 1,
+                scaleY: Double = 1, rotation: Double = 0) {
+        self.asset = asset; self.previous = previous; self.mix = mix; self.dx = dx; self.dy = dy
+        self.scaleX = scaleX; self.scaleY = scaleY; self.rotation = rotation
+    }
 }
 
 /// Nacho Pet motion as a pure function of time, from the original pictures only (no new art): crossfade with a small
@@ -201,6 +207,23 @@ public struct PetMotion {
         var q = p
         q.mix = r(p.mix); q.dx = r(p.dx); q.dy = r(p.dy); q.scaleX = r(p.scaleX); q.scaleY = r(p.scaleY); q.rotation = r(p.rotation)
         return q
+    }
+}
+
+/// When the pet may draw frames: only while it is on screen, the displays are awake, no full-screen app is in front,
+/// and something moves (or the user is touching it). Otherwise the frame timer stops: no CPU while idle.
+public struct PetAnimationGate: Equatable {
+    public var windowVisible = true
+    public var displaysAsleep = false
+    public var fullScreenAppInFront = false
+    public var interacting = false
+
+    public init() {}
+
+    public var allowsMotion: Bool { windowVisible && !displaysAsleep && !fullScreenAppInFront }
+
+    public func needsFrames(_ motion: PetMotion, at t: Double) -> Bool {
+        allowsMotion && (motion.isAnimating(at: t) || interacting)
     }
 }
 

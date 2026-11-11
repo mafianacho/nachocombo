@@ -19,6 +19,12 @@
   --size-bubble-max-width: 272px;
   --size-chip-height: 24px;
   --size-thumbnail: 40px;
+  --size-line-icon: 13px;
+  --size-send-icon: 14px;
+  --size-signin-art: 96px;
+  --size-chip-max-width: 170px;
+  --size-badge: 20px;
+  --size-badge-icon: 12px;
   --space-xxs: 2px;
   --space-xs: 4px;
   --space-s: 8px;
@@ -45,6 +51,9 @@
   --shadow-pet-y: 4px;
   --shadow-pet-blur: 10px;
   --shadow-pet-opacity: 0.22;
+  --opacity-past: 0.78;
+  --opacity-gone: 0.7;
+  --opacity-separator-text: 0.5;
   --motion-fast: 120ms;
   --motion-base: 200ms;
   --motion-slow: 320ms;

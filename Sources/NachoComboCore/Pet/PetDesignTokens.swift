@@ -23,6 +23,12 @@ public enum PetTokens {
         public static let bubbleMaxWidth: Double = 272
         public static let chipHeight: Double = 24
         public static let thumbnail: Double = 40
+        public static let lineIcon: Double = 13
+        public static let sendIcon: Double = 14
+        public static let signinArt: Double = 96
+        public static let chipMaxWidth: Double = 170
+        public static let badge: Double = 20
+        public static let badgeIcon: Double = 12
     }
 
     public enum Space {
@@ -61,6 +67,12 @@ public enum PetTokens {
         public static let petY: Double = 4
         public static let petBlur: Double = 10
         public static let petOpacity: Double = 0.22
+    }
+
+    public enum Opacity {
+        public static let past: Double = 0.78
+        public static let gone: Double = 0.7
+        public static let separatorText: Double = 0.5
     }
 
     public enum Motion {
@@ -230,6 +242,12 @@ public enum PetTokens {
         d["size.bubbleMaxWidth"] = text(Size.bubbleMaxWidth)
         d["size.chipHeight"] = text(Size.chipHeight)
         d["size.thumbnail"] = text(Size.thumbnail)
+        d["size.lineIcon"] = text(Size.lineIcon)
+        d["size.sendIcon"] = text(Size.sendIcon)
+        d["size.signinArt"] = text(Size.signinArt)
+        d["size.chipMaxWidth"] = text(Size.chipMaxWidth)
+        d["size.badge"] = text(Size.badge)
+        d["size.badgeIcon"] = text(Size.badgeIcon)
         d["space.xxs"] = text(Space.xxs)
         d["space.xs"] = text(Space.xs)
         d["space.s"] = text(Space.s)
@@ -256,6 +274,9 @@ public enum PetTokens {
         d["shadow.petY"] = text(Shadow.petY)
         d["shadow.petBlur"] = text(Shadow.petBlur)
         d["shadow.petOpacity"] = text(Shadow.petOpacity)
+        d["opacity.past"] = text(Opacity.past)
+        d["opacity.gone"] = text(Opacity.gone)
+        d["opacity.separatorText"] = text(Opacity.separatorText)
         d["motion.fast"] = text(Motion.fast)
         d["motion.base"] = text(Motion.base)
         d["motion.slow"] = text(Motion.slow)

@@ -90,6 +90,24 @@ final class PetMotionTests: XCTestCase {
         }
     }
 
+    func testFramesStopWhenHiddenAsleepOrBehindAFullScreenApp() {
+        let m = PetMotion(face: .idle, at: 0)
+        var gate = PetAnimationGate()
+        XCTAssertTrue(gate.needsFrames(m, at: 1000), "breathing while idle on screen")
+        let changes: [(inout PetAnimationGate) -> Void] = [{ $0.windowVisible = false }, { $0.displaysAsleep = true }, { $0.fullScreenAppInFront = true }]
+        for change in changes {
+            var g = PetAnimationGate()
+            change(&g)
+            XCTAssertFalse(g.needsFrames(m, at: 1000))
+            g.interacting = true
+            XCTAssertFalse(g.needsFrames(m, at: 1000), "not even while touched")
+        }
+        let still = PetMotion(face: .idle, at: 0, reduceMotion: true)
+        XCTAssertFalse(gate.needsFrames(still, at: 1000), "reduced motion: idle costs no frames")
+        gate.interacting = true
+        XCTAssertTrue(gate.needsFrames(still, at: 1000))
+    }
+
     func testCurvesFollowCSS() {
         let linear = PetCurve("cubic-bezier(0, 0, 1, 1)")
         XCTAssertEqual(linear.y(0.3), 0.3, accuracy: 1e-6)

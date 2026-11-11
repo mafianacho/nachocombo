@@ -98,6 +98,16 @@ public enum PetText {
         }
     }
 
+    /// Under a pending file's name: what it is and what Nacho can do with it ("그림 · 보여요").
+    public static func pendingNote(_ f: PetOutgoingFile) -> String {
+        let kind = f.mime.hasPrefix("image/") ? "그림" : (f.mime.hasPrefix("text/") ? "글" : (f.mime == "application/pdf" ? "PDF" : "파일"))
+        switch f.readability {
+        case .seen: return "\(kind) · 보여요"
+        case .read: return "\(kind) · 읽어요"
+        case .storedOnly: return "\(kind) · 전달만 돼요"
+        }
+    }
+
     /// 39000 → "39,000" (always comma groups, whatever the Mac's region).
     public static func number(_ n: Int) -> String {
         let digits = String(n.magnitude)

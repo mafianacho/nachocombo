@@ -15,13 +15,13 @@ const t = JSON.parse(fs.readFileSync(src, 'utf8'));
 const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
 const unitless = new Set(['font.weightRegular', 'font.weightMedium', 'font.weightSemibold', 'font.lineHeight', 'shadow.petOpacity']);
-const unitlessGroups = new Set(['motionAmount']);
+const unitlessGroups = new Set(['motionAmount', 'opacity']);
 const cssValue = (group, key, v) => {
   if (typeof v === 'string') return v;
   if (unitless.has(`${group}.${key}`) || unitlessGroups.has(group)) return String(v);
   return group === 'motion' ? `${v}ms` : `${v}px`;
 };
-const groups = ['size', 'space', 'radius', 'font', 'shadow', 'motion', 'motionAmount', 'curve'];
+const groups = ['size', 'space', 'radius', 'font', 'shadow', 'opacity', 'motion', 'motionAmount', 'curve'];
 const themes = ['light', 'dark'];
 const colorKeys = Object.keys(t.color.light);
 for (const th of themes) {

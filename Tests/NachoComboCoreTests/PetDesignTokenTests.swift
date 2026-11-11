@@ -58,7 +58,7 @@ final class PetDesignTokenTests: XCTestCase {
                 line = "  --color-\(kebab(p[2])): \(value);"
                 block = p[1] == "dark" ? dark : lightAndBase
             } else {
-                let raw = p[0] == "font" && p[1] == "family" || p[0] == "curve" || p[0] == "motionAmount" || unitless.contains(key)
+                let raw = p[0] == "font" && p[1] == "family" || p[0] == "curve" || p[0] == "motionAmount" || p[0] == "opacity" || unitless.contains(key)
                 let unit = raw ? "" : (p[0] == "motion" ? "ms" : "px")
                 line = "  --\(kebab(p[0]))-\(kebab(p[1])): \(value)\(unit);"
                 block = lightAndBase
