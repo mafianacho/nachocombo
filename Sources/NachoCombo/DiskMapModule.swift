@@ -219,6 +219,13 @@ final class DiskMapController: NSObject, NSWindowDelegate {
     private var slices: [DiskNode] = []
     /// The sample disk of the documentation pictures: nothing on it exists, so nothing can be done to it.
     private var isSample = false
+
+    /// The top-level folders of a finished scan of the startup disk, for the dashboard widget. Nil while there is
+    /// none (or it is the documentation sample): the widget then shows only used of total.
+    var startupFolders: [(name: String, size: Int64)]? {
+        guard phase == .ready, !isSample, target.path == "/", let r = root else { return nil }
+        return r.children.filter { $0.kind == .folder }.map { ($0.name, $0.size) }
+    }
     private var scanner: DiskScanner?
     private var scanStart = Date()
     private var scanSeconds = 0.0

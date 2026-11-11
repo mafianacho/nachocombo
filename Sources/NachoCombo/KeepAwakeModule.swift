@@ -22,6 +22,8 @@ final class KeepAwakeModule: NSObject, FeatureModule, NSMenuDelegate {
     private(set) var running = false
     private(set) var manual = false
     private(set) var until: Date?
+    /// When the current timed hold began (for the widget's ring: how much of it is left).
+    private(set) var heldSince: Date?
     private(set) var decision: KeepAwakeDecision = .sleepAllowed
 
     var holding: Bool { assertion != 0 }
@@ -57,6 +59,7 @@ final class KeepAwakeModule: NSObject, FeatureModule, NSMenuDelegate {
         item = nil
         manual = false
         until = nil
+        heldSince = nil
         decision = .sleepAllowed
         running = false
     }
@@ -71,13 +74,16 @@ final class KeepAwakeModule: NSObject, FeatureModule, NSMenuDelegate {
     func hold(minutes: Int) {
         guard running else { return }
         manual = true
-        until = minutes > 0 ? Date().addingTimeInterval(TimeInterval(minutes * 60)) : nil
+        let now = Date()
+        until = minutes > 0 ? now.addingTimeInterval(TimeInterval(minutes * 60)) : nil
+        heldSince = now
         evaluate()
     }
 
     func letSleep() {
         manual = false
         until = nil
+        heldSince = nil
         evaluate()
     }
 
@@ -87,7 +93,7 @@ final class KeepAwakeModule: NSObject, FeatureModule, NSMenuDelegate {
         guard running else { return }
         let options = optionsProvider()
         let now = Date()
-        if let end = until, now >= end { manual = false; until = nil }
+        if let end = until, now >= end { manual = false; until = nil; heldSince = nil }
         let power = KeepAwakeModule.powerState()
         let before = decision
         decision = KeepAwakePolicy.decide(manual: manual, until: until, now: now, runningApp: runningChosenApp(options),

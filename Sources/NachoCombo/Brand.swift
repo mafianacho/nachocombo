@@ -184,3 +184,67 @@ final class BrandButton: NSButton {
     }
     override func resetCursorRects() { if isEnabled { addCursorRect(bounds, cursor: .pointingHand) } }
 }
+
+// MARK: bento board tokens (0.7.0 widget board: main window, edit mode, menu bar mini board)
+
+extension Brand {
+    private static func rgba(_ value: UInt32, _ alpha: CGFloat) -> NSColor { rgb(value).withAlphaComponent(alpha) }
+
+    private static func dynamicA(_ light: NSColor, _ dark: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
+    }
+
+    /// Colors of the widget board. Light and dark follow the system appearance (never forced).
+    enum Bento {
+        /// The wall behind the cards: a warm gradient (light) or a deep violet ground with two glows (dark).
+        static let wallLight: [NSColor] = [Brand.rgb(0xFFD27A), Brand.rgb(0xFF9A6B), Brand.rgb(0xC86BFF)]
+        static let wallDark = Brand.rgb(0x100D1A)
+        static let wallGlowA = Brand.rgb(0x3B2A7A)
+        static let wallGlowB = Brand.rgb(0x7A2A55)
+        /// The glass of a card that is off, and of one that is on (a little more solid).
+        static let glass = Brand.dynamicA(Brand.rgba(0xFFFFFF, 0.62), Brand.rgba(0x282438, 0.55))
+        static let glassOn = Brand.dynamicA(Brand.rgba(0xFFFFFF, 0.86), Brand.rgba(0x342E48, 0.80))
+        static let glassEdge = Brand.rgba(0xFFFFFF, 0.18)
+        static let ink = Brand.dynamic(0x1D1D1F, 0xF2F0F7)
+        static let ink2 = Brand.dynamic(0x6B6B70, 0xA19CB3)
+        static let line = Brand.dynamicA(Brand.rgba(0x000000, 0.08), Brand.rgba(0xFFFFFF, 0.08))
+        static let track = Brand.dynamicA(Brand.rgba(0x000000, 0.10), Brand.rgba(0xFFFFFF, 0.12))
+        /// Buttons: ink on light, the nacho yellow on dark.
+        static let button = Brand.dynamic(0x1D1D1F, 0xFFB21E)
+        static let buttonInk = Brand.dynamic(0xFFFFFF, 0x1D1D1F)
+        /// Nacho's speech bubble on the pet widget.
+        static let say = Brand.dynamicA(Brand.rgb(0xFFFFFF), Brand.rgba(0xFFFFFF, 0.08))
+        /// Status circle: on green, off gray, the yellow half behind green when more setup is needed, error red.
+        static let dotOn = Brand.rgb(0x30C159)
+        static let dotOff = Brand.rgb(0xB8B8BF)
+        static let dotSetup = Brand.rgb(0xFFBF1A)
+        static let dotError = Brand.rgb(0xFF453A)
+        static let switchOn = Brand.rgb(0x30C159)
+        static let warn = Brand.rgb(0xD98A00)
+        static let blue = Brand.rgb(0x0A84FF)
+        static let orange = Brand.rgb(0xFF9F0A)
+        static let purple = Brand.rgb(0xBF5AF2)
+        static let red = Brand.rgb(0xE5484D)
+        static let coffee = Brand.rgb(0xFFB21E)
+        /// Edit mode: the dashed outline of every card, the selected card's outline, the edit panel.
+        static let editOutline = Brand.rgba(0xFFFFFF, 0.9)
+        static let selected = Brand.dynamic(0x1D1D1F, 0xFFB21E)
+        static let drawer = Brand.dynamicA(Brand.rgba(0xFFFFFF, 0.88), Brand.rgba(0x241F33, 0.92))
+        static let preview = Brand.dynamicA(Brand.rgb(0xFFFFFF), Brand.rgba(0xFFFFFF, 0.06))
+        static let chip = Brand.dynamicA(Brand.rgba(0x000000, 0.06), Brand.rgba(0xFFFFFF, 0.10))
+        /// The menu bar mini board's cards.
+        static let mini = Brand.dynamicA(Brand.rgba(0xFFFFFF, 0.75), Brand.rgba(0xFFFFFF, 0.08))
+
+        static let radius: CGFloat = 22
+        static let miniRadius: CGFloat = 16
+        static let gap: CGFloat = 12
+        static let padding: CGFloat = 36
+        static let rowHeight: CGFloat = 160
+        static let minCell: CGFloat = 150
+        static let drawerWidth: CGFloat = 300
+        static let miniWidth: CGFloat = 380
+        static let miniRow: CGFloat = 108
+        /// Off widgets: the body only is faded; header and switch stay sharp.
+        static let offAlpha: CGFloat = 0.45
+    }
+}
