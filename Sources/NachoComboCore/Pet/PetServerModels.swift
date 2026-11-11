@@ -132,7 +132,7 @@ public struct PetCard: Equatable {
         let p = o.obj("payload") ?? [:]
         var detail: [String] = []
         if let merchant = p.str("merchant") { detail.append(merchant) }
-        if let amount = p.int("amount") { detail.append("\(amount)\(p.str("currency").map { " " + $0 } ?? "원")") }
+        if let amount = p.int("amount") { detail.append(PetText.amount(amount, currency: p.str("currency"))) }
         if let counterpart = p.str("counterpart") { detail.append(counterpart) }
         if let rev = p.str("reversibility_text") { detail.append(rev) }
         let options = p.objs("options").compactMap { opt -> Option? in
@@ -289,8 +289,9 @@ public struct PetUsage: Equatable {
 
     public var summary: String {
         var parts: [String] = []
-        if let a = allowance, a > 0 { parts.append("크레딧 \(remaining)/\(a)") } else { parts.append("크레딧 \(remaining)") }
-        if let u = lightChatUsed, let c = lightChatCap, c > 0 { parts.append("가벼운 대화 \(u)/\(c)") }
+        let n = PetText.number
+        if let a = allowance, a > 0 { parts.append("크레딧 \(n(remaining))/\(n(a))") } else { parts.append("크레딧 \(n(remaining))") }
+        if let u = lightChatUsed, let c = lightChatCap, c > 0 { parts.append("가벼운 대화 \(n(u))/\(n(c))") }
         if let r = blockReason { parts.append(ErrorText.blockReason(r)) } else if exhausted { parts.append("모두 썼어요") }
         else if lowBalance { parts.append("얼마 안 남았어요") }
         return parts.joined(separator: " · ")

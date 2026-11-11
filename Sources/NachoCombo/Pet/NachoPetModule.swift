@@ -26,6 +26,9 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     private var petWindow: PetWindow?
     private var chatWindow: PetChatWindow?
     private var faceTimer: Timer?
+    private var nameTag: PetNameTag?
+    private var gateObservers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var displaysAsleep = false
     let dictation = PetDictationController()
     let serverRecorder = PetServerRecorder()
     private(set) var dictationState = DictationState()
@@ -59,6 +62,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         PetHandoff.module = self
         state = session.snapshot
         refreshFace()
+        observeGate()
         faceTimer?.invalidate()
         let t = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.refreshFace() }
         RunLoop.main.add(t, forMode: .common)
@@ -69,6 +73,10 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     func stop() {
         faceTimer?.invalidate()
         faceTimer = nil
+        for (center, o) in gateObservers { center.removeObserver(o) }
+        gateObservers = []
+        nameTag?.orderOut(nil)
+        petWindow?.characterView.stop()
         serverRecorder.cancel()
         dictation.stop()
         dictationState.stop()
@@ -151,6 +159,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         chatWindow?.render()
         chatWindow?.makeKeyAndOrderFront(nil)
         chatWindow?.focusInput()
+        nameTag?.orderOut(nil)
         session.touch()
         session.open()
     }
@@ -372,6 +381,58 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     }
 
     private func refreshFace() { petWindow?.show(face) }
+
+    // MARK: name tag and when the pet may move
+
+    func showNameTag(_ kind: PetNameTag.Kind?) {
+        guard let kind = kind, let pet = petWindow, chatWindow?.isVisible != true || kind == .drop else { nameTag?.orderOut(nil); return }
+        if nameTag == nil { nameTag = PetNameTag() }
+        switch kind {
+        case .hover: nameTag?.show(title: "나초", detail: "\(face.koreanLabel) · 클릭: 대화", above: pet)
+        case .drop: nameTag?.show(title: "나초에게 주기", detail: "놓으면 첨부돼요", above: pet)
+        }
+    }
+
+    /// Frames stop while the pet is covered or off screen, the displays sleep, or a full-screen app is in front.
+    private func observeGate() {
+        guard gateObservers.isEmpty else { updateGate(); return }
+        let ws = NSWorkspace.shared.notificationCenter
+        func on(_ center: NotificationCenter, _ name: Notification.Name, _ object: Any? = nil, _ run: @escaping () -> Void) {
+            gateObservers.append((center, center.addObserver(forName: name, object: object, queue: .main) { _ in run() }))
+        }
+        on(ws, NSWorkspace.screensDidSleepNotification) { [weak self] in self?.displaysAsleep = true; self?.updateGate() }
+        on(ws, NSWorkspace.willSleepNotification) { [weak self] in self?.displaysAsleep = true; self?.updateGate() }
+        on(ws, NSWorkspace.screensDidWakeNotification) { [weak self] in self?.displaysAsleep = false; self?.updateGate() }
+        on(ws, NSWorkspace.didWakeNotification) { [weak self] in self?.displaysAsleep = false; self?.updateGate() }
+        on(ws, NSWorkspace.didActivateApplicationNotification) { [weak self] in self?.updateGate() }
+        on(ws, NSWorkspace.activeSpaceDidChangeNotification) { [weak self] in self?.updateGate() }
+        on(NotificationCenter.default, NSWindow.didChangeOcclusionStateNotification, petWindow) { [weak self] in self?.updateGate() }
+        updateGate()
+    }
+
+    private func updateGate() {
+        guard let pet = petWindow else { return }
+        var g = pet.characterView.gate
+        g.windowVisible = pet.isVisible && pet.occlusionState.contains(.visible)
+        g.displaysAsleep = displaysAsleep
+        g.fullScreenAppInFront = NachoPetModule.fullScreenAppInFront(on: pet.screen)
+        pet.characterView.gate = g
+    }
+
+    /// The front app (not this one) has a window covering the whole screen the pet is on. Window bounds need no
+    /// Screen Recording permission (only titles do).
+    static func fullScreenAppInFront(on screen: NSScreen?) -> Bool {
+        guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              let screen = screen ?? NSScreen.main,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return false }
+        let size = screen.frame.size
+        return list.contains { w in
+            guard (w[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier, (w[kCGWindowLayer as String] as? Int) == 0,
+                  let dict = w[kCGWindowBounds as String] as? NSDictionary,
+                  let b = CGRect(dictionaryRepresentation: dict as CFDictionary) else { return false }
+            return abs(b.width - size.width) < 1 && abs(b.height - size.height) < 1
+        }
+    }
 }
 
 /// Lets Capture Float and File Shelf hand things to the pet without knowing about it. Nil while the pet is off, so
@@ -398,8 +459,9 @@ enum PetHandoff {
 // MARK: - The pet on screen
 
 final class PetWindow: NSPanel {
-    static let size = NSSize(width: 112, height: 112)
+    static let size = NSSize(width: CGFloat(PetTokens.Size.pet), height: CGFloat(PetTokens.Size.pet))
     private let view: PetCharacterView
+    var characterView: PetCharacterView { view }
 
     init(module: NachoPetModule) {
         view = PetCharacterView(frame: NSRect(origin: .zero, size: PetWindow.size), module: module)
@@ -428,144 +490,7 @@ final class PetWindow: NSPanel {
             }
         }
         let vf = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        return NSPoint(x: vf.maxX - size.width - 24, y: vf.minY + 24)
-    }
-}
-
-final class PetCharacterView: NSView {
-    weak var module: NachoPetModule?
-    private let imageView = NSImageView()
-    private var dragStartMouse: NSPoint?
-    private var dragStartOrigin: NSPoint?
-    private var dragged = false
-    private var dropTargeted = false { didSet { needsDisplay = true } }
-
-    var face: PetFace = .idle {
-        didSet {
-            guard face != oldValue || imageView.image == nil else { return }
-            imageView.image = PetArt.image(face) ?? PetArt.image(named: "idle")
-            toolTip = "나초 · \(face.koreanLabel) — 클릭: 대화, 끌기: 옮기기, 파일 놓기: 나초에게 주기"
-            setAccessibilityLabel("나초 펫, \(face.koreanLabel)")
-            animate()
-        }
-    }
-
-    init(frame: NSRect, module: NachoPetModule) {
-        self.module = module
-        super.init(frame: frame)
-        wantsLayer = true
-        imageView.frame = bounds.insetBy(dx: 6, dy: 6)
-        imageView.imageScaling = .scaleProportionallyUpOrDown
-        imageView.autoresizingMask = [.width, .height]
-        imageView.wantsLayer = true
-        addSubview(imageView)
-        setAccessibilityElement(true)
-        setAccessibilityRole(.button)
-        registerForDraggedTypes([.fileURL, .png, .tiff, .string])
-        face = .idle
-        imageView.image = PetArt.image(named: "idle")
-    }
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    override var mouseDownCanMoveWindow: Bool { false }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func accessibilityPerformPress() -> Bool { module?.toggleChat(); return true }
-
-    private func animate() {
-        guard let layer = imageView.layer else { return }
-        layer.removeAnimation(forKey: "bob")
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-        let bob = CABasicAnimation(keyPath: "transform.translation.y")
-        switch face {
-        case .idle, .happy: bob.fromValue = 0; bob.toValue = 3; bob.duration = face == .happy ? 0.35 : 1.4
-        case .thinking, .speaking, .listening: bob.fromValue = 0; bob.toValue = 1.5; bob.duration = 0.5
-        default: return
-        }
-        bob.autoreverses = true
-        bob.repeatCount = .infinity
-        bob.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.add(bob, forKey: "bob")
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        if dropTargeted {
-            NSColor.controlAccentColor.withAlphaComponent(0.25).setFill()
-            NSBezierPath(ovalIn: bounds.insetBy(dx: 2, dy: 2)).fill()
-        }
-        if imageView.image == nil {
-            // A build without the character art (forks remove Resources/Nacho): a plain chat bubble.
-            NSColor.systemOrange.setFill()
-            NSBezierPath(ovalIn: bounds.insetBy(dx: 20, dy: 20)).fill()
-            let symbol = NSImage(systemSymbolName: "bubble.left.fill", accessibilityDescription: nil)
-            symbol?.draw(in: bounds.insetBy(dx: 38, dy: 38))
-        }
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        dragStartMouse = NSEvent.mouseLocation
-        dragStartOrigin = window?.frame.origin
-        dragged = false
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let m0 = dragStartMouse, let o0 = dragStartOrigin, let w = window else { return }
-        let m = NSEvent.mouseLocation
-        let dx = m.x - m0.x, dy = m.y - m0.y
-        if !dragged && abs(dx) < 3 && abs(dy) < 3 { return }
-        dragged = true
-        w.setFrameOrigin(NSPoint(x: o0.x + dx, y: o0.y + dy))
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        defer { dragStartMouse = nil; dragStartOrigin = nil }
-        if dragged {
-            if let o = window?.frame.origin { module?.petMoved(to: o) }
-        } else {
-            module?.toggleChat()
-        }
-    }
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        guard let module = module else { return nil }
-        let menu = NSMenu()
-        menu.addItem(ClosureMenuItem(title: "나초와 대화") { module.openChat() })
-        menu.addItem(ClosureMenuItem(title: "파일 주기…") { module.pickFiles() })
-        menu.addItem(.separator())
-        if module.state.auth == .signedIn {
-            menu.addItem(ClosureMenuItem(title: "로그아웃") { module.signOut() })
-        } else {
-            menu.addItem(ClosureMenuItem(title: "나초 계정으로 로그인") { module.openChat(); module.signIn() })
-        }
-        menu.addItem(ClosureMenuItem(title: "오른쪽 아래로 돌려놓기") { module.resetPosition() })
-        menu.addItem(ClosureMenuItem(title: "Nacho Pet 설정…") { module.openSettings?() })
-        menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem(title: "나초 숨기기 (Nacho Pet 끄기)") { module.turnOff?() })
-        return menu
-    }
-
-    // MARK: drop files, pictures or text on Nacho
-
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        dropTargeted = true
-        return .copy
-    }
-
-    override func draggingExited(_ sender: NSDraggingInfo?) { dropTargeted = false }
-
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        dropTargeted = false
-        guard let module = module else { return false }
-        let pb = sender.draggingPasteboard
-        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            for url in urls.prefix(PetMedia.maxAttachments) { module.attach(fileURL: url) }
-            return true
-        }
-        if let png = pb.data(forType: .png) { module.attach(name: "그림.png", data: png, mime: "image/png"); return true }
-        if let tiff = pb.data(forType: .tiff), let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
-            module.attach(name: "그림.png", data: png, mime: "image/png")
-            return true
-        }
-        if let text = pb.string(forType: .string), !text.isEmpty { module.attachText(text, title: "text"); return true }
-        return false
+        let margin = CGFloat(PetTokens.Size.petScreenMargin)
+        return NSPoint(x: vf.maxX - size.width - margin, y: vf.minY + margin)
     }
 }

@@ -186,9 +186,11 @@ enum PetArt {
 
     static func image(named name: String) -> NSImage? {
         if let cached = cache[name] { return cached }
-        let candidates = [Bundle.main.resourceURL?.appendingPathComponent("Nacho/\(name).png"),
+        // calling-eyeless (the listening blink) is a webp original; the others are png.
+        let file = name == "calling-eyeless" ? "\(name).webp" : "\(name).png"
+        let candidates = [Bundle.main.resourceURL?.appendingPathComponent("Nacho/\(file)"),
                           // `swift run` during development: the repository's copy.
-                          URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("Resources/Nacho/\(name).png")]
+                          URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("Resources/Nacho/\(file)")]
         for case let url? in candidates {
             if let image = NSImage(contentsOf: url) {
                 cache[name] = image

@@ -34,7 +34,7 @@ final class PetServerFrameTests: XCTestCase {
                                        "payload": ["title": "예약", "amount": 30000, "merchant": "파스타집", "action_type": "payment"]])
         XCTAssertFalse(approval.answerableHere, "approvals stay on the phone app")
         XCTAssertEqual(approval.statusText, "휴대폰의 나초 앱에서 승인해 주세요")
-        XCTAssertEqual(approval.detail, "파스타집 · 30000원")
+        XCTAssertEqual(approval.detail, "파스타집 · 30,000원")
 
         let task = frame(#"{"type":"task_update","room_id":"r","task":{"id":"t1","state":"running","title":"파스타집 예약","current_step":{"text":"자리 찾는 중","index":2,"total":4}}}"#)
         guard case let .task(t) = task.event else { return XCTFail("task") }

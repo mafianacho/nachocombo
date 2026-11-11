@@ -43,7 +43,7 @@ fi
 # Nacho character art (all rights reserved, not covered by the MIT license: Resources/Nacho/LICENSE, TRADEMARKS.md).
 if [ -d Resources/Nacho ]; then
   mkdir -p "$APP/Contents/Resources/Nacho"
-  cp Resources/Nacho/*.png Resources/Nacho/LICENSE "$APP/Contents/Resources/Nacho/"
+  cp Resources/Nacho/*.png Resources/Nacho/calling-eyeless.webp Resources/Nacho/LICENSE "$APP/Contents/Resources/Nacho/"
 fi
 # Brand fonts (SIL Open Font License, licenses beside them); the app registers them at launch.
 if [ -d Resources/Fonts ]; then

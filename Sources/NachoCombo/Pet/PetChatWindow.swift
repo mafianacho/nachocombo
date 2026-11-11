@@ -1,50 +1,71 @@
 import AppKit
 import NachoComboCore
 
-/// The chat bubble next to the pet: transcript, attachments, text/dictation input, send/stop, sign in, and the
-/// connections view (what Nacho is connected to). Korean like Nacho; a key panel that does not activate the app, so the
-/// window the user was working in stays the "front window" that Nacho arranges.
-final class PetChatWindow: NSPanel, NSTextFieldDelegate, NSTextViewDelegate {
-    static let size = NSSize(width: 360, height: 480)
+/// The chat bubble next to the pet, ported from the confirmed web mockup (design/web, `.chat`): header with the one
+/// status line, optional banner, the log (PetTranscript items, one view each), pending files, and the composer.
+/// A borderless key panel that does not activate the app, so the window the user was working in stays the "front
+/// window" that Nacho arranges. Its tail points at the pet.
+final class PetChatWindow: NSPanel, NSTextFieldDelegate {
+    private typealias S = PetTokens.Size
+    private typealias Sp = PetTokens.Space
+    static var size: NSSize { NSSize(width: CGFloat(S.chatWidth), height: CGFloat(S.chatHeight + S.chatTail)) }
     private weak var module: NachoPetModule?
 
-    private let header = NSTextField(labelWithString: "나초")
+    private let background = PetChatBackground()
+    private let content = NSView()
+    // header (`.chat-head`)
+    private let avatar = NSImageView()
+    private let name = NSTextField(labelWithString: "나초")
+    private let dot = PetBox()
     private let status = NSTextField(labelWithString: "")
-    private let tabs = NSSegmentedControl(labels: ["대화", "연결"], trackingMode: .selectOne, target: nil, action: nil)
-    private let transcript = NSTextView()
+    private var tabButtons: [PetPill] = []
+    private var selectedTab = 0
+    // banner, log, pending, composer
+    private let banner = PetBox()
+    private let bannerText = NSTextField(wrappingLabelWithString: "")
     private let scroll = NSScrollView()
-    private let notice = NSTextField(wrappingLabelWithString: "")
+    private let logStack = NSStackView()
     private let pendingRow = NSStackView()
-    private let input = NSTextField()
-    private let micButton = NSButton()
-    private let attachButton = NSButton()
-    private let sendButton = NSButton(title: "보내기", target: nil, action: nil)
-    private let signInButton = NSButton(title: "나초 계정으로 로그인", target: nil, action: nil)
-    private let inputRow = NSStackView()
+    private let composer = NSStackView()
+    private let fieldBox = PetFieldBox()
+    private let input = PetInputField()
+    private let wave = PetWave()
+    private var attachButton: PetPill!
+    private var micButton: PetPill!
+    private var sendButton: PetPill!
+    private let signInView = NSStackView()
+    private var signInButton: PetPill!
+    private let signInNote = NSTextField(wrappingLabelWithString: "")
+
     private var flashText: String?
     private var flashUntil = Date.distantPast
     private var connectionsText: NSAttributedString?
-    private var lastSignature = ""
+    private var shownItems: [PetChatItem] = []
+    private var shownViews: [NSView] = []
+    private var tickScheduled = false
+
+    private var logWidth: CGFloat { CGFloat(S.chatWidth - 2 * Sp.m) }
 
     init(module: NachoPetModule) {
         self.module = module
-        super.init(contentRect: NSRect(origin: .zero, size: PetChatWindow.size),
-                   styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel, .utilityWindow],
+        super.init(contentRect: NSRect(origin: .zero, size: PetChatWindow.size), styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
         title = "나초"
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
         isFloatingPanel = true
         level = .floating
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         setAccessibilityIdentifier("nacho-pet-chat")
+        setAccessibilitySubrole(.dialog)
+        setAccessibilityLabel("나초와 대화")
         build()
     }
 
     override var canBecomeKey: Bool { true }
-
     override func cancelOperation(_ sender: Any?) { module?.closeChat() }
 
     override func close() {
@@ -55,125 +76,274 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate, NSTextViewDelegate {
     // MARK: layout
 
     private func build() {
-        let root = NSStackView()
-        root.orientation = .vertical
-        root.alignment = .leading
-        root.spacing = 8
-        root.edgeInsets = NSEdgeInsets(top: 30, left: 14, bottom: 14, right: 14)
-        root.translatesAutoresizingMaskIntoConstraints = false
-        let content = NSView()
-        content.addSubview(root)
-        contentView = content
-        NSLayoutConstraint.activate([
-            root.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            root.topAnchor.constraint(equalTo: content.topAnchor),
-            root.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-        ])
-        let inner = PetChatWindow.size.width - 28
+        background.frame = NSRect(origin: .zero, size: PetChatWindow.size)
+        background.autoresizingMask = [.width, .height]
+        contentView = background
+        content.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(content)
+        contentTop = content.topAnchor.constraint(equalTo: background.topAnchor)
+        contentBottom = content.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -PetChatBackground.tail)
+        NSLayoutConstraint.activate([content.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+                                     content.trailingAnchor.constraint(equalTo: background.trailingAnchor), contentTop, contentBottom])
 
-        header.font = NSFont.systemFont(ofSize: 15, weight: .bold)
-        status.font = NSFont.systemFont(ofSize: 11)
-        status.textColor = .secondaryLabelColor
+        let column = NSStackView()
+        column.orientation = .vertical
+        column.alignment = .centerX
+        column.spacing = 0
+        column.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(column)
+        NSLayoutConstraint.activate([column.topAnchor.constraint(equalTo: content.topAnchor), column.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+                                     column.leadingAnchor.constraint(equalTo: content.leadingAnchor), column.trailingAnchor.constraint(equalTo: content.trailingAnchor)])
+
+        column.addArrangedSubview(buildHeader())
+        column.addArrangedSubview(buildBanner())
+        column.addArrangedSubview(buildLog())
+        column.addArrangedSubview(buildSignIn())
+        column.addArrangedSubview(buildPending())
+        column.addArrangedSubview(buildComposer())
+    }
+
+    private var contentTop: NSLayoutConstraint!
+    private var contentBottom: NSLayoutConstraint!
+
+    private func buildHeader() -> NSView {
+        let head = PetBox()
+        head.translatesAutoresizingMaskIntoConstraints = false
+        head.heightAnchor.constraint(equalToConstant: CGFloat(S.headerHeight)).isActive = true
+        head.widthAnchor.constraint(equalToConstant: CGFloat(S.chatWidth)).isActive = true
+        avatar.image = PetArt.image(named: "idle")
+        avatar.imageScaling = .scaleProportionallyUpOrDown
+        avatar.wantsLayer = true
+        avatar.layer?.cornerRadius = CGFloat(S.avatar / 2)
+        avatar.layer?.masksToBounds = true
+        avatar.layer?.backgroundColor = PetTheme.color(\.accentSoft).cgColor
+        avatar.translatesAutoresizingMaskIntoConstraints = false
+        avatar.widthAnchor.constraint(equalToConstant: CGFloat(S.avatar)).isActive = true
+        avatar.heightAnchor.constraint(equalToConstant: CGFloat(S.avatar)).isActive = true
+        name.font = PetTheme.title
+        name.textColor = PetTheme.text
+        dot.radius = CGFloat(S.statusDot / 2)
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        dot.widthAnchor.constraint(equalToConstant: CGFloat(S.statusDot)).isActive = true
+        dot.heightAnchor.constraint(equalToConstant: CGFloat(S.statusDot)).isActive = true
+        status.font = PetTheme.caption
+        status.textColor = PetTheme.secondary
         status.lineBreakMode = .byTruncatingTail
+        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         status.setAccessibilityIdentifier("nacho-pet-status")
-        tabs.selectedSegment = 0
-        tabs.target = self
-        tabs.action = #selector(tabChanged)
-        tabs.controlSize = .small
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let top = NSStackView(views: [header, status, spacer, tabs])
-        top.spacing = 8
-        top.widthAnchor.constraint(equalToConstant: inner).isActive = true
+        let statusRow = NSStackView(views: [dot, status])
+        statusRow.spacing = CGFloat(Sp.xs)
+        let who = NSStackView(views: [name, statusRow])
+        who.orientation = .vertical
+        who.alignment = .leading
+        who.spacing = 0
+        who.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        transcript.isEditable = false
-        transcript.isSelectable = true
-        transcript.drawsBackground = false
-        transcript.textContainerInset = NSSize(width: 4, height: 6)
-        transcript.isVerticallyResizable = true
-        transcript.autoresizingMask = [.width]
-        transcript.textContainer?.widthTracksTextView = true
-        transcript.setAccessibilityIdentifier("nacho-pet-transcript")
-        transcript.delegate = self
-        transcript.linkTextAttributes = [.foregroundColor: NSColor.linkColor, .cursor: NSCursor.pointingHand]
-        scroll.documentView = transcript
+        let seg = PetBox()
+        seg.fill = PetTheme.color(\.surface)
+        seg.radius = CGFloat(PetTokens.Radius.control)
+        seg.translatesAutoresizingMaskIntoConstraints = false
+        let segRow = NSStackView()
+        segRow.spacing = 0
+        segRow.translatesAutoresizingMaskIntoConstraints = false
+        for (i, title) in ["대화", "연결"].enumerated() {
+            let b = PetPill(title: title, font: PetTheme.caption, color: PetTheme.secondary, height: S.control - 6,
+                            radius: PetTokens.Radius.control - 2, padding: Sp.s)
+            b.onClick = { [weak self] in self?.select(tab: i) }
+            tabButtons.append(b)
+            segRow.addArrangedSubview(b)
+        }
+        seg.addSubview(segRow)
+        NSLayoutConstraint.activate([segRow.topAnchor.constraint(equalTo: seg.topAnchor, constant: 2), segRow.bottomAnchor.constraint(equalTo: seg.bottomAnchor, constant: -2),
+                                     segRow.leadingAnchor.constraint(equalTo: seg.leadingAnchor, constant: 2), segRow.trailingAnchor.constraint(equalTo: seg.trailingAnchor, constant: -2)])
+
+        let row = NSStackView(views: [avatar, who, seg])
+        row.spacing = CGFloat(Sp.s)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        head.addSubview(row)
+        let hair = PetBox()
+        hair.fill = PetTheme.color(\.separator)
+        hair.translatesAutoresizingMaskIntoConstraints = false
+        head.addSubview(hair)
+        NSLayoutConstraint.activate([
+            row.centerYAnchor.constraint(equalTo: head.centerYAnchor),
+            row.leadingAnchor.constraint(equalTo: head.leadingAnchor, constant: CGFloat(Sp.m)),
+            row.trailingAnchor.constraint(equalTo: head.trailingAnchor, constant: -CGFloat(Sp.m)),
+            hair.leadingAnchor.constraint(equalTo: head.leadingAnchor), hair.trailingAnchor.constraint(equalTo: head.trailingAnchor),
+            hair.bottomAnchor.constraint(equalTo: head.bottomAnchor), hair.heightAnchor.constraint(equalToConstant: 1),
+        ])
+        styleTabs()
+        return head
+    }
+
+    private func buildBanner() -> NSView {
+        banner.fill = PetTheme.color(\.warningSoft)
+        banner.radius = CGFloat(PetTokens.Radius.card)
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        let icon = NSImageView(image: PetTheme.symbol("exclamationmark.triangle", size: S.sendIcon) ?? NSImage())
+        icon.contentTintColor = PetTheme.color(\.warning)
+        bannerText.font = PetTheme.caption
+        bannerText.textColor = PetTheme.color(\.warning)
+        bannerText.preferredMaxLayoutWidth = logWidth - CGFloat(2 * Sp.m + S.sendIcon + Sp.s)
+        let row = NSStackView(views: [icon, bannerText])
+        row.alignment = .top
+        row.spacing = CGFloat(Sp.s)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        banner.addSubview(row)
+        NSLayoutConstraint.activate([
+            banner.widthAnchor.constraint(equalToConstant: logWidth),
+            row.topAnchor.constraint(equalTo: banner.topAnchor, constant: CGFloat(Sp.s)),
+            row.bottomAnchor.constraint(equalTo: banner.bottomAnchor, constant: -CGFloat(Sp.s)),
+            row.leadingAnchor.constraint(equalTo: banner.leadingAnchor, constant: CGFloat(Sp.m)),
+            row.trailingAnchor.constraint(equalTo: banner.trailingAnchor, constant: -CGFloat(Sp.m)),
+        ])
+        let wrap = PetRowInset(banner, top: Sp.s)
+        wrap.isHidden = true
+        return wrap
+    }
+
+    private func buildLog() -> NSView {
+        let doc = PetFlippedView()
+        doc.translatesAutoresizingMaskIntoConstraints = false
+        logStack.orientation = .vertical
+        logStack.alignment = .leading
+        logStack.spacing = CGFloat(Sp.s)
+        logStack.translatesAutoresizingMaskIntoConstraints = false
+        doc.addSubview(logStack)
+        scroll.documentView = doc
+        scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
-        scroll.drawsBackground = true
-        scroll.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.6)
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
         scroll.borderType = .noBorder
-        scroll.wantsLayer = true
-        scroll.layer?.cornerRadius = 8
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.widthAnchor.constraint(equalToConstant: inner).isActive = true
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
+        scroll.setAccessibilityIdentifier("nacho-pet-transcript")
+        let clip = scroll.contentView
+        NSLayoutConstraint.activate([
+            scroll.widthAnchor.constraint(equalToConstant: CGFloat(S.chatWidth)),
+            doc.leadingAnchor.constraint(equalTo: clip.leadingAnchor), doc.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            doc.topAnchor.constraint(equalTo: clip.topAnchor),
+            doc.heightAnchor.constraint(greaterThanOrEqualTo: clip.heightAnchor),
+            // Short logs sit at the bottom, next to the composer (`justify-content: flex-end`).
+            logStack.topAnchor.constraint(greaterThanOrEqualTo: doc.topAnchor, constant: CGFloat(Sp.m)),
+            logStack.bottomAnchor.constraint(equalTo: doc.bottomAnchor, constant: -CGFloat(Sp.m)),
+            logStack.leadingAnchor.constraint(equalTo: doc.leadingAnchor, constant: CGFloat(Sp.m)),
+            logStack.widthAnchor.constraint(equalToConstant: logWidth),
+        ])
         scroll.setContentHuggingPriority(.defaultLow, for: .vertical)
+        scroll.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        return scroll
+    }
 
-        notice.font = NSFont.systemFont(ofSize: 11)
-        notice.textColor = .systemOrange
-        notice.preferredMaxLayoutWidth = inner
-        notice.widthAnchor.constraint(equalToConstant: inner).isActive = true
-        notice.isHidden = true
-        notice.setAccessibilityIdentifier("nacho-pet-notice")
+    private func buildSignIn() -> NSView {
+        signInView.orientation = .vertical
+        signInView.alignment = .centerX
+        signInView.spacing = CGFloat(Sp.m)
+        signInView.edgeInsets = NSEdgeInsets(top: CGFloat(Sp.xl), left: CGFloat(Sp.xl), bottom: CGFloat(Sp.xl), right: CGFloat(Sp.xl))
+        let art = NSImageView(image: PetArt.image(named: "happy") ?? NSImage())
+        art.translatesAutoresizingMaskIntoConstraints = false
+        art.widthAnchor.constraint(equalToConstant: CGFloat(S.signinArt)).isActive = true
+        art.heightAnchor.constraint(equalToConstant: CGFloat(S.signinArt)).isActive = true
+        let inner = CGFloat(S.chatWidth - 2 * Sp.xl)
+        let hi = PetLinkText(PetLinkText.plain("안녕하세요, 나초예요.", font: PetTheme.title, color: PetTheme.text, align: .center), maxWidth: inner)
+        let p = PetLinkText(PetLinkText.plain("나초 계정으로 로그인하면 여기서 대화할 수 있어요. 캡처나 선반의 파일을 건네거나, 창 배치나 가젯을 켜고 끄는 일도 부탁할 수 있어요.",
+                                              font: PetTheme.body, color: PetTheme.secondary, align: .center), maxWidth: inner)
+        signInButton = PetPill(title: "나초 계정으로 로그인", symbol: "person", iconSize: 15, font: PetTheme.font(PetTokens.Font.body, PetTokens.Font.weightSemibold),
+                               color: PetTheme.color(\.onAccent), fill: PetTheme.accent, height: S.control + 4, padding: Sp.l)
+        signInButton.onClick = { [weak self] in self?.module?.signIn() }
+        signInButton.setAccessibilityIdentifier("nacho-pet-sign-in")
+        let small = PetLinkText(PetLinkText.plain("로그인은 브라우저 창(auth.nachotown.com)에서 해요. 비밀번호는 콤보가 보지 않아요.",
+                                                  font: PetTheme.caption, color: PetTheme.tertiary, align: .center), maxWidth: inner)
+        for v in [art, hi, p, signInButton!, small] as [NSView] { signInView.addArrangedSubview(v) }
+        signInView.isHidden = true
+        signInView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        return signInView
+    }
 
+    private func buildPending() -> NSView {
         pendingRow.orientation = .horizontal
-        pendingRow.spacing = 6
-        pendingRow.isHidden = true
+        pendingRow.spacing = CGFloat(Sp.s)
+        pendingRow.distribution = .fillEqually
+        pendingRow.translatesAutoresizingMaskIntoConstraints = false
+        pendingRow.widthAnchor.constraint(equalToConstant: logWidth).isActive = true
+        let wrap = PetRowInset(pendingRow, top: 0, bottom: Sp.s)
+        wrap.isHidden = true
+        return wrap
+    }
 
-        input.placeholderString = "나초에게 말하기… (Return: 보내기)"
+    private func buildComposer() -> NSView {
+        attachButton = PetPill(symbol: "paperclip", color: PetTheme.secondary, height: S.control, radius: S.control / 2, width: S.control)
+        attachButton.toolTip = "파일 주기 (그림, PDF, 글, mp4). 나초 위에 끌어다 놓아도 돼요."
+        attachButton.onClick = { [weak self] in self?.module?.pickFiles() }
+        attachButton.setAccessibilityIdentifier("nacho-pet-attach")
+        micButton = PetPill(symbol: "mic", color: PetTheme.secondary, height: S.control, radius: S.control / 2, width: S.control)
+        micButton.onClick = { [weak self] in self?.micClicked() }
+        micButton.setAccessibilityIdentifier("nacho-pet-mic")
+        sendButton = PetPill(symbol: "arrow.up", iconSize: S.sendIcon, color: PetTheme.tertiary, fill: PetTheme.color(\.surface),
+                             height: S.sendButton, radius: S.sendButton / 2, width: S.sendButton)
+        sendButton.onClick = { [weak self] in self?.sendClicked() }
+        sendButton.setAccessibilityIdentifier("nacho-pet-send")
+
+        fieldBox.translatesAutoresizingMaskIntoConstraints = false
+        fieldBox.heightAnchor.constraint(equalToConstant: CGFloat(S.composerHeight)).isActive = true
+        input.isBordered = false
+        input.drawsBackground = false
+        input.focusRingType = .none
+        input.font = PetTheme.body
+        input.textColor = PetTheme.text
+        input.placeholderAttributedString = NSAttributedString(string: "나초에게 말하기…", attributes: [.font: PetTheme.body, .foregroundColor: PetTheme.tertiary])
         input.delegate = self
         input.target = self
-        input.action = #selector(sendClicked)
+        input.action = #selector(returnPressed)
         input.lineBreakMode = .byTruncatingHead
+        input.cell?.usesSingleLineMode = true
         input.setAccessibilityIdentifier("nacho-pet-input")
-        micButton.bezelStyle = .rounded
-        micButton.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "받아쓰기")
-        micButton.target = self
-        micButton.action = #selector(micClicked)
-        micButton.toolTip = "받아쓰기 (한국어). 다시 누르면 멈춰요."
-        micButton.setAccessibilityIdentifier("nacho-pet-mic")
-        attachButton.bezelStyle = .rounded
-        attachButton.image = NSImage(systemSymbolName: "paperclip", accessibilityDescription: "파일 주기")
-        attachButton.target = self
-        attachButton.action = #selector(attachClicked)
-        attachButton.toolTip = "파일 주기 (그림, PDF, 글, mp4). 나초 위에 끌어다 놓아도 돼요."
-        attachButton.setAccessibilityIdentifier("nacho-pet-attach")
-        sendButton.bezelStyle = .rounded
-        sendButton.target = self
-        sendButton.action = #selector(sendClicked)
-        sendButton.setAccessibilityIdentifier("nacho-pet-send")
-        input.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        inputRow.setViews([attachButton, input, micButton, sendButton], in: .leading)
-        inputRow.spacing = 6
-        inputRow.widthAnchor.constraint(equalToConstant: inner).isActive = true
-
-        signInButton.bezelStyle = .rounded
-        signInButton.keyEquivalent = "\r"
-        signInButton.target = self
-        signInButton.action = #selector(signInClicked)
-        signInButton.setAccessibilityIdentifier("nacho-pet-sign-in")
-
-        for v in [top, scroll, notice, pendingRow, inputRow, signInButton] as [NSView] { root.addArrangedSubview(v) }
+        input.onFocus = { [weak self] f in self?.fieldBox.focused = f }
+        wave.isHidden = true
+        let fieldRow = NSStackView(views: [wave, input])
+        fieldRow.spacing = CGFloat(Sp.s)
+        fieldRow.translatesAutoresizingMaskIntoConstraints = false
+        fieldBox.addSubview(fieldRow)
+        NSLayoutConstraint.activate([
+            fieldRow.centerYAnchor.constraint(equalTo: fieldBox.centerYAnchor),
+            fieldRow.leadingAnchor.constraint(equalTo: fieldBox.leadingAnchor, constant: CGFloat(Sp.m)),
+            fieldRow.trailingAnchor.constraint(equalTo: fieldBox.trailingAnchor, constant: -CGFloat(Sp.m)),
+        ])
+        composer.setViews([attachButton, fieldBox, micButton, sendButton], in: .leading)
+        composer.spacing = CGFloat(Sp.xs)
+        composer.edgeInsets = NSEdgeInsets(top: CGFloat(Sp.s), left: CGFloat(Sp.m), bottom: CGFloat(Sp.m), right: CGFloat(Sp.m))
+        composer.translatesAutoresizingMaskIntoConstraints = false
+        composer.widthAnchor.constraint(equalToConstant: CGFloat(S.chatWidth)).isActive = true
+        fieldBox.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return composer
     }
 
     func focusInput() {
-        if !inputRow.isHidden { makeFirstResponder(input) }
+        if !composer.isHidden { makeFirstResponder(input) }
     }
 
-    /// Above the pet (or below it at the top of the screen), kept on the pet's screen.
+    /// Above the pet with the tail on its head (or below it at the top of the screen), kept on the pet's screen.
     func position(near pet: NSWindow?) {
         guard let pet = pet else { center(); return }
         let screen = (pet.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
         let size = frame.size
+        let gap = CGFloat(S.chatGapToPet)
         var x = pet.frame.maxX - size.width
-        var y = pet.frame.maxY + 8
-        if y + size.height > screen.maxY { y = pet.frame.minY - size.height - 8 }
-        x = min(max(x, screen.minX + 8), screen.maxX - size.width - 8)
-        y = min(max(y, screen.minY + 8), screen.maxY - size.height - 8)
+        var y = pet.frame.maxY + gap
+        let below = y + size.height > screen.maxY
+        if below { y = pet.frame.minY - size.height - gap }
+        x = min(max(x, screen.minX + CGFloat(Sp.s)), screen.maxX - size.width - CGFloat(Sp.s))
+        y = min(max(y, screen.minY + CGFloat(Sp.s)), screen.maxY - size.height - CGFloat(Sp.s))
         setFrameOrigin(NSPoint(x: x, y: y))
+        background.tailOnTop = below
+        background.tailFromRight = min(max(x + size.width - pet.frame.midX, CGFloat(PetTokens.Radius.window) + PetChatBackground.tail),
+                                       size.width - CGFloat(PetTokens.Radius.window) - PetChatBackground.tail)
+        contentTop.constant = below ? PetChatBackground.tail : 0
+        contentBottom.constant = below ? 0 : -PetChatBackground.tail
+        invalidateShadow()
     }
 
-    /// A short message under the transcript for a few seconds (refused file, nothing to send…).
+    /// A short message at the end of the log for a few seconds (refused file, nothing to send…).
     func flash(_ text: String) {
         flashText = text
         flashUntil = Date().addingTimeInterval(6)
@@ -187,208 +357,99 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate, NSTextViewDelegate {
         guard let module = module else { return }
         let st = module.state
         let signedIn = st.auth == .signedIn
-        status.stringValue = statusLine(st)
-        inputRow.isHidden = !signedIn
-        signInButton.isHidden = signedIn
-        switch st.auth {
-        case .signingIn: signInButton.title = "브라우저에서 로그인하는 중…"; signInButton.isEnabled = false
-        default: signInButton.title = "나초 계정으로 로그인"; signInButton.isEnabled = true
+        let head = PetTranscript.headerStatus(st)
+        status.stringValue = head.text + (PetTranscript.headerCredits(st).map { " · \($0)" } ?? "")
+        switch head.dot {
+        case .ok: dot.fill = PetTheme.color(\.success)
+        case .busy: dot.fill = PetTheme.accent
+        case .wait, .warn: dot.fill = PetTheme.color(\.warning)
+        case .off: dot.fill = PetTheme.tertiary
         }
+        let service = st.config?.serviceNotice
+        bannerText.stringValue = service ?? ""
+        banner.superview?.isHidden = service == nil || !signedIn
+
+        scroll.isHidden = !signedIn
+        signInView.isHidden = signedIn
+        composer.isHidden = !signedIn
+        if case .signingIn = st.auth { signInButton.set(title: "브라우저에서 로그인하는 중…"); signInButton.isEnabled = false }
+        else { signInButton.set(title: "나초 계정으로 로그인"); signInButton.isEnabled = true }
+
         let busy = st.chat.isBusy
-        sendButton.title = busy ? "멈추기" : "보내기"
-        sendButton.setAccessibilityLabel(busy ? "답변 멈추기" : "보내기")
-        sendButton.isEnabled = !st.uploading
         let listening = module.dictationState.isListening || module.serverRecorder.isRecording
-        micButton.image = NSImage(systemSymbolName: listening ? "mic.fill" : "mic",
-                                  accessibilityDescription: listening ? "받아쓰기 멈추기" : "받아쓰기")
-        micButton.contentTintColor = listening ? .systemRed : nil
-
-        var noticeText: String?
-        if let f = flashText, Date() < flashUntil { noticeText = f }
-        else if case let .denied(d) = module.dictationState.phase { noticeText = d.koreanMessage }
-        else if case let .unavailable(m) = module.dictationState.phase { noticeText = m }
-        else if st.uploading { noticeText = "파일 올리는 중…" }
-        else if st.dictating { noticeText = "받아쓰는 중…" }
-        else if module.serverRecorder.isRecording { noticeText = "듣고 있어요. 다 말하면 마이크를 다시 눌러 주세요." }
-        else if let n = st.chat.notice ?? st.notice { noticeText = n }
-        notice.stringValue = noticeText ?? ""
-        notice.isHidden = noticeText == nil
-
+        let hasText = !input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !st.pending.isEmpty
+        if busy {
+            sendButton.set(symbol: "stop.fill", color: PetTheme.color(\.window), fill: .some(PetTheme.text))
+            sendButton.setAccessibilityLabel("답변 멈추기"); sendButton.toolTip = "멈추기"
+        } else {
+            sendButton.set(symbol: "arrow.up", color: hasText ? PetTheme.color(\.onAccent) : PetTheme.tertiary,
+                           fill: .some(hasText ? PetTheme.accent : PetTheme.color(\.surface)))
+            sendButton.setAccessibilityLabel("보내기"); sendButton.toolTip = "보내기"
+        }
+        sendButton.isEnabled = !st.uploading
+        micButton.set(symbol: listening ? "mic.fill" : "mic", color: listening ? PetTheme.color(\.onDanger) : PetTheme.secondary,
+                      fill: .some(listening ? PetTheme.color(\.danger) : nil))
+        micButton.toolTip = listening ? "다 말하면 다시 누르세요" : "받아쓰기 (한국어)"
+        micButton.setAccessibilityLabel(listening ? "받아쓰기 멈추기" : "받아쓰기")
+        wave.isHidden = !listening
+        input.placeholderAttributedString = NSAttributedString(string: listening ? "듣고 있어요" : "나초에게 말하기…",
+                                                               attributes: [.font: PetTheme.body, .foregroundColor: listening ? PetTheme.color(\.danger) : PetTheme.tertiary])
         renderPending(st.pending)
-        if tabs.selectedSegment == 0 { renderTranscript(st, signedIn: signedIn) } else { renderConnections() }
+        if selectedTab == 0 { renderLog(st) } else { renderConnections() }
     }
 
-    private func statusLine(_ st: PetSessionState) -> String {
-        switch st.auth {
-        case .signedOut: return "로그인 전"
-        case .signingIn: return "로그인 중"
-        case let .failed(m): return m
-        case .signedIn: break
-        }
-        var parts: [String] = []
-        switch st.chat.phase {
-        case .connected:
-            if st.chat.isBusy { parts.append(ActivityText.label(st.chat.activity == .idle ? .typing : st.chat.activity, tool: st.chat.activeTool)) }
-            else if let t = st.chat.task, t.isOpen { parts.append(t.statusText) }
-            else { parts.append("연결됨") }
-            if let u = st.chat.usage { parts.append("크레딧 \(u.remaining)") }
-        case .connecting: parts.append("연결 중")
-        case .reconnecting(let n): parts.append("다시 연결 중 (\(n))")
-        case .authFailed: parts.append("다시 로그인해 주세요")
-        case .disconnected: parts.append("쉬는 중")
-        }
-        if st.connector != .off { parts.append("콤보 조작 \(st.connector.koreanLabel)") }
-        return parts.joined(separator: " · ")
+    /// Notices that are not part of a turn: flash, dictation problems, uploads, the session's last error.
+    private func noticeLine(_ st: PetSessionState) -> PetChatItem? {
+        guard let module = module else { return nil }
+        var text: String?
+        if let f = flashText, Date() < flashUntil { text = f }
+        else if case let .denied(d) = module.dictationState.phase { text = d.koreanMessage }
+        else if case let .unavailable(m) = module.dictationState.phase { text = m }
+        else if st.uploading { text = "파일 올리는 중…" }
+        else if st.dictating { text = "받아쓰는 중…" }
+        else if let n = st.chat.notice ?? st.notice, n != st.config?.serviceNotice { text = n }
+        return text.map { .line(PetChatLine(kind: .notice, symbol: "info.circle", parts: [PetTextPart($0)])) }
     }
 
-    private func renderTranscript(_ st: PetSessionState, signedIn: Bool) {
-        let undoable = st.chat.memoryNotes.filter { $0.forgottenAt != nil }.map { module?.canUndoForget($0.updateID) == true }
-        let signature = "\(st.chat.turns)|\(st.chat.history)|\(st.chat.cards)|\(String(describing: st.chat.task))|\(st.chat.memoryNotes)|\(undoable)|\(st.chat.hasMoreHistory)|\(st.loadingHistory)|\(String(describing: st.chat.usage))|\(signedIn)|\(st.chat.agentName)"
-        guard signature != lastSignature else { return }
-        lastSignature = signature
-        transcript.textStorage?.setAttributedString(PetChatWindow.transcriptText(st, signedIn: signedIn, canUndo: { self.module?.canUndoForget($0) == true }))
-        transcript.scrollToEndOfDocument(nil)
-        if undoable.contains(true) {
-            // The undo link disappears when the server's 10-second window closes.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.render() }
+    private func renderLog(_ st: PetSessionState) {
+        guard st.auth == .signedIn else { return }
+        var items = PetTranscript.items(st, undoSecondsLeft: { [weak self] id in self?.undoSecondsLeft(id, st) })
+        if let n = noticeLine(st) { items.append(n) }
+        guard items != shownItems else { return }
+        // Keep the views of the unchanged beginning (streaming only changes the end).
+        var keep = 0
+        while keep < min(items.count, shownItems.count), items[keep] == shownItems[keep] { keep += 1 }
+        for v in shownViews[keep...] { logStack.removeArrangedSubview(v); v.removeFromSuperview() }
+        shownViews.removeSubrange(keep...)
+        let maker = PetItemViews(width: logWidth, onLink: { [weak self] in self?.open($0) },
+                                 onExample: { [weak self] in self?.input.stringValue = $0; self?.focusInput(); self?.render() })
+        for item in items[keep...] {
+            let v = maker.view(item)
+            logStack.addArrangedSubview(v)
+            shownViews.append(v)
+        }
+        shownItems = items
+        logStack.layoutSubtreeIfNeeded()
+        if let doc = scroll.documentView {
+            doc.layoutSubtreeIfNeeded()
+            doc.scroll(NSPoint(x: 0, y: max(0, doc.bounds.height - scroll.contentView.bounds.height)))
+        }
+        // The undo countdown ("7초 안에 되돌리기") ticks every second while it lasts.
+        if st.chat.memoryNotes.contains(where: { undoSecondsLeft($0.updateID, st) != nil }), !tickScheduled {
+            tickScheduled = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.tickScheduled = false; self?.render() }
         }
     }
 
-    /// Links in the transcript: `nachopet://<action>?…` (older, forget, undo, memfb, card).
-    static func link(_ action: String, _ items: [String: String] = [:]) -> URL {
-        var c = URLComponents()
-        c.scheme = "nachopet"
-        c.host = action
-        if !items.isEmpty { c.queryItems = items.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
-        return c.url!
+    private func undoSecondsLeft(_ updateID: String, _ st: PetSessionState) -> Int? {
+        guard let at = st.chat.memoryNotes.first(where: { $0.updateID == updateID })?.forgottenAt,
+              module?.canUndoForget(updateID) == true else { return nil }
+        let left = Int((PetSession.restoreWindow - Date().timeIntervalSince(at)).rounded(.up))
+        return left > 0 ? left : nil
     }
 
-    static func transcriptText(_ st: PetSessionState, signedIn: Bool, canUndo: (String) -> Bool) -> NSAttributedString {
-        let out = NSMutableAttributedString()
-        let body = NSFont.systemFont(ofSize: 13)
-        let small = NSFont.systemFont(ofSize: 11)
-        func para(_ align: NSTextAlignment) -> NSParagraphStyle {
-            let p = NSMutableParagraphStyle()
-            p.alignment = align
-            p.paragraphSpacing = 6
-            return p
-        }
-        func add(_ text: String, font: NSFont = body, color: NSColor = .labelColor, align: NSTextAlignment = .left) {
-            out.append(NSAttributedString(string: text + "\n", attributes: [.font: font, .foregroundColor: color, .paragraphStyle: para(align)]))
-        }
-        /// One line made of plain parts and links.
-        func line(_ parts: [(String, URL?)], font: NSFont = small, color: NSColor = .secondaryLabelColor, align: NSTextAlignment = .left) {
-            let l = NSMutableAttributedString()
-            for (text, url) in parts {
-                var a: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: para(align)]
-                if let u = url { a[.link] = u }
-                l.append(NSAttributedString(string: text, attributes: a))
-            }
-            l.append(NSAttributedString(string: "\n", attributes: [.font: font, .paragraphStyle: para(align)]))
-            out.append(l)
-        }
-        func files(_ list: [PetFileLink], align: NSTextAlignment) {
-            for f in list {
-                let icon = f.kind == "image" ? "🖼" : "📄"
-                if f.deleted { line([("\(icon) \(f.name) (지워짐)", nil)], align: align); continue }
-                let url = f.url.flatMap { URL(string: $0) }.flatMap { ["https", "http"].contains($0.scheme ?? "") ? $0 : nil }
-                line([("\(icon) ", nil), (f.name + (f.byNacho ? " (나초가 만듦)" : ""), url)], align: align)
-            }
-        }
-        func card(_ c: PetCard) {
-            line([("❓ ", nil), (c.title, nil)], font: body, color: .labelColor)
-            if let d = c.detail { line([("   " + d, nil)]) }
-            if c.isPending, c.answerableHere, !c.options.isEmpty {
-                var parts: [(String, URL?)] = [("   ", nil)]
-                for (i, o) in c.options.enumerated() {
-                    if i > 0 { parts.append(("  ·  ", nil)) }
-                    parts.append((o.label, link("card", ["id": c.id, "action": "choose", "option": o.id])))
-                }
-                line(parts, font: body)
-            }
-            line([("   " + c.statusText, nil)], color: c.isPending ? .systemOrange : .secondaryLabelColor)
-        }
-        if !signedIn {
-            add("안녕하세요, 나초예요.", font: NSFont.systemFont(ofSize: 13, weight: .semibold))
-            add("나초 계정으로 로그인하면 여기서 대화할 수 있어요. 캡처나 선반의 파일을 건네거나, 창 배치와 가젯 켜기·끄기도 부탁할 수 있어요.",
-                color: .secondaryLabelColor)
-            add("로그인은 브라우저 창(auth.nachotown.com)에서 해요. 비밀번호는 콤보가 보지 않아요.", font: small, color: .tertiaryLabelColor)
-            return out
-        }
-        let chat = st.chat
-        if st.loadingHistory { line([("이전 대화 불러오는 중…", nil)], color: .tertiaryLabelColor, align: .center) }
-        else if chat.hasMoreHistory { line([("이전 대화 더 보기", link("older"))], align: .center) }
-        // The room record: earlier talk, other devices, finished tasks.
-        for m in chat.history {
-            if let c = m.card { card(chat.cards.first { $0.id == c.id } ?? c); continue }
-            if m.contentType == "system_note" { add(m.text, font: small, color: .tertiaryLabelColor, align: .center); continue }
-            let mine = m.role == "user"
-            if !m.text.isEmpty { add(m.text, color: mine ? NSColor.controlAccentColor.withAlphaComponent(0.75) : NSColor.secondaryLabelColor, align: mine ? .right : .left) }
-            files(m.files, align: mine ? .right : .left)
-        }
-        if !chat.history.isEmpty, !chat.turns.isEmpty { line([("──────── 이번 대화 ────────", nil)], color: .tertiaryLabelColor, align: .center) }
-        if chat.turns.isEmpty, chat.history.isEmpty {
-            add("무엇을 도와드릴까요?", font: NSFont.systemFont(ofSize: 13, weight: .semibold))
-            add("예: \"창 왼쪽으로 붙여 줘\", \"킵 어웨이크 켜 줘\", 캡처 위에서 우클릭 ▸ 나초에게 묻기", font: small, color: .secondaryLabelColor)
-        }
-        let shownNotes = Set(chat.turns.map { $0.clientMsgID })
-        func memoryLine(_ n: PetMemoryNote) {
-            var parts: [(String, URL?)] = [("🧠 " + n.text + "  ", nil)]
-            if n.forgottenAt != nil {
-                if canUndo(n.updateID) { parts.append(("되돌리기", link("undo", ["u": n.updateID]))) }
-            } else if n.action != "forgotten" {
-                parts.append(("잊어 줘", link("forget", ["u": n.updateID])))
-            }
-            line(parts)
-        }
-        for turn in chat.turns {
-            var mine = turn.userText
-            if !turn.attachmentNames.isEmpty { mine += (mine.isEmpty ? "" : "\n") + "📎 " + turn.attachmentNames.joined(separator: ", ") }
-            add(mine, color: NSColor.controlAccentColor, align: .right)
-            // What Nacho is doing on the way: tools and "still working on it" lines.
-            if !turn.tools.isEmpty {
-                let names = turn.tools.map { t in t.name + (t.finished ? (t.isError ? " ✕" : " ✓") : " …") }
-                line([("🔧 " + names.joined(separator: ", "), nil)], color: .tertiaryLabelColor)
-            }
-            for p in turn.progress { line([("… " + p, nil)], color: .tertiaryLabelColor) }
-            var answer = turn.assistantText
-            switch turn.status {
-            case .sending: if answer.isEmpty { answer = "…" }
-            case .streaming: answer += " ▍"
-            case .done:
-                if answer.isEmpty, turn.taskID != nil { answer = "일로 맡았어요. 진행 상황은 여기에 보여 드릴게요." }
-            case .stopped: answer += answer.isEmpty ? "(멈췄어요)" : " (멈춤)"
-            case let .failed(m): answer += (answer.isEmpty ? "" : "\n") + "⚠︎ " + m
-            case .interrupted: answer += (answer.isEmpty ? "" : "\n") + "⚠︎ 연결이 끊겨 답이 끝나지 않았어요. 다시 연결되면 이어서 보여 드려요."
-            }
-            add(answer)
-            files(turn.files, align: .left)
-            for id in turn.cardIDs { if let c = chat.cards.first(where: { $0.id == id }) { card(c) } }
-            if let tid = turn.taskID, let t = chat.task, t.id == tid {
-                line([("📋 \(t.title): \(t.statusText)", nil)], color: t.isOpen ? .systemBlue : .secondaryLabelColor)
-            }
-            for n in chat.memoryNotes where n.turnClientID == turn.clientMsgID { memoryLine(n) }
-            if !turn.usedMemoryIDs.isEmpty, turn.status == .done {
-                line([("기억 \(turn.usedMemoryIDs.count)개를 썼어요 · ", nil), ("기억이 틀렸어요", link("memfb", ["turn": turn.clientMsgID]))],
-                     color: .tertiaryLabelColor)
-            }
-        }
-        // Memory lines and cards that came from elsewhere (hub, another device, a task).
-        for n in chat.memoryNotes where n.turnClientID.map({ !shownNotes.contains($0) }) ?? true { memoryLine(n) }
-        let inTurns = Set(chat.turns.flatMap { $0.cardIDs })
-        let inHistory = Set(chat.history.compactMap { $0.card?.id })
-        for c in chat.cards where c.isPending && !inTurns.contains(c.id) && !inHistory.contains(c.id) { card(c) }
-        if let t = chat.task, !chat.turns.contains(where: { $0.taskID == t.id }) {
-            line([("📋 \(t.title): \(t.statusText)", nil)], color: t.isOpen ? .systemBlue : .secondaryLabelColor)
-        }
-        if let n = chat.lastNotification { line([("🔔 " + n, nil)], color: .tertiaryLabelColor) }
-        if let u = chat.usage { line([(u.summary, nil)], color: .tertiaryLabelColor, align: .right) }
-        return out
-    }
-
-    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-        guard let url = link as? URL ?? (link as? String).flatMap(URL.init(string:)) else { return false }
-        guard url.scheme == "nachopet" else { return false }  // http(s) file links open in the browser
+    private func open(_ url: URL) {
+        guard url.scheme == "nachopet" else { NSWorkspace.shared.open(url); return }
         let q = Dictionary(uniqueKeysWithValues: (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
         switch url.host {
         case "older": module?.loadOlderHistory()
@@ -398,32 +459,69 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate, NSTextViewDelegate {
         case "card": if let id = q["id"], let a = q["action"] { module?.answerCard(id, action: a, options: q["option"].map { [$0] } ?? []) }
         default: break
         }
-        return true
     }
 
+    /// `.pending .chip`: thumbnail, name, what Nacho can do with it, remove button.
     private func renderPending(_ pending: [PetPendingFile]) {
         pendingRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        pendingRow.isHidden = pending.isEmpty
+        pendingRow.superview?.isHidden = pending.isEmpty || composer.isHidden
         for p in pending {
-            let chip = NSButton(title: "📎 \(p.file.name)  ✕", target: self, action: #selector(removePendingClicked(_:)))
-            chip.bezelStyle = .inline
-            chip.controlSize = .small
-            chip.tag = p.id
-            chip.toolTip = "\(p.file.readability.koreanNote) — 누르면 빼요"
-            chip.lineBreakMode = .byTruncatingMiddle
-            chip.widthAnchor.constraint(lessThanOrEqualToConstant: 160).isActive = true
+            let chip = PetBox()
+            chip.fill = PetTheme.color(\.surface)
+            chip.radius = CGFloat(PetTokens.Radius.card)
+            chip.translatesAutoresizingMaskIntoConstraints = false
+            chip.heightAnchor.constraint(equalToConstant: CGFloat(S.thumbnail)).isActive = true
+            chip.toolTip = p.file.readability.koreanNote
+            let thumb = NSImageView()
+            let isImage = p.file.mime.hasPrefix("image/")
+            thumb.image = isImage ? NSImage(data: p.file.data) : PetTheme.symbol("doc", size: S.icon)
+            thumb.imageScaling = isImage ? .scaleAxesIndependently : .scaleNone
+            thumb.contentTintColor = PetTheme.secondary
+            thumb.wantsLayer = true
+            thumb.layer?.cornerRadius = CGFloat(PetTokens.Radius.thumbnail)
+            thumb.layer?.masksToBounds = true
+            thumb.layer?.backgroundColor = PetTheme.color(\.surfaceRaised).cgColor
+            thumb.translatesAutoresizingMaskIntoConstraints = false
+            thumb.widthAnchor.constraint(equalToConstant: CGFloat(S.thumbnail - 8)).isActive = true
+            thumb.heightAnchor.constraint(equalToConstant: CGFloat(S.thumbnail - 8)).isActive = true
+            let title = NSTextField(labelWithString: p.file.name)
+            title.font = PetTheme.font(PetTokens.Font.caption, PetTokens.Font.weightMedium)
+            title.textColor = PetTheme.text
+            title.lineBreakMode = .byTruncatingMiddle
+            title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let note = NSTextField(labelWithString: PetText.pendingNote(p.file))
+            note.font = PetTheme.caption
+            note.textColor = PetTheme.tertiary
+            let names = NSStackView(views: [title, note])
+            names.orientation = .vertical
+            names.alignment = .leading
+            names.spacing = 0
+            names.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let id = p.id
+            let x = PetPill(symbol: "xmark", iconSize: 10, color: PetTheme.secondary, fill: PetTheme.color(\.surfaceRaised), height: 22, radius: 11, width: 22)
+            x.onClick = { [weak self] in self?.module?.removePending(id) }
+            x.toolTip = "빼기"
+            let row = NSStackView(views: [thumb, names, x])
+            row.spacing = CGFloat(Sp.s)
+            row.translatesAutoresizingMaskIntoConstraints = false
+            chip.addSubview(row)
+            NSLayoutConstraint.activate([
+                row.centerYAnchor.constraint(equalTo: chip.centerYAnchor),
+                row.leadingAnchor.constraint(equalTo: chip.leadingAnchor, constant: CGFloat(Sp.xs)),
+                row.trailingAnchor.constraint(equalTo: chip.trailingAnchor, constant: -CGFloat(Sp.s)),
+            ])
             pendingRow.addArrangedSubview(chip)
         }
     }
 
     private func renderConnections() {
-        lastSignature = ""
-        guard let text = connectionsText else {
-            transcript.textStorage?.setAttributedString(NSAttributedString(string: "불러오는 중…",
-                                                                           attributes: [.foregroundColor: NSColor.secondaryLabelColor]))
-            return
-        }
-        transcript.textStorage?.setAttributedString(text)
+        shownItems = []
+        shownViews.forEach { $0.removeFromSuperview() }
+        shownViews = []
+        let text = connectionsText ?? PetLinkText.plain("불러오는 중…", font: PetTheme.body, color: PetTheme.secondary)
+        let v = PetLinkText(text, maxWidth: logWidth)
+        logStack.addArrangedSubview(v)
+        shownViews = [v]
     }
 
     private func loadConnections() {
@@ -439,31 +537,31 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate, NSTextViewDelegate {
 
     static func describe(_ result: Result<ConnectorOverview, ConnectorError>, connector: ConnectorPhase) -> NSAttributedString {
         let out = NSMutableAttributedString()
-        func line(_ s: String, bold: Bool = false, color: NSColor = .labelColor) {
-            out.append(NSAttributedString(string: s + "\n", attributes: [
-                .font: bold ? NSFont.systemFont(ofSize: 13, weight: .semibold) : NSFont.systemFont(ofSize: 12), .foregroundColor: color]))
+        func line(_ s: String, bold: Bool = false, color: NSColor = PetTheme.text) {
+            let font = bold ? PetTheme.font(PetTokens.Font.body, PetTokens.Font.weightSemibold) : PetTheme.caption
+            out.append(NSAttributedString(string: s + "\n", attributes: [.font: font, .foregroundColor: color, .paragraphStyle: PetTheme.paragraph(font)]))
         }
         line("이 맥 (나초 콤보)", bold: true)
-        line("  창 배치·가젯 켜기/끄기: \(connector.koreanLabel)", color: .secondaryLabelColor)
+        line("  창 배치·가젯 켜기/끄기: \(connector.koreanLabel)", color: PetTheme.secondary)
         switch result {
         case let .failure(e):
             line("")
-            line(e.koreanMessage, color: .systemOrange)
+            line(e.koreanMessage, color: PetTheme.color(\.warning))
         case let .success(o):
             line("")
             line("연결된 서비스", bold: true)
-            if o.connections.isEmpty { line("  아직 없어요", color: .secondaryLabelColor) }
+            if o.connections.isEmpty { line("  아직 없어요", color: PetTheme.secondary) }
             for c in o.connections {
                 line("  \(c.isHealthy ? "●" : "○") \(c.label) — \(c.statusText)\(c.accountLabel.map { " · \($0)" } ?? "")")
-                if !c.scopeSummary.isEmpty { line("     \(c.scopeSummary)", color: .secondaryLabelColor) }
+                if !c.scopeSummary.isEmpty { line("     \(c.scopeSummary)", color: PetTheme.secondary) }
             }
             line("")
             line("나초가 쓸 수 있는 도구", bold: true)
-            for t in o.tools { line("  \(t.enabled ? "●" : "○") \(t.name) · \(t.kindText)", color: t.enabled ? .labelColor : .secondaryLabelColor) }
+            for t in o.tools { line("  \(t.enabled ? "●" : "○") \(t.name) · \(t.kindText)", color: t.enabled ? PetTheme.text : PetTheme.secondary) }
             if !o.capabilities.isEmpty {
                 line("")
                 line("이 맥이 나초에게 준 기능", bold: true)
-                for c in o.capabilities { line("  ● \(c.name)", color: .secondaryLabelColor) }
+                for c in o.capabilities { line("  ● \(c.name)", color: PetTheme.secondary) }
             }
         }
         return out
@@ -471,11 +569,21 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate, NSTextViewDelegate {
 
     // MARK: actions
 
-    @objc private func tabChanged() {
-        if tabs.selectedSegment == 1 { loadConnections() } else { lastSignature = ""; render() }
+    private func select(tab i: Int) {
+        selectedTab = i
+        styleTabs()
+        if i == 1 { loadConnections() } else { shownItems = []; shownViews.forEach { $0.removeFromSuperview() }; shownViews = []; render() }
     }
 
-    @objc private func sendClicked() {
+    private func styleTabs() {
+        for (i, b) in tabButtons.enumerated() {
+            b.set(color: i == selectedTab ? PetTheme.text : PetTheme.secondary, fill: .some(i == selectedTab ? PetTheme.color(\.accentSoft) : nil))
+        }
+    }
+
+    @objc private func returnPressed() { sendClicked() }
+
+    private func sendClicked() {
         guard let module = module else { return }
         if module.state.chat.isBusy { module.stopTurn(); return }
         let text = input.stringValue
@@ -484,21 +592,55 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate, NSTextViewDelegate {
             guard let self = self else { return }
             self.sendButton.isEnabled = true
             if let r = refusal { self.flash(r) } else { self.input.stringValue = "" }
-            if self.tabs.selectedSegment != 0 { self.tabs.selectedSegment = 0; self.lastSignature = "" }
+            if self.selectedTab != 0 { self.select(tab: 0) }
             self.render()
         }
     }
 
-    @objc private func micClicked() {
-        module?.toggleDictation(existingText: input.stringValue) { [weak self] text in self?.input.stringValue = text }
+    private func micClicked() {
+        module?.toggleDictation(existingText: input.stringValue) { [weak self] text in self?.input.stringValue = text; self?.render() }
+        render()
     }
 
-    @objc private func attachClicked() { module?.pickFiles() }
-    @objc private func signInClicked() { module?.signIn() }
-    @objc private func removePendingClicked(_ sender: NSButton) { module?.removePending(sender.tag) }
+    func controlTextDidChange(_ obj: Notification) { render() }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) { module?.closeChat(); return true }
         return false
     }
+}
+
+/// The text field inside `.field`; reports focus so the capsule can draw the focus ring.
+final class PetInputField: NSTextField {
+    var onFocus: ((Bool) -> Void)?
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { onFocus?(true) }
+        return ok
+    }
+    override func textDidEndEditing(_ notification: Notification) {
+        super.textDidEndEditing(notification)
+        onFocus?(false)
+    }
+}
+
+final class PetFlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+/// A view with token insets around one child, full chat width (`margin: var(--space-s) var(--space-m) 0`).
+final class PetRowInset: NSView {
+    init(_ child: NSView, top: Double = 0, bottom: Double = 0) {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        child.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(child)
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: CGFloat(PetTokens.Size.chatWidth)),
+            child.topAnchor.constraint(equalTo: topAnchor, constant: CGFloat(top)),
+            child.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -CGFloat(bottom)),
+            child.centerXAnchor.constraint(equalTo: centerXAnchor),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
 }
