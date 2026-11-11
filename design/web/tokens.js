@@ -29,7 +29,7 @@ globalThis.PET_TOKENS = {
     "selectBarHeight": 34,
     "selectBarIcon": 14,
     "selectBarOffset": 8,
-    "selectAskWidth": 340,
+    "selectAskWidth": 400,
     "contextRowIcon": 14
   },
   "space": {

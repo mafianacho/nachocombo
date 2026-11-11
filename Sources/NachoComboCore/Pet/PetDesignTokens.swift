@@ -32,7 +32,7 @@ public enum PetTokens {
         public static let selectBarHeight: Double = 34
         public static let selectBarIcon: Double = 14
         public static let selectBarOffset: Double = 8
-        public static let selectAskWidth: Double = 340
+        public static let selectAskWidth: Double = 400
         public static let contextRowIcon: Double = 14
     }
 
