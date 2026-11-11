@@ -1,0 +1,53 @@
+# Selection bar ↔ Nacho Pet (design draft, web mockup first)
+
+A PopClip-like bar for text selected in any app, part of **Nacho Pet** (no separate gadget). Scenes:
+`design/web/index.html?scene=sel-…` (`sel-bar`, `sel-more`, `sel-ask`, `sel-preview`, `sel-stream`, `sel-result`,
+`sel-secure`, `sel-intro`, `sel-settings`). Native port follows after the mockup review. No server change.
+
+## Flow
+1. Text is selected (mouse up or ⇧-arrow selection ends). After `motion.selectBarDelay` (default 300 ms; or only with ⌘
+   held, a setting) the bar appears `size.selectBarOffset` above the selection (below it when there is no room).
+   It goes away on Esc, a click elsewhere, typing, scrolling or a new selection.
+2. Buttons: 복사 · 검색 · 번역 · 요약 · 설명 | 나초에게 묻기 · ⋯. Copy and Search act locally: Copy puts the text on the
+   pasteboard, and Search opens the default browser with the selection as the query. They send nothing to Nacho.
+3. 번역 / 요약 / 설명 / 나초에게 묻기 (with a one-line question) open the pet's chat with a **preview card**. It lists
+   every context item with its own "빼기", plus 보내기 / 취소. Nothing leaves the Mac before 보내기.
+4. After 보내기 the answer streams in the chat as usual. The sent turn shows a chip ("Safari · 고른 글 129자 · 맥락 4개"),
+   and "보낸 내용 보기" reopens the list. Answers get 복사 · 다시 actions.
+5. ⋯: "<앱>에서는 띄우지 않기" (adds the app to the exclusions), "잠시 끄기 (1시간)", "선택 동작 바 설정…".
+
+## Context sent (structured, not mixed into the prompt)
+The message text is only the instruction ("번역해 줘 · 한국어로", or the user's question). The context goes as **one
+text attachment** (`선택 맥락.md`, `text/markdown`). It uses the existing `POST /api/v1/media/uploads` and
+`attachments: [{attachment_id}]` path, which the server already reads for `text/*`, so the server does not change.
+
+| Field | Source | Limit |
+|---|---|---|
+| selected text | AX `kAXSelectedTextAttribute` of the focused element | 8,000 chars |
+| app name, bundle id | `NSWorkspace.frontmostApplication` | — |
+| window title | AX title of the focused window | 200 chars |
+| URL, page title | browsers only (Safari, Chrome, Arc, Edge, Firefox), via AX of the address field / document; none when unavailable | 500 chars |
+| text before / after | AX `kAXStringForRangeParameterizedAttribute` around the selected range | 400 chars each side |
+| language (guess) | `NLLanguageRecognizer` on the selection | — |
+
+Each row can be removed in the preview. Removed rows are not uploaded. The defaults for which rows are on are a
+setting later; for now all are on.
+
+## Privacy and safety
+- Before a button is pressed, nothing is sent and nothing is stored. The selection is read only to decide whether to
+  show the bar and to fill the preview.
+- No bar in password fields (`AXSecureTextField` / subrole), while **secure input** is on (`IsSecureEventInputEnabled`),
+  or in excluded apps. The built-in exclusions are 1Password, Bitwarden, Keychain Access and Passwords; the user can add
+  more (and remove only the ones they added).
+- Selected text, context and answers are never written to logs or diagnostics (only counts and lengths).
+- Accessibility is needed to read the selection. It is asked only when the user switches the bar on (from the
+  first-use card or Settings), never at launch.
+
+## Settings (Nacho Pet card ▸ Selection Bar)
+On/off (default **off**; the first-use card in the chat offers to switch it on), button order and visibility (Ask
+Nacho always shown), delay (0.3 s default; 0 / 0.6 s / only with ⌘), excluded apps.
+
+## Tokens added
+`size.selectBarHeight`, `selectBarIcon`, `selectBarOffset`, `selectAskWidth`, `contextRowIcon`, `radius.selectBar`,
+`motion.selectBarDelay`, `motion.selectBarFade`. The host app's selection highlight in the mockup (#B4D5FE /
+#3F638B) is content, not a token.

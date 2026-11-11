@@ -25,6 +25,11 @@
   --size-chip-max-width: 170px;
   --size-badge: 20px;
   --size-badge-icon: 12px;
+  --size-select-bar-height: 34px;
+  --size-select-bar-icon: 14px;
+  --size-select-bar-offset: 8px;
+  --size-select-ask-width: 340px;
+  --size-context-row-icon: 14px;
   --space-xxs: 2px;
   --space-xs: 4px;
   --space-s: 8px;
@@ -38,6 +43,7 @@
   --radius-control: 8px;
   --radius-chip: 12px;
   --radius-thumbnail: 6px;
+  --radius-select-bar: 10px;
   --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", "Noto Sans CJK KR", "Noto Sans KR", sans-serif;
   --font-title: 15px;
   --font-body: 13px;
@@ -76,6 +82,8 @@
   --motion-press: 110ms;
   --motion-land: 280ms;
   --motion-frame-interval: 33ms;
+  --motion-select-bar-delay: 300ms;
+  --motion-select-bar-fade: 120ms;
   --motion-amount-transition-scale: 0.04;
   --motion-amount-breath-lift: 1.5;
   --motion-amount-breath-scale: 0.02;
