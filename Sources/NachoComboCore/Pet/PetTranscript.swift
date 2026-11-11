@@ -24,6 +24,10 @@ public struct PetChatLine: Equatable {
     public var parts: [PetTextPart]
     public var alignTrailing = false
 
+    public init(kind: Kind, symbol: String?, parts: [PetTextPart], alignTrailing: Bool = false) {
+        self.kind = kind; self.symbol = symbol; self.parts = parts; self.alignTrailing = alignTrailing
+    }
+
     public var plainText: String { parts.map { $0.text }.joined() }
 }
 

@@ -19,7 +19,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private let dot = PetBox()
     private let status = NSTextField(labelWithString: "")
     private var tabButtons: [PetPill] = []
-    private var tab = 0
+    private var selectedTab = 0
     // banner, log, pending, composer
     private let banner = PetBox()
     private let bannerText = NSTextField(wrappingLabelWithString: "")
@@ -60,7 +60,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         hasShadow = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         setAccessibilityIdentifier("nacho-pet-chat")
-        setAccessibilityRole(.dialog)
+        setAccessibilitySubrole(.dialog)
         setAccessibilityLabel("나초와 대화")
         build()
     }
@@ -395,7 +395,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         input.placeholderAttributedString = NSAttributedString(string: listening ? "듣고 있어요" : "나초에게 말하기…",
                                                                attributes: [.font: PetTheme.body, .foregroundColor: listening ? PetTheme.color(\.danger) : PetTheme.tertiary])
         renderPending(st.pending)
-        if tab == 0 { renderLog(st) } else { renderConnections() }
+        if selectedTab == 0 { renderLog(st) } else { renderConnections() }
     }
 
     /// Notices that are not part of a turn: flash, dictation problems, uploads, the session's last error.
@@ -570,14 +570,14 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     // MARK: actions
 
     private func select(tab i: Int) {
-        tab = i
+        selectedTab = i
         styleTabs()
         if i == 1 { loadConnections() } else { shownItems = []; shownViews.forEach { $0.removeFromSuperview() }; shownViews = []; render() }
     }
 
     private func styleTabs() {
         for (i, b) in tabButtons.enumerated() {
-            b.set(color: i == tab ? PetTheme.text : PetTheme.secondary, fill: .some(i == tab ? PetTheme.color(\.accentSoft) : nil))
+            b.set(color: i == selectedTab ? PetTheme.text : PetTheme.secondary, fill: .some(i == selectedTab ? PetTheme.color(\.accentSoft) : nil))
         }
     }
 
@@ -592,7 +592,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
             guard let self = self else { return }
             self.sendButton.isEnabled = true
             if let r = refusal { self.flash(r) } else { self.input.stringValue = "" }
-            if self.tab != 0 { self.select(tab: 0) }
+            if self.selectedTab != 0 { self.select(tab: 0) }
             self.render()
         }
     }
