@@ -4,7 +4,7 @@ import NachoComboCore
 /// The chat bubble next to the pet: transcript, attachments, text/dictation input, send/stop, sign in, and the
 /// connections view (what Nacho is connected to). Korean like Nacho; a key panel that does not activate the app, so the
 /// window the user was working in stays the "front window" that Nacho arranges.
-final class PetChatWindow: NSPanel, NSTextFieldDelegate {
+final class PetChatWindow: NSPanel, NSTextFieldDelegate, NSTextViewDelegate {
     static let size = NSSize(width: 360, height: 480)
     private weak var module: NachoPetModule?
 
@@ -95,6 +95,8 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         transcript.autoresizingMask = [.width]
         transcript.textContainer?.widthTracksTextView = true
         transcript.setAccessibilityIdentifier("nacho-pet-transcript")
+        transcript.delegate = self
+        transcript.linkTextAttributes = [.foregroundColor: NSColor.linkColor, .cursor: NSCursor.pointingHand]
         scroll.documentView = transcript
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = true
@@ -196,7 +198,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         sendButton.title = busy ? "멈추기" : "보내기"
         sendButton.setAccessibilityLabel(busy ? "답변 멈추기" : "보내기")
         sendButton.isEnabled = !st.uploading
-        let listening = module.dictationState.isListening
+        let listening = module.dictationState.isListening || module.serverRecorder.isRecording
         micButton.image = NSImage(systemSymbolName: listening ? "mic.fill" : "mic",
                                   accessibilityDescription: listening ? "받아쓰기 멈추기" : "받아쓰기")
         micButton.contentTintColor = listening ? .systemRed : nil
@@ -206,6 +208,8 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         else if case let .denied(d) = module.dictationState.phase { noticeText = d.koreanMessage }
         else if case let .unavailable(m) = module.dictationState.phase { noticeText = m }
         else if st.uploading { noticeText = "파일 올리는 중…" }
+        else if st.dictating { noticeText = "받아쓰는 중…" }
+        else if module.serverRecorder.isRecording { noticeText = "듣고 있어요. 다 말하면 마이크를 다시 눌러 주세요." }
         else if let n = st.chat.notice ?? st.notice { noticeText = n }
         notice.stringValue = noticeText ?? ""
         notice.isHidden = noticeText == nil
@@ -223,7 +227,11 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         }
         var parts: [String] = []
         switch st.chat.phase {
-        case .connected: parts.append(st.chat.isBusy ? activityText(st.chat) : "연결됨")
+        case .connected:
+            if st.chat.isBusy { parts.append(ActivityText.label(st.chat.activity == .idle ? .typing : st.chat.activity, tool: st.chat.activeTool)) }
+            else if let t = st.chat.task, t.isOpen { parts.append(t.statusText) }
+            else { parts.append("연결됨") }
+            if let u = st.chat.usage { parts.append("크레딧 \(u.remaining)") }
         case .connecting: parts.append("연결 중")
         case .reconnecting(let n): parts.append("다시 연결 중 (\(n))")
         case .authFailed: parts.append("다시 로그인해 주세요")
@@ -233,55 +241,164 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         return parts.joined(separator: " · ")
     }
 
-    private func activityText(_ chat: ChatState) -> String {
-        switch chat.activity {
-        case .thinking: return "생각 중"
-        case .typing: return "답변 중"
-        case .tool: return "도구 쓰는 중\(chat.activeTool.map { " (\($0))" } ?? "")"
-        case .retrying: return "다시 시도 중"
-        case .idle: return "답변 중"
+    private func renderTranscript(_ st: PetSessionState, signedIn: Bool) {
+        let undoable = st.chat.memoryNotes.filter { $0.forgottenAt != nil }.map { module?.canUndoForget($0.updateID) == true }
+        let signature = "\(st.chat.turns)|\(st.chat.history)|\(st.chat.cards)|\(String(describing: st.chat.task))|\(st.chat.memoryNotes)|\(undoable)|\(st.chat.hasMoreHistory)|\(st.loadingHistory)|\(String(describing: st.chat.usage))|\(signedIn)|\(st.chat.agentName)"
+        guard signature != lastSignature else { return }
+        lastSignature = signature
+        transcript.textStorage?.setAttributedString(PetChatWindow.transcriptText(st, signedIn: signedIn, canUndo: { self.module?.canUndoForget($0) == true }))
+        transcript.scrollToEndOfDocument(nil)
+        if undoable.contains(true) {
+            // The undo link disappears when the server's 10-second window closes.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.render() }
         }
     }
 
-    private func renderTranscript(_ st: PetSessionState, signedIn: Bool) {
-        let signature = "\(st.chat.turns)|\(signedIn)|\(st.chat.agentName)"
-        guard signature != lastSignature else { return }
-        lastSignature = signature
+    /// Links in the transcript: `nachopet://<action>?…` (older, forget, undo, memfb, card).
+    static func link(_ action: String, _ items: [String: String] = [:]) -> URL {
+        var c = URLComponents()
+        c.scheme = "nachopet"
+        c.host = action
+        if !items.isEmpty { c.queryItems = items.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
+        return c.url!
+    }
+
+    static func transcriptText(_ st: PetSessionState, signedIn: Bool, canUndo: (String) -> Bool) -> NSAttributedString {
         let out = NSMutableAttributedString()
         let body = NSFont.systemFont(ofSize: 13)
         let small = NSFont.systemFont(ofSize: 11)
-        func add(_ text: String, font: NSFont = body, color: NSColor = .labelColor, align: NSTextAlignment = .left) {
+        func para(_ align: NSTextAlignment) -> NSParagraphStyle {
             let p = NSMutableParagraphStyle()
             p.alignment = align
             p.paragraphSpacing = 6
-            out.append(NSAttributedString(string: text + "\n", attributes: [.font: font, .foregroundColor: color, .paragraphStyle: p]))
+            return p
+        }
+        func add(_ text: String, font: NSFont = body, color: NSColor = .labelColor, align: NSTextAlignment = .left) {
+            out.append(NSAttributedString(string: text + "\n", attributes: [.font: font, .foregroundColor: color, .paragraphStyle: para(align)]))
+        }
+        /// One line made of plain parts and links.
+        func line(_ parts: [(String, URL?)], font: NSFont = small, color: NSColor = .secondaryLabelColor, align: NSTextAlignment = .left) {
+            let l = NSMutableAttributedString()
+            for (text, url) in parts {
+                var a: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: para(align)]
+                if let u = url { a[.link] = u }
+                l.append(NSAttributedString(string: text, attributes: a))
+            }
+            l.append(NSAttributedString(string: "\n", attributes: [.font: font, .paragraphStyle: para(align)]))
+            out.append(l)
+        }
+        func files(_ list: [PetFileLink], align: NSTextAlignment) {
+            for f in list {
+                let icon = f.kind == "image" ? "🖼" : "📄"
+                if f.deleted { line([("\(icon) \(f.name) (지워짐)", nil)], align: align); continue }
+                let url = f.url.flatMap { URL(string: $0) }.flatMap { ["https", "http"].contains($0.scheme ?? "") ? $0 : nil }
+                line([("\(icon) ", nil), (f.name + (f.byNacho ? " (나초가 만듦)" : ""), url)], align: align)
+            }
+        }
+        func card(_ c: PetCard) {
+            line([("❓ ", nil), (c.title, nil)], font: body, color: .labelColor)
+            if let d = c.detail { line([("   " + d, nil)]) }
+            if c.isPending, c.answerableHere, !c.options.isEmpty {
+                var parts: [(String, URL?)] = [("   ", nil)]
+                for (i, o) in c.options.enumerated() {
+                    if i > 0 { parts.append(("  ·  ", nil)) }
+                    parts.append((o.label, link("card", ["id": c.id, "action": "choose", "option": o.id])))
+                }
+                line(parts, font: body)
+            }
+            line([("   " + c.statusText, nil)], color: c.isPending ? .systemOrange : .secondaryLabelColor)
         }
         if !signedIn {
             add("안녕하세요, 나초예요.", font: NSFont.systemFont(ofSize: 13, weight: .semibold))
             add("나초 계정으로 로그인하면 여기서 대화할 수 있어요. 캡처나 선반의 파일을 건네거나, 창 배치와 가젯 켜기·끄기도 부탁할 수 있어요.",
                 color: .secondaryLabelColor)
             add("로그인은 브라우저 창(auth.nachotown.com)에서 해요. 비밀번호는 콤보가 보지 않아요.", font: small, color: .tertiaryLabelColor)
-        } else if st.chat.turns.isEmpty {
+            return out
+        }
+        let chat = st.chat
+        if st.loadingHistory { line([("이전 대화 불러오는 중…", nil)], color: .tertiaryLabelColor, align: .center) }
+        else if chat.hasMoreHistory { line([("이전 대화 더 보기", link("older"))], align: .center) }
+        // The room record: earlier talk, other devices, finished tasks.
+        for m in chat.history {
+            if let c = m.card { card(chat.cards.first { $0.id == c.id } ?? c); continue }
+            if m.contentType == "system_note" { add(m.text, font: small, color: .tertiaryLabelColor, align: .center); continue }
+            let mine = m.role == "user"
+            if !m.text.isEmpty { add(m.text, color: mine ? NSColor.controlAccentColor.withAlphaComponent(0.75) : NSColor.secondaryLabelColor, align: mine ? .right : .left) }
+            files(m.files, align: mine ? .right : .left)
+        }
+        if !chat.history.isEmpty, !chat.turns.isEmpty { line([("──────── 이번 대화 ────────", nil)], color: .tertiaryLabelColor, align: .center) }
+        if chat.turns.isEmpty, chat.history.isEmpty {
             add("무엇을 도와드릴까요?", font: NSFont.systemFont(ofSize: 13, weight: .semibold))
             add("예: \"창 왼쪽으로 붙여 줘\", \"킵 어웨이크 켜 줘\", 캡처 위에서 우클릭 ▸ 나초에게 묻기", font: small, color: .secondaryLabelColor)
         }
-        for turn in st.chat.turns {
+        let shownNotes = Set(chat.turns.map { $0.clientMsgID })
+        func memoryLine(_ n: PetMemoryNote) {
+            var parts: [(String, URL?)] = [("🧠 " + n.text + "  ", nil)]
+            if n.forgottenAt != nil {
+                if canUndo(n.updateID) { parts.append(("되돌리기", link("undo", ["u": n.updateID]))) }
+            } else if n.action != "forgotten" {
+                parts.append(("잊어 줘", link("forget", ["u": n.updateID])))
+            }
+            line(parts)
+        }
+        for turn in chat.turns {
             var mine = turn.userText
             if !turn.attachmentNames.isEmpty { mine += (mine.isEmpty ? "" : "\n") + "📎 " + turn.attachmentNames.joined(separator: ", ") }
             add(mine, color: NSColor.controlAccentColor, align: .right)
+            // What Nacho is doing on the way: tools and "still working on it" lines.
+            if !turn.tools.isEmpty {
+                let names = turn.tools.map { t in t.name + (t.finished ? (t.isError ? " ✕" : " ✓") : " …") }
+                line([("🔧 " + names.joined(separator: ", "), nil)], color: .tertiaryLabelColor)
+            }
+            for p in turn.progress { line([("… " + p, nil)], color: .tertiaryLabelColor) }
             var answer = turn.assistantText
             switch turn.status {
             case .sending: if answer.isEmpty { answer = "…" }
             case .streaming: answer += " ▍"
-            case .done: break
+            case .done:
+                if answer.isEmpty, turn.taskID != nil { answer = "일로 맡았어요. 진행 상황은 여기에 보여 드릴게요." }
             case .stopped: answer += answer.isEmpty ? "(멈췄어요)" : " (멈춤)"
             case let .failed(m): answer += (answer.isEmpty ? "" : "\n") + "⚠︎ " + m
-            case .interrupted: answer += (answer.isEmpty ? "" : "\n") + "⚠︎ 연결이 끊겨 답이 끝나지 않았어요."
+            case .interrupted: answer += (answer.isEmpty ? "" : "\n") + "⚠︎ 연결이 끊겨 답이 끝나지 않았어요. 다시 연결되면 이어서 보여 드려요."
             }
             add(answer)
+            files(turn.files, align: .left)
+            for id in turn.cardIDs { if let c = chat.cards.first(where: { $0.id == id }) { card(c) } }
+            if let tid = turn.taskID, let t = chat.task, t.id == tid {
+                line([("📋 \(t.title): \(t.statusText)", nil)], color: t.isOpen ? .systemBlue : .secondaryLabelColor)
+            }
+            for n in chat.memoryNotes where n.turnClientID == turn.clientMsgID { memoryLine(n) }
+            if !turn.usedMemoryIDs.isEmpty, turn.status == .done {
+                line([("기억 \(turn.usedMemoryIDs.count)개를 썼어요 · ", nil), ("기억이 틀렸어요", link("memfb", ["turn": turn.clientMsgID]))],
+                     color: .tertiaryLabelColor)
+            }
         }
-        transcript.textStorage?.setAttributedString(out)
-        transcript.scrollToEndOfDocument(nil)
+        // Memory lines and cards that came from elsewhere (hub, another device, a task).
+        for n in chat.memoryNotes where n.turnClientID.map({ !shownNotes.contains($0) }) ?? true { memoryLine(n) }
+        let inTurns = Set(chat.turns.flatMap { $0.cardIDs })
+        let inHistory = Set(chat.history.compactMap { $0.card?.id })
+        for c in chat.cards where c.isPending && !inTurns.contains(c.id) && !inHistory.contains(c.id) { card(c) }
+        if let t = chat.task, !chat.turns.contains(where: { $0.taskID == t.id }) {
+            line([("📋 \(t.title): \(t.statusText)", nil)], color: t.isOpen ? .systemBlue : .secondaryLabelColor)
+        }
+        if let n = chat.lastNotification { line([("🔔 " + n, nil)], color: .tertiaryLabelColor) }
+        if let u = chat.usage { line([(u.summary, nil)], color: .tertiaryLabelColor, align: .right) }
+        return out
+    }
+
+    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+        guard let url = link as? URL ?? (link as? String).flatMap(URL.init(string:)) else { return false }
+        guard url.scheme == "nachopet" else { return false }  // http(s) file links open in the browser
+        let q = Dictionary(uniqueKeysWithValues: (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        switch url.host {
+        case "older": module?.loadOlderHistory()
+        case "forget": if let u = q["u"] { module?.forgetMemory(u) }
+        case "undo": if let u = q["u"] { module?.undoForget(u) }
+        case "memfb": if let t = q["turn"] { module?.askMemoryFeedback(turnID: t) }
+        case "card": if let id = q["id"], let a = q["action"] { module?.answerCard(id, action: a, options: q["option"].map { [$0] } ?? []) }
+        default: break
+        }
+        return true
     }
 
     private func renderPending(_ pending: [PetPendingFile]) {

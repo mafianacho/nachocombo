@@ -126,6 +126,22 @@ public final class ChatClient {
         }
     }
 
+    /// Changes the chat state from outside (room record, recovered answers, memory lines) and publishes it.
+    public func update(_ body: @escaping (inout ChatState) -> Void) {
+        queue.async {
+            body(&self.state)
+            self.publish()
+        }
+    }
+
+    /// Read mark (`{type:read,room_id,seq}`), forward only; the server answers nothing unless it fails.
+    public func markRead(seq: Int) {
+        queue.async {
+            guard self.state.phase == .connected, let room = self.state.roomID, !room.isEmpty, seq > 0, let t = self.transport else { return }
+            t.send(ClientFrame.read(roomID: room, seq: seq).encode())
+        }
+    }
+
     public func stop() {
         queue.async {
             guard self.state.isBusy, let room = self.state.roomID, let t = self.transport else { return }

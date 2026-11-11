@@ -18,6 +18,8 @@ final class PetStubHTTP: PetHTTPClient {
     private var answers: [String: [PetHTTPResponse]] = [:]
     private(set) var requests: [PetHTTPRequest] = []
     var failNetwork = false
+    /// Response headers by "METHOD path".
+    var headers: [String: [String: String]] = [:]
 
     func on(_ method: String, _ path: String, _ status: Int, _ body: String) {
         lock.lock(); defer { lock.unlock() }
@@ -34,7 +36,8 @@ final class PetStubHTTP: PetHTTPClient {
         requests.append(request)
         let key = "\(request.method) \(request.url.path)"
         var list = answers[key] ?? []
-        let r = list.first ?? PetHTTPResponse(status: 404, body: Data("{}".utf8))
+        var r = list.first ?? PetHTTPResponse(status: 404, body: Data("{}".utf8))
+        if let h = headers[key] { r.headers = h }
         if list.count > 1 { list.removeFirst(); answers[key] = list }
         let fail = failNetwork
         lock.unlock()

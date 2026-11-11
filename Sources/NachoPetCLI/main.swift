@@ -100,7 +100,7 @@ func makeTransport() -> WebSocketTransport {
 // MARK: arguments
 
 var args = Array(CommandLine.arguments.dropFirst())
-guard let command = args.first else { fail("usage: nacho-pet-cli login|chat|ask-image|send-file|command|stop|logout --server URL --store DIR …") }
+guard let command = args.first else { fail("usage: nacho-pet-cli login|chat|ask-image|send-file|command|stop|logout|history|recover|task|remember|search|dictate|usage --server URL --store DIR …") }
 args.removeFirst()
 var server = ""
 var storeDir = ""
@@ -221,6 +221,120 @@ case "chat", "ask-image", "send-file", "command", "stop":
         case let .failed(m): stamp("failed: \(m)"); finish(1)
         case .interrupted: stamp("interrupted"); finish(1)
         default: break
+        }
+    }
+    session.open()
+
+case "history", "usage", "dictate":
+    guard session.snapshot.auth == .signedIn else { stamp("not signed in (run login first)"); exit(1) }
+    var askedOlder = false, dictated = false
+    session.onChange = { st in
+        guard st.chat.phase == .connected, st.config != nil else { return }
+        switch command {
+        case "usage":
+            guard let u = st.chat.usage else { return }
+            session.onChange = nil
+            stamp("config dictation=\(st.config!.dictationEnabled) max_sec=\(st.config!.dictationMaxSec) media_max=\(st.config!.mediaMaxBytes) service=\(st.config!.serviceState)")
+            stamp("usage \(u.summary)")
+            finish(0)
+        case "dictate":
+            guard !dictated else { return }
+            dictated = true
+            guard rest.count >= 2, let audio = FileManager.default.contents(atPath: rest[0]) else { fail("dictate <file> <mime>") }
+            session.dictate(audio: audio, mime: rest[1], fileName: URL(fileURLWithPath: rest[0]).lastPathComponent, durationSec: 2.0) { r in
+                switch r {
+                case let .success(t): stamp("dictation text=\(t.debugDescription)"); finish(0)
+                case let .failure(e): stamp("dictation refused code=\(e.code ?? "-") status=\(e.status) text=\(e.text)"); finish(2)
+                }
+            }
+        default:  // history
+            guard st.chat.historyLoaded, !st.loadingHistory else { return }
+            if !askedOlder {
+                askedOlder = true
+                for m in st.chat.history { stamp("history seq=\(m.seq ?? -1) role=\(m.role) type=\(m.contentType) text=\(m.text.debugDescription)") }
+                stamp("history count=\(st.chat.history.count) more=\(st.chat.hasMoreHistory)")
+                if st.chat.hasMoreHistory { session.loadOlderHistory() } else { finish(0) }
+                return
+            }
+            stamp("older count=\(st.chat.history.count) more=\(st.chat.hasMoreHistory) first_seq=\(st.chat.history.first?.seq ?? -1)")
+            session.onChange = nil
+            finish(0)
+        }
+    }
+    session.open()
+
+case "recover", "task", "remember", "search":
+    guard session.snapshot.auth == .signedIn else { stamp("not signed in (run login first)"); exit(1) }
+    let text: String
+    switch command {
+    case "recover": text = "/drop"
+    case "task": text = "/task " + (rest.isEmpty ? "내일 저녁 파스타집 예약해 줘" : rest.joined(separator: " "))
+    case "remember": text = "/remember " + (rest.isEmpty ? "고양이를 키워요" : rest.joined(separator: " "))
+    default: text = "/search " + (rest.isEmpty ? "강남 파스타" : rest.joined(separator: " "))
+    }
+    var sent = false, answered = false, step = 0, sawInterrupted = false
+    var forgetAt: Date?
+    session.onChange = { st in
+        guard st.chat.phase == .connected else { return }
+        if !sent {
+            sent = true
+            DispatchQueue.global().async {
+                session.send(text: text) { refusal in if let r = refusal { stamp("refused: \(r)"); finish(1) } else { stamp("sent \(text)") } }
+            }
+            return
+        }
+        guard let t = st.chat.turns.last else { return }
+        if t.status == .interrupted, !sawInterrupted { sawInterrupted = true; stamp("interrupted (socket dropped)") }
+        switch command {
+        case "recover":
+            if t.status == .done, sawInterrupted {
+                stamp("recovered from delta text=\(t.assistantText.debugDescription) userSeq=\(t.userSeq ?? -1) answerSeq=\(t.answerSeq ?? -1)")
+                session.onChange = nil
+                finish(0)
+            }
+        case "search":
+            if t.status == .done {
+                stamp("tools \(t.tools.map { "\($0.name):\($0.finished ? ($0.isError ? "error" : "ok") : "running")" }.joined(separator: ","))")
+                stamp("progress \(t.progress)")
+                stamp("done text=\(t.assistantText.debugDescription)")
+                session.onChange = nil
+                finish(t.tools.isEmpty || t.progress.isEmpty ? 1 : 0)
+            }
+        case "task":
+            if let card = st.chat.pendingCards.first, card.answerableHere, !answered {
+                answered = true
+                stamp("task \(t.taskID ?? "-") status=\(st.chat.task?.statusText ?? "-") progress=\(t.progress)")
+                stamp("card \(card.kind) \(card.title.debugDescription) options=\(card.options.map { $0.label }) -> choose \(card.options[0].label)")
+                session.answerCard(id: card.id, action: "choose", optionIDs: [card.options[0].id]) { r in stamp("answer \(r ?? "ok")") }
+            }
+            if answered, let task = st.chat.task, task.state == "done", !t.assistantText.isEmpty {
+                stamp("card now \(st.chat.cards.first?.statusText ?? "-")")
+                stamp("task done answer=\(t.assistantText.debugDescription) history=\(st.chat.history.count)")
+                session.onChange = nil
+                finish(0)
+            }
+        default:  // remember: memory line → forget → undo (10 s) → feedback on the answer that used it
+            guard t.status == .done, let note = st.chat.memoryNotes.first else { return }
+            switch step {
+            case 0:
+                step = 1
+                stamp("memory \(note.text) used=\(t.usedMemoryIDs.count)")
+                forgetAt = Date()
+                session.forgetMemory(updateID: note.updateID)
+            case 1 where note.action == "forgotten" && note.forgottenAt != nil:
+                step = 2
+                stamp("forgotten; undo possible=\(Date().timeIntervalSince(note.forgottenAt!) < PetSession.restoreWindow)")  // onChange runs on the session queue: no queue.sync calls here
+                session.undoForget(updateID: note.updateID)
+            case 2 where note.action == "created" && note.forgottenAt == nil:
+                step = 3
+                stamp("restored after \(String(format: "%.1f", Date().timeIntervalSince(forgetAt ?? Date())))s: \(note.text)")
+                session.sendMemoryFeedback(turnID: t.clientMsgID, text: "이제 고양이 두 마리예요") { r in
+                    stamp("feedback \(r ?? "ok")")
+                    session.onChange = nil
+                    finish(r == nil ? 0 : 1)
+                }
+            default: break
+            }
         }
     }
     session.open()

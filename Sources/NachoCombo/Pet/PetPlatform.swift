@@ -198,3 +198,65 @@ enum PetArt {
         return nil
     }
 }
+
+/// Records the microphone to a small AAC (m4a) file for server dictation (`POST /api/v1/dictation`, ADR 0014).
+/// The file lives only until it is read back; nothing is kept on disk.
+final class PetServerRecorder: NSObject, AVAudioRecorderDelegate {
+    private var recorder: AVAudioRecorder?
+    private var fileURL: URL?
+    private var startedAt: Date?
+    private var limitTimer: Timer?
+    private var finished: ((Data?, Double) -> Void)?
+
+    var isRecording: Bool { recorder?.isRecording == true }
+
+    /// Asks for the microphone, then records up to `maxSec`. `granted(false)` when the user refused.
+    func start(maxSec: Int, granted: @escaping (Bool) -> Void, finished: @escaping (Data?, Double) -> Void) {
+        let begin = { [weak self] in
+            guard let self = self else { return }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("nacho-dictation-\(UUID().uuidString).m4a")
+            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1,
+                                           AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue]
+            guard let r = try? AVAudioRecorder(url: url, settings: settings) else { granted(false); return }
+            r.delegate = self
+            self.recorder = r
+            self.fileURL = url
+            self.finished = finished
+            self.startedAt = Date()
+            r.record(forDuration: TimeInterval(maxSec))
+            granted(true)
+        }
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: begin()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { ok in DispatchQueue.main.async { ok ? begin() : granted(false) } }
+        default: granted(false)
+        }
+    }
+
+    /// Stops and hands the audio over (once).
+    func stop() { recorder?.stop() }
+
+    /// Throws the recording away without handing it over.
+    func cancel() {
+        finished = nil
+        recorder?.stop()
+        cleanup()
+    }
+
+    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
+        let data = flag ? fileURL.flatMap { try? Data(contentsOf: $0) } : nil
+        let done = finished
+        finished = nil
+        cleanup()
+        done?(data, duration)
+    }
+
+    private func cleanup() {
+        if let u = fileURL { try? FileManager.default.removeItem(at: u) }
+        fileURL = nil
+        recorder = nil
+        startedAt = nil
+    }
+}

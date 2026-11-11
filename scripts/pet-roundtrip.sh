@@ -2,7 +2,8 @@
 # Real round trip between tools/mock-server (mock nacho-server + stand-in Keycloak) and nacho-pet-cli (the same
 # PetSession the app uses): PKCE login → /api/v1/me, /ws/chat streaming and stop, capture → pet (picture upload),
 # shelf → pet (file upload), refused file type, window arrangement and gadget switches through /ws/connector,
-# Computer Use refused, token refresh, logout. Output: build/pet-roundtrip/*.log, server*.jsonl, summary.txt.
+# Computer Use refused, server features (config/usage, history, delta recovery, tool progress, task + card,
+# memory forget/undo/feedback, server dictation, read mark), token refresh, logout. Output: build/pet-roundtrip/*.log, server*.jsonl, summary.txt.
 # Exit 0 only if every check passes. Needs Swift and Node >= 18 (Linux: run inside the swift container, see README).
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -64,6 +65,32 @@ check "chat -> gadget list" $(( rc != 0 || $(cnt 'mac: list gadgets' "$OUT/cmd-l
 
 rc=$(run cmd-cu command --server "$S1" --store "$STORE" "컴퓨터 사용 켜 줘")
 check "chat -> Computer Use refused by the app (never reaches the Mac)" $(( rc != 0 || $(cnt 'mac: gadget computerUse' "$OUT/cmd-cu.log") != 0 || $(cnt 'not allowed: Computer Use' "$OUT/server.jsonl") < 1 ))
+
+# --- nacho-server LLM features (history, recovery, task path, cards, memory, dictation, usage) ---
+rc=$(run usage usage --server "$S1" --store "$STORE")
+check "client config (no token) + GET /api/v1/me/usage shown" $(( rc != 0 || $(cnt 'config dictation=true max_sec=60' "$OUT/usage.log") != 1 || $(cnt 'usage 크레딧 180/200 · 가벼운 대화 3/50' "$OUT/usage.log") != 1 ))
+
+rc=$(run history history --server "$S1" --store "$STORE")
+check "history: earlier messages of the room (view=app, seeded note shown, X-Has-More)" $(( rc != 0 || $(cnt "history seq=1 role=user type=text text=\"어제 파스타집 알아봐 줬지?\"" "$OUT/history.log") != 1 || $(cnt 'type=system_note' "$OUT/history.log") != 1 || $(cnt '"event":"history","before":null' "$OUT/server.jsonl") < 1 ))
+
+rc=$(run recover recover --server "$S1" --store "$STORE")
+check "dropped socket: turn interrupted, reconnect, GET delta fills in the answer the server finished" $(( rc != 0 || $(cnt 'interrupted (socket dropped)' "$OUT/recover.log") != 1 || $(cnt 'recovered from delta text="모의 나초예요' "$OUT/recover.log") != 1 || $(cnt '"event":"delta"' "$OUT/server.jsonl") < 1 ))
+
+rc=$(run search search --server "$S1" --store "$STORE")
+check "tool progress: tool_call_started/finished + interim line shown as progress, not as the answer" $(( rc != 0 || $(cnt 'tools search_web:ok' "$OUT/search.log") != 1 || $(cnt 'progress \["웹에서 찾아보고 있어요"\]' "$OUT/search.log") != 1 ))
+
+rc=$(run task task --server "$S1" --store "$STORE")
+check "task path: done{task_id}, hub task_update/interim, choice card answered (expected_version), task_result joins the turn" $(( rc != 0 || $(cnt 'card choice "어느 시간이 좋아요?"' "$OUT/task.log") != 1 || $(cnt 'task done answer="저녁 7시으로 예약했어요."' "$OUT/task.log") != 1 || $(cnt '"event":"answered","id"' "$OUT/server.jsonl") != 1 ))
+
+rc=$(run remember remember --server "$S1" --store "$STORE")
+check "memory: line shown, forget (DELETE) + undo within 10 s (restore), feedback with used memory ids" $(( rc != 0 || $(cnt 'memory 기억했어요: 고양이를 키워요 used=1' "$OUT/remember.log") != 1 || $(cnt 'restored after' "$OUT/remember.log") != 1 || $(cnt 'feedback ok' "$OUT/remember.log") != 1 || $(cnt '"event":"feedback","kind":"correction","memory_ids":\["' "$OUT/server.jsonl") != 1 || $(cnt '"idempotency_key":"present"' "$OUT/server.jsonl") != 1 ))
+
+printf 'NACHO-STT:내일 일정 알려줘' > "$OUT/voice.m4a"
+rc=$(run dictate dictate --server "$S1" --store "$STORE" "$OUT/voice.m4a" audio/mp4)
+check "dictation: multipart to POST /api/v1/dictation, text back (not sent by itself)" $(( rc != 0 || $(cnt 'dictation text="내일 일정 알려줘"' "$OUT/dictate.log") != 1 || $(cnt '"event":"transcribed","type":"audio/mp4"' "$OUT/server.jsonl") != 1 ))
+rc=$(run dictate-refused dictate --server "$S1" --store "$STORE" "$OUT/voice.m4a" video/mp4)
+check "dictation: unsupported audio type refused before upload" $(( rc != 2 || $(cnt '"event":"transcribed"' "$OUT/server.jsonl") != 1 ))
+check "read mark sent as WS read frame after answers" $(( $(cnt '"event":"read","seq":' "$OUT/server.jsonl") < 1 ))
 
 rc=$(run refresh-login login --server "$S2" --store "$OUT/store2")
 sleep 3
