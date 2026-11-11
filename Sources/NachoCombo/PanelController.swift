@@ -35,12 +35,15 @@ protocol PanelHost: AnyObject {
 }
 
 enum PanelRoute: Equatable {
+    /// The main icon's mini board (pinned widgets).
+    case mini
     case list
     case combos
     case tool(ModuleID)
 
     var name: String {
         switch self {
+        case .mini: return "mini"
         case .list: return "list"
         case .combos: return "combos"
         case .tool(let id): return "tool:\(id.rawValue)"
@@ -54,6 +57,8 @@ final class PanelController: NSObject, NSPopoverDelegate {
     private let popover = NSPopover()
     private let content = PanelViewController()
     private(set) var route: PanelRoute = .list
+    /// Where Back and Esc return to: the mini board when the popover opened on it, else the tool list.
+    private(set) var home: PanelRoute = .list
     private(set) weak var anchor: NSStatusBarButton?
     private var closedAt = Date.distantPast
     private var closedAnchor: ObjectIdentifier?
@@ -70,6 +75,11 @@ final class PanelController: NSObject, NSPopoverDelegate {
         content.onEscape = { [weak self] in self?.escape() }
         content.onSelect = { [weak self] id in self?.navigate(to: .tool(id)) }
         content.onCombos = { [weak self] in self?.navigate(to: .combos) }
+        content.onOpenBoard = { [weak self] in
+            self?.close()
+            (self?.host as? BentoHost)?.bentoOpenBoard()
+        }
+        content.onClose = { [weak self] in self?.close() }
         popover.contentViewController = content
         popover.behavior = .transient
         popover.animates = false      // no motion at all: nothing here may start moving when Reduce Motion is on
@@ -92,6 +102,8 @@ final class PanelController: NSObject, NSPopoverDelegate {
     func show(from button: NSStatusBarButton, route newRoute: PanelRoute) {
         if popover.isShown { popover.close() }
         route = newRoute
+        home = newRoute == .mini ? .mini : .list
+        content.home = home
         anchor = button
         content.show(route: newRoute)
         pendingToken += 1
@@ -133,14 +145,14 @@ final class PanelController: NSObject, NSPopoverDelegate {
     }
 
     func back() {
-        guard route != .list else { return }
+        guard route != home else { return }
         backCount += 1
-        navigate(to: .list)
+        navigate(to: home)
     }
 
-    /// Esc: tool or combo screen -> list, list -> close.
+    /// Esc: tool or combo screen -> list (or the mini board), there -> close.
     func escape() {
-        if route != .list { back() } else { close() }
+        if route != home { back() } else { close() }
     }
 
     func close() {
@@ -164,14 +176,14 @@ final class PanelController: NSObject, NSPopoverDelegate {
     private func updateLiveTimer() {
         liveTimer?.invalidate()
         liveTimer = nil
-        guard popover.isShown, route == .tool(.systemMonitor) else { return }
+        guard popover.isShown, route == .tool(.systemMonitor) || route == .mini else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.refresh() }
         RunLoop.main.add(timer, forMode: .common)
         liveTimer = timer
     }
 
     var diagnostics: [String: Any] {
-        ["shown": popover.isShown, "route": route.name, "showCount": showCount, "backCount": backCount,
+        ["shown": popover.isShown, "route": route.name, "home": home.name, "showCount": showCount, "backCount": backCount,
          "liveTimer": liveTimer?.isValid ?? false, "popoverAnimates": popover.animates]
     }
 
@@ -213,6 +225,10 @@ final class PanelViewController: NSViewController {
     var onEscape: (() -> Void)?
     var onSelect: ((ModuleID) -> Void)?
     var onCombos: (() -> Void)?
+    var onOpenBoard: (() -> Void)?
+    var onClose: (() -> Void)?
+    var home: PanelRoute = .list
+    private var miniView: BentoMiniView?
     private var listView: ToolListView?
     private var detailView: ToolDetailView?
     private var comboView: ComboPanelView?
@@ -229,11 +245,20 @@ final class PanelViewController: NSViewController {
         _ = view
         (view as? PanelRootView)?.applyBaseAppearance()
         current?.removeFromSuperview()
+        miniView = nil
         listView = nil
         detailView = nil
         comboView = nil
         let child: NSView
         switch route {
+        case .mini:
+            let mini = BentoMiniView()
+            mini.host = host as? BentoHost
+            mini.onTool = { [weak self] id in self?.onSelect?(id) }
+            mini.onOpenAll = { [weak self] in self?.onOpenBoard?() }
+            mini.onAfterAction = { [weak self] in self?.onClose?() }
+            miniView = mini
+            child = mini
         case .list:
             let list = ToolListView(host: host)
             list.onSelect = { [weak self] id in self?.onSelect?(id) }
@@ -254,6 +279,7 @@ final class PanelViewController: NSViewController {
         child.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(child)
         switch route {
+        case .mini: view.setAccessibilityLabel("나초콤보 고정한 위젯")
         case .list: view.setAccessibilityLabel("Nacho Combo tool list")
         case .combos: view.setAccessibilityLabel("Combos")
         case .tool(let id): view.setAccessibilityLabel("\(id.displayName) controls")
@@ -270,6 +296,7 @@ final class PanelViewController: NSViewController {
 
     func refresh() {
         (view as? PanelRootView)?.applyBaseAppearance()
+        miniView?.update()
         listView?.update()
         detailView?.update()
         comboView?.update()
@@ -283,7 +310,9 @@ final class PanelViewController: NSViewController {
 
     func focusInitial() {
         guard let window = view.window else { return }
-        if let list = listView, let first = list.firstRow {
+        if let mini = miniView, let first = mini.firstControl {
+            window.makeFirstResponder(first)
+        } else if let list = listView, let first = list.firstRow {
             window.makeFirstResponder(first)
         } else if let combos = comboView, let first = combos.firstRow {
             window.makeFirstResponder(first)

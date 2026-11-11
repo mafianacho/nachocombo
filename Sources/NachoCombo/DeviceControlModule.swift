@@ -367,6 +367,8 @@ final class ExternalDisplays {
 
     private var services: [CFTypeRef] = []
     private var levels: [Int: Int] = [:]
+    /// Displays whose brightness was really read or set (the others show a stand-in 50 in the slider).
+    private var measured = Set<Int>()
     private(set) var list: [Display] = []
     private let queue = DispatchQueue(label: "com.mafianacho.nachocombo.ddc")
     var onChange: (() -> Void)?
@@ -387,6 +389,7 @@ final class ExternalDisplays {
                 let value = ExternalDisplays.readBrightness(service)
                 DispatchQueue.main.async {
                     self?.levels[index] = value ?? 50
+                    if value != nil { self?.measured.insert(index) }
                     self?.onChange?()
                 }
             }
@@ -397,7 +400,11 @@ final class ExternalDisplays {
         services = []
         list = []
         levels = [:]
+        measured = []
     }
+
+    /// The brightness only when the display answered (nil: unknown), for the dashboard widget.
+    func knownBrightness(_ index: Int) -> Int? { measured.contains(index) ? levels[index] : nil }
 
     func brightness(_ index: Int) -> Int { levels[index] ?? 50 }
 
@@ -405,6 +412,7 @@ final class ExternalDisplays {
         guard services.indices.contains(index) else { return }
         let level = min(100, max(0, value))
         levels[index] = level
+        measured.insert(index)
         let service = services[index]
         queue.async { ExternalDisplays.writeVCP(service, code: 0x10, value: UInt16(level)) }
     }

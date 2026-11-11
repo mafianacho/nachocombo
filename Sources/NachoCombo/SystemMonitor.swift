@@ -36,12 +36,14 @@ final class SystemMonitorModule: NSObject, FeatureModule {
         var memTotal: UInt64 = 0
         var rx: Double?
         var tx: Double?
+        /// Startup disk used, 0…100 (purgeable counted as free, like Finder). Refreshed about once a minute.
+        var diskPercent: Double?
     }
 
     var latest: Reading {
         guard let s = engine?.snapshot else { return Reading() }
         return Reading(cpuBusy: s.cpu?.busy, memPercent: s.memory?.usedPercent, memUsed: s.memory?.used ?? 0,
-                       memTotal: s.memory?.total ?? 0, rx: s.netDown, tx: s.netUp)
+                       memTotal: s.memory?.total ?? 0, rx: s.netDown, tx: s.netUp, diskPercent: s.volume?.usedPercent)
     }
     private var shownOrder: [MonitorItem] { MonitorItem.allCases.filter { statusItems[$0] != nil } }
 

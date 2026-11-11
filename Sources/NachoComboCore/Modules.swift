@@ -112,6 +112,7 @@ public final class ModuleManager {
 
     /// Starts every module the user left enabled in the saved settings.
     public func bootstrap() {
+        migrateBento()
         for id in ModuleID.allCases where settings.isEnabled(id) { startModule(id, userInitiated: false) }
         onChange?()
     }
@@ -154,6 +155,24 @@ public final class ModuleManager {
     /// Pinning only adds/removes a menu bar entry point. It never turns the tool on or requests a permission.
     public func setPinned(_ id: ModuleID, _ pinned: Bool) {
         if pinned { settings.pinnedTools[id.rawValue] = true } else { settings.pinnedTools.removeValue(forKey: id.rawValue) }
+        try? store.save(settings)
+        onChange?()
+    }
+
+    /// 0.7.0 brought the widget board. A file from before has none: store the default once (Nacho Pet and the tools
+    /// that are on first), so the order does not shift later when a tool is switched. Nothing else changes.
+    public func migrateBento() {
+        guard settings.bento == nil else { return }
+        settings.bento = BentoLayout.defaults(for: settings)
+        try? store.save(settings)
+    }
+
+    /// Moves, resizes or hides widgets. Never switches a tool, pins it or asks for a permission.
+    public func updateBento(_ change: (inout BentoLayout) -> Void) {
+        var layout = settings.bentoLayout
+        change(&layout)
+        guard layout != settings.bento else { return }
+        settings.bento = layout
         try? store.save(settings)
         onChange?()
     }

@@ -22,6 +22,8 @@ products.append(.executable(name: "NachoCombo", targets: ["NachoCombo"]))
 // ScreenCaptureKit (recording) arrived in macOS 12.3: weak-linked so the app still opens on 12.0–12.2.
 targets.append(.executableTarget(name: "NachoCombo", dependencies: ["NachoComboCore"],
                                  linkerSettings: [.unsafeFlags(["-Xlinker", "-weak_framework", "-Xlinker", "ScreenCaptureKit"])]))
+// AppKit view tests (the widget board drawn off screen); macOS only.
+targets.append(.testTarget(name: "NachoComboAppTests", dependencies: ["NachoCombo", "NachoComboCore"]))
 #endif
 
 let package = Package(

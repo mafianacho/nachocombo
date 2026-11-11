@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private var petCard: PetSettingsCard?
     private let updater = UpdateController()
     private var mainItem: NSStatusItem!
+    private var bentoWindow: BentoWindowController!
     private var settingsWindow: SettingsWindowController!
     private var panel: PanelController!
     private let toolShortcuts = ToolShortcutCenter()
@@ -133,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         disk.optionsProvider = options
 
         settingsWindow = SettingsWindowController(host: self)
+        bentoWindow = BentoWindowController(host: self)
 
         monitor.settingsProvider = { [weak self] in self?.manager.settings.monitorSettings ?? .defaults }
         monitor.settingsChanged = { [weak self] value in self?.updateMonitorSettings(value) }
@@ -230,7 +232,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             settingsWindow.select(.combos)
         }
         switch manager.settings.launchWindow {
-        case _ where firstLaunch, .always: settingsWindow.show()
+        case _ where firstLaunch: settingsWindow.show()
+        case .always: bentoWindow.show()
         case .whenNeeded: if gadgetsNeedingUser().isEmpty == false { showSettings(gadgetsNeedingUser().first) }
         case .never: break
         }
@@ -238,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
 
     /// Double-clicking the app again (or `open -a`) while it is already running re-opens the settings window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        settingsWindow.show()
+        bentoWindow.show()
         return true
     }
 
@@ -303,6 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         applyActionShortcuts()
         panel.refresh()
         settingsWindow.refresh()
+        bentoWindow?.refresh()
         refreshPinnedItems()
         refreshMainItem()
         startPermissionWatchIfNeeded()
@@ -627,6 +631,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             extra["accentRGB"] = String(format: "%.2f,%.2f,%.2f", accent.redComponent, accent.greenComponent, accent.blueComponent)
         }
         extra["reduceMotion"] = UI.reduceMotion
+        extra["bento"] = bentoWindow.diagnostics
+        extra["bentoLayout"] = manager.settings.bentoLayout.items.map { "\($0.id):\($0.size.rawValue)\($0.hidden ? ":hidden" : "")" }
         if !lastA11y.isEmpty { extra["a11y"] = lastA11y }
         Diagnostics.write(manager: manager, extra: extra)
     }
@@ -635,7 +641,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
 
     @objc private func mainClicked(_ sender: NSStatusBarButton) {
         if NSApp.currentEvent?.type == .rightMouseUp { showContextMenu(); return }
-        panel.toggle(from: sender, route: .list)
+        panel.toggle(from: sender, route: .mini)
     }
 
     @objc private func pinnedClicked(_ sender: NSStatusBarButton) {
@@ -683,6 +689,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             menu.addItem(update)
         default: break
         }
+        let board = NSMenuItem(title: "Widget Board…", action: #selector(menuBoard), keyEquivalent: "")
+        board.target = self
+        menu.addItem(board)
         let settings = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -1503,6 +1512,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     }
 
     @objc private func menuSettings() { showSettings() }
+    @objc private func menuBoard() { bentoWindow.show() }
     @objc private func menuOrderCombo(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         orderCombo(id)
@@ -1622,6 +1632,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             guard let button = mainItem.button else { break }
             switch parts[1] {
             case "list": panel.show(from: button, route: .list)
+            case "mini": panel.show(from: button, route: .mini)
             case "combos": panel.show(from: button, route: .combos)
             case "tool" where parts.count == 3:
                 if let id = ModuleID(rawValue: parts[2]) { openToolForce(id) }
@@ -1634,6 +1645,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             switch parts[1] {
             case "panel": lastA11y = ["panel": panel.accessibilityTree, "route": panel.route.name]
             case "settings": lastA11y = ["settings": settingsWindow.accessibilityTree]
+            case "board": lastA11y = ["board": bentoWindow.accessibilityTree]
             default: lastA11y = [:]
             }
         case "snapshot" where parts.count == 3:
@@ -1887,4 +1899,126 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             break
         }
     }
+}
+
+// MARK: BentoHost (the widget board and the menu bar mini board, 0.7.0)
+
+extension AppDelegate: BentoHost {
+    var bentoLayout: BentoLayout { manager.settings.bentoLayout }
+
+    func bentoUpdateLayout(_ change: (inout BentoLayout) -> Void) { manager.updateBento(change) }
+
+    /// Each widget from what its module has right now; nothing is sampled or made up. Reads never start a tool or
+    /// ask for a permission (permission checks are the non-prompting ones).
+    func bentoWidget(_ id: ModuleID) -> BentoWidget {
+        let s = manager.settings
+        let run = running(id)
+        let now = Date()
+        let body: BentoBody
+        switch id {
+        case .nachoPet:
+            body = BentoBuilder.pet(auth: pet?.session?.snapshot.auth ?? .signedOut, running: run)
+        case .systemMonitor:
+            let r = monitor.latest
+            body = BentoBuilder.monitor(running: run, cpuPercent: r.cpuBusy, memoryPercent: r.memPercent,
+                                        diskFraction: r.diskPercent.map { $0 / 100 }, down: r.rx, up: r.tx)
+        case .computerUse:
+            body = BentoBuilder.computerUse(accessibility: gadgetPermissionGranted(.accessibility),
+                                            screenRecording: gadgetPermissionGranted(.screenRecording))
+        case .windowSnap:
+            let left = actionLabel(GadgetActions.snapID(.left))
+            let set = GadgetActions.of(.windowSnap).filter { s.shortcut(forAction: $0.id) != nil }.count
+            body = BentoBuilder.windowSnap(running: run, leftLabel: left, otherShortcuts: max(0, set - (left == nil ? 0 : 1)))
+        case .keepAwake:
+            body = BentoBuilder.keepAwake(running: run, holds: keepAwake.decision.holds, manual: keepAwake.manual,
+                                          until: keepAwake.until, heldSince: keepAwake.heldSince,
+                                          reason: keepAwake.manual ? nil : "정한 앱·전원 규칙으로 깨어 있어요",
+                                          presetMinutes: s.options.keepAwakeMinutes, now: now)
+        case .clipboard:
+            let items: [(kind: BentoRow.Kind, title: String, date: Date)] = run ? clipboard.history.items.prefix(8).map { item -> (kind: BentoRow.Kind, title: String, date: Date) in
+                let kind: BentoRow.Kind
+                switch item.kind {
+                case .text: kind = .text
+                case .link: kind = .link
+                case .image: kind = .image
+                case .files: kind = .file
+                }
+                return (kind, item.title, item.date)
+            } : []
+            body = BentoBuilder.clipboard(running: run, items: items, now: now)
+        case .captureFloat:
+            body = BentoBuilder.capture(running: run, floats: run ? capture.floats.count : 0, shortcut: actionLabel("capture.area"))
+        case .focusDim:
+            body = BentoBuilder.focusDim(running: run, intensity: s.dimIntensity, paused: run && dim.paused)
+        case .deviceControl:
+            var volume: Double?, brightness: Int?, output: String?
+            if run {
+                let d = gadgetDevices()
+                volume = d.volume
+                output = d.outputs.first { $0.uid == d.output }?.name
+                brightness = devices.displays.list.first.flatMap { devices.displays.knownBrightness($0.index) }
+            }
+            body = BentoBuilder.devices(running: run, volume: volume, brightness: brightness, output: output)
+        case .calendarClock:
+            let access = CalendarClockModule.access
+            var next: (start: Date, title: String)?
+            if run, access == true, s.options.clockNextEvent, let meeting = clock.nextMeeting(within: 12 * 3600) {
+                next = (meeting.event.startDate, meeting.event.title ?? "일정")
+            }
+            body = BentoBuilder.calendar(now: now, running: run, access: access, showNext: s.options.clockNextEvent, next: next)
+        case .diskMap:
+            let space = disk.startupSpace
+            body = BentoBuilder.disk(used: space?.used, total: space?.total, folders: disk.controller?.startupFolders ?? [])
+        case .fileShelf:
+            let items: [(kind: BentoRow.Kind, title: String)] = run ? shelf.store.items.map { item -> (kind: BentoRow.Kind, title: String) in
+                let kind: BentoRow.Kind
+                switch item.kind {
+                case .file: kind = .file
+                case .image: kind = .image
+                case .text: kind = .text
+                case .link: kind = .link
+                }
+                return (kind, item.title)
+            } : []
+            body = BentoBuilder.shelf(running: run, items: items)
+        case .menuBar:
+            body = BentoBuilder.menuBar(running: organizer.isRunning, collapsed: organizer.collapsed, failed: organizer.dividerFailed)
+        case .appSwitch:
+            body = BentoBuilder.appSwitch(running: run, switcher: actionLabel("appSwitch.next"),
+                                          appShortcuts: s.options.appShortcuts.filter { $0.shortcut != nil }.count)
+        case .mouseTune:
+            body = BentoBuilder.mouse(speed: s.options.mouseSpeed, reverse: s.options.mouseReverse)
+        }
+        return BentoWidget(id: id, status: manager.status(of: id), enabled: s.isEnabled(id), pinned: s.isPinned(id),
+                           shortcut: s.shortcut(for: id)?.label, body: body)
+    }
+
+    func bentoPetImage(signedIn: Bool) -> NSImage? { PetArt.image(signedIn ? .idle : .waiting) }
+
+    func bentoSetEnabled(_ id: ModuleID, _ on: Bool) {
+        userEnable(id, on)
+        stateChanged()
+    }
+
+    func bentoSetPinned(_ id: ModuleID, _ pinned: Bool) { panelSetPinned(id, pinned) }
+
+    func bentoOpen(_ id: ModuleID) { showSettings(id) }
+
+    func bentoPerform(_ id: ModuleID) {
+        switch id {
+        case .nachoPet:
+            guard running(.nachoPet) else { return }
+            guard let pet = pet else { return }
+            if pet.session?.snapshot.auth == .signedIn { pet.openChat() } else { pet.signIn() }
+        case .computerUse:
+            if gadgetPermissionGranted(.accessibility) == false { gadgetOpenPermissionSettings(.accessibility) }
+            else if gadgetPermissionGranted(.screenRecording) == false { gadgetOpenPermissionSettings(.screenRecording) }
+        default:
+            showSettings(id)
+        }
+    }
+
+    func bentoOpenSettings() { showSettings() }
+
+    func bentoOpenBoard() { bentoWindow.show() }
 }
