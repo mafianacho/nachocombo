@@ -275,3 +275,110 @@ a.file .fn { text-decoration: underline; text-decoration-thickness: 1px; text-un
 .motion-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--color-accent); }
 .motion-bar b { position: absolute; top: 8px; transform: translateX(-50%); font-size: var(--font-caption); font-weight: var(--font-weight-regular);
   color: var(--color-text-tertiary); white-space: nowrap; }
+
+/* ---------- selection bar (글자 선택 동작 바) ---------- */
+/* The app a user selects text in: a stand-in window (content, not Nacho UI). */
+.appwin { position: absolute; left: var(--space-xl); top: var(--space-xl); width: 560px;
+  background: var(--color-surface-raised); border-radius: var(--radius-window); overflow: visible;
+  box-shadow: 0 var(--shadow-window-y) var(--shadow-window-blur) var(--color-shadow), 0 0 0 0.5px var(--color-edge); }
+.appwin .tb { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 var(--space-m);
+  border-bottom: 0.5px solid var(--color-separator); background: var(--color-surface); border-radius: var(--radius-window) var(--radius-window) 0 0; }
+.appwin .tb i { width: 12px; height: 12px; border-radius: 6px; background: var(--color-edge); display: block; flex: none; }
+.appwin .url { margin-left: var(--space-m); flex: 1; height: 24px; border-radius: 6px; background: var(--color-surface-raised);
+  display: flex; align-items: center; justify-content: center; font-size: var(--font-caption); color: var(--color-text-secondary); }
+.appwin .page { padding: var(--space-l) var(--space-xl) var(--space-xl); line-height: 1.6; color: var(--color-text); }
+.appwin .page h1 { font-size: 20px; margin: 0 0 var(--space-s); }
+.appwin .page p { margin: 0 0 var(--space-m); }
+.appwin .page .muted { color: var(--color-text-secondary); font-size: var(--font-caption); }
+/* the host app's own selection colour (content stand-in, macOS default) */
+mark.sel { background: #B4D5FE; color: inherit; border-radius: 2px; padding: 1px 0; }
+[data-theme="dark"] mark.sel { background: #3F638B; }
+.selwrap { position: relative; }
+
+.selbar { position: absolute; left: 0; bottom: calc(100% + var(--size-select-bar-offset)); z-index: 3;
+  height: var(--size-select-bar-height); display: flex; align-items: center; gap: 1px; padding: 0 var(--space-xxs);
+  border-radius: var(--radius-select-bar); background: var(--color-window); white-space: nowrap; line-height: 1;
+  box-shadow: 0 6px 18px var(--color-shadow), 0 0 0 0.5px var(--color-edge); backdrop-filter: blur(24px) saturate(1.4); }
+.selbar.below { bottom: auto; top: calc(100% + var(--size-select-bar-offset)); }
+.selbar button { height: calc(var(--size-select-bar-height) - 6px); padding: 0 var(--space-s); border: 0; background: none; border-radius: calc(var(--radius-select-bar) - 3px);
+  display: flex; align-items: center; gap: var(--space-xs); font-size: var(--font-caption); color: var(--color-text); cursor: pointer; }
+.selbar button svg { width: var(--size-select-bar-icon); height: var(--size-select-bar-icon); color: var(--color-text-secondary); flex: none; }
+.selbar button:hover, .selbar button.hot { background: var(--color-surface); }
+.selbar .div { width: 0.5px; height: 18px; background: var(--color-separator); margin: 0 var(--space-xxs); flex: none; }
+.selbar .nacho { color: var(--color-accent); font-weight: var(--font-weight-semibold); }
+.selbar .nacho img { width: 18px; height: 18px; object-fit: contain; }
+.selbar .more svg { color: var(--color-text-secondary); }
+/* "나초에게 묻기": the bar turns into a one-line question field, its key hint inside on the right */
+.selbar.ask { width: var(--size-select-ask-width); padding: 0 var(--space-xxs) 0 var(--space-xs); gap: var(--space-xs); }
+.selbar.ask img { width: 20px; height: 20px; object-fit: contain; flex: none; }
+.selbar.ask .q { flex: 1; min-width: 0; height: calc(var(--size-select-bar-height) - 8px); display: flex; align-items: center;
+  padding: 0 var(--space-s); border-radius: calc(var(--radius-select-bar) - 3px); background: var(--color-surface-raised);
+  box-shadow: 0 0 0 2px var(--color-focus-ring), 0 0 0 1px var(--color-accent); font-size: var(--font-caption); overflow: hidden; }
+.selbar.ask .send { width: 26px; height: 26px; }
+.selbar.ask .send svg { width: 12px; height: 12px; }
+.selmenu { position: absolute; z-index: 4; min-width: 220px; padding: var(--space-xs); border-radius: var(--radius-card);
+  background: var(--color-window); backdrop-filter: blur(24px) saturate(1.4); box-shadow: 0 10px 28px var(--color-shadow), 0 0 0 0.5px var(--color-edge); font-size: var(--font-body); line-height: 1.3; }
+.selmenu div { padding: 5px var(--space-s); border-radius: 5px; white-space: nowrap; }
+.selmenu div.hot { background: var(--color-accent); color: var(--color-on-accent); }
+.selmenu hr { border: 0; height: 0.5px; background: var(--color-separator); margin: var(--space-xs) var(--space-xxs); }
+.selmenu .k { float: right; color: var(--color-text-tertiary); margin-left: var(--space-l); }
+.doclabel { position: absolute; left: var(--space-xl); bottom: var(--space-xl); max-width: 520px; font-size: var(--font-caption);
+  color: var(--color-text-secondary); background: var(--color-window); padding: var(--space-s) var(--space-m); border-radius: var(--radius-card);
+  box-shadow: 0 0 0 0.5px var(--color-edge); }
+.doclabel b { color: var(--color-text); }
+
+/* what will be sent: a preview card in the chat, every row removable */
+.ctx { gap: var(--space-xs); }
+.ctx .q { margin-bottom: var(--space-xxs); }
+.ctx .row2 { display: flex; align-items: flex-start; gap: var(--space-s); font-size: var(--font-caption); padding: var(--space-xs) 0;
+  border-top: 0.5px solid var(--color-separator); }
+.ctx .row2 > svg { width: var(--size-context-row-icon); height: var(--size-context-row-icon); color: var(--color-text-tertiary); flex: none; margin-top: 1px; }
+.ctx .row2 .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ctx .row2 .t b { font-weight: var(--font-weight-medium); color: var(--color-text-secondary); }
+.ctx .row2 .t span { color: var(--color-text); overflow-wrap: anywhere; }
+.ctx .row2 .t .quote { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  border-left: 2px solid var(--color-accent); padding-left: var(--space-s); margin-top: 2px; }
+.ctx .row2 .t small { color: var(--color-text-tertiary); font-size: var(--font-caption); }
+.ctx .row2 .rm { width: 20px; height: 20px; border-radius: 10px; border: 0; flex: none; display: flex; align-items: center; justify-content: center;
+  background: var(--color-surface); color: var(--color-text-secondary); cursor: pointer; padding: 0; }
+.ctx .row2 .rm svg { width: 9px; height: 9px; }
+.ctx .row2.off .kv > span { color: var(--color-text-tertiary); text-decoration: line-through; }
+.ctx .row2.off .kv b { color: var(--color-text-tertiary); }
+.ctx .row2.off .rm { background: none; color: var(--color-link); width: auto; padding: 0 2px; font-size: var(--font-caption); }
+.ctx .acts { display: flex; gap: var(--space-s); align-items: center; margin-top: var(--space-xs); }
+.ctx .acts .primary { height: var(--size-control); padding: 0 var(--space-m); }
+.ctx .acts .opt { height: var(--size-control); }
+.ctx .foot { font-size: var(--font-caption); color: var(--color-text-tertiary); }
+.reqchip { display: inline-flex; align-items: center; gap: var(--space-xs); margin-top: var(--space-xs); font-size: var(--font-caption);
+  color: var(--color-mine-text); opacity: .85; }
+.reqchip svg { width: 12px; height: 12px; }
+.answer-acts { display: flex; gap: var(--space-xs); }
+.answer-acts .ex { height: 22px; padding: 0 var(--space-s); display: flex; align-items: center; gap: 4px; }
+.answer-acts .ex svg { width: 11px; height: 11px; }
+.intro-bar { display: flex; justify-content: center; padding: var(--space-xs) 0; }
+.intro-bar .selbar { position: relative; left: auto; bottom: auto; }
+
+/* settings: the selection bar section of the Nacho Pet card */
+.settings.tall { inset: var(--space-l) var(--space-xl); }
+.olist { display: flex; flex-direction: column; border-radius: var(--radius-control); box-shadow: 0 0 0 0.5px var(--color-separator); overflow: hidden; }
+.olist div { display: flex; align-items: center; gap: var(--space-s); padding: 4px var(--space-s); font-size: var(--font-caption); border-top: 0.5px solid var(--color-separator); background: var(--color-surface-raised); }
+.olist div:first-child { border-top: 0; }
+.olist .grip { color: var(--color-text-tertiary); letter-spacing: -2px; }
+.olist .check i { width: 13px; height: 13px; }
+.olist .check i.offbox { background: none; box-shadow: inset 0 0 0 1px var(--color-edge); }
+.olist .lock { margin-left: auto; color: var(--color-text-tertiary); }
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-l); }
+.cols2 > div { display: flex; flex-direction: column; gap: var(--space-s); min-width: 0; }
+.selbar .ph { color: var(--color-text-tertiary); }
+.ctx .row2 { padding: 3px 0; align-items: center; }
+.ctx .row2.tall { align-items: flex-start; }
+.ctx .row2 .kv { display: flex; gap: var(--space-s); align-items: baseline; min-width: 0; }
+.ctx .row2 .kv b { flex: none; width: 44px; }
+.ctx .row2 .kv span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx .row2 .kv small { flex: none; }
+.ctx .row2.off .kv small { color: var(--color-text-secondary); text-decoration: none; }
+.ctx .row2 .t b .link { font-weight: var(--font-weight-regular); margin-left: var(--space-xs); }
+.selbar.ask .kbd { flex: none; font-size: var(--font-caption); color: var(--color-text-secondary); padding: 0 var(--space-xxs); }
+.ctx .trunc { display: inline-flex; align-items: center; gap: var(--space-xs); color: var(--color-warning); font-size: var(--font-caption);
+  font-weight: var(--font-weight-medium); margin: 2px 0; }
+.ctx .trunc svg { width: 12px; height: 12px; }

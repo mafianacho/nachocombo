@@ -14,6 +14,26 @@ public enum PetChatItem: Equatable {
     case card(PetCardItem)
     case note(String)
     case divider(String)
+    /// Selection bar: the chip under a sent request ("Safari · 고른 글 129자 · 맥락 4개").
+    case requestChip(String)
+    /// Selection bar: 복사 · 다시 · 보낸 내용 보기 under the answer to a request.
+    case answerActions(turnID: String, showingSent: Bool)
+    /// Selection bar: what that request sent (read only), after 보낸 내용 보기.
+    case sentContext([PetSelectionRow])
+    /// Selection bar: the preview card before anything is sent.
+    case selectionPreview(PetSelectionPreview)
+    /// Selection bar: the first-use card (켜기 / 나중에).
+    case selectionIntro
+}
+
+/// What the selection bar adds to the chat: its preview card, the first-use card, opened "보낸 내용 보기" lists.
+public struct PetSelectionChatState: Equatable {
+    public var preview: PetSelectionPreview?
+    public var intro = false
+    public var expanded: Set<String> = []
+    public init(preview: PetSelectionPreview? = nil, intro: Bool = false, expanded: Set<String> = []) {
+        self.preview = preview; self.intro = intro; self.expanded = expanded
+    }
 }
 
 public struct PetChatLine: Equatable {
@@ -135,7 +155,7 @@ public enum PetTranscript {
 
     /// The header's one status line: connection, activity or the task's state. Task and card states show here only,
     /// never again as a line in the transcript.
-    public static func headerStatus(_ st: PetSessionState) -> (text: String, dot: HeaderDot) {
+    public static func headerStatus(_ st: PetSessionState, selection: PetSelectionChatState = PetSelectionChatState()) -> (text: String, dot: HeaderDot) {
         switch st.auth {
         case .signedOut: return ("로그인 전", .off)
         case .signingIn: return ("로그인 중", .busy)
@@ -149,6 +169,11 @@ public enum PetTranscript {
         case .disconnected: return ("쉬는 중", .off)
         case .connected: break
         }
+        if st.chat.isBusy, let last = st.chat.turns.last, let sel = st.selectionTurns[last.clientMsgID],
+           [.idle, .typing, .thinking].contains(st.chat.activity) {
+            return (sel.action.progressText, .busy)
+        }
+        if selection.preview != nil, !st.chat.isBusy { return ("보낼 내용을 확인해 주세요", .wait) }
         if st.chat.isBusy {
             return (ActivityText.label(st.chat.activity == .idle ? .typing : st.chat.activity, tool: st.chat.activeTool), .busy)
         }
@@ -163,14 +188,15 @@ public enum PetTranscript {
     public enum HeaderDot: Equatable { case ok, busy, wait, warn, off }
 
     /// "크레딧 180" next to the status; hidden while a task's status takes the space.
-    public static func headerCredits(_ st: PetSessionState) -> String? {
-        guard st.auth == .signedIn, let u = st.chat.usage else { return nil }
+    public static func headerCredits(_ st: PetSessionState, selection: PetSelectionChatState = PetSelectionChatState()) -> String? {
+        guard st.auth == .signedIn, let u = st.chat.usage, selection.preview == nil else { return nil }
         if let t = st.chat.task, t.isOpen || st.chat.turns.last?.taskID == t.id { return nil }
         return "크레딧 \(PetText.number(u.remaining))"
     }
 
     /// - Parameter undoSecondsLeft: seconds left to undo a forget this session asked for (nil = no longer possible).
-    public static func items(_ st: PetSessionState, undoSecondsLeft: (String) -> Int?) -> [PetChatItem] {
+    public static func items(_ st: PetSessionState, undoSecondsLeft: (String) -> Int?,
+                             selection: PetSelectionChatState = PetSelectionChatState()) -> [PetChatItem] {
         var out: [PetChatItem] = []
         let chat = st.chat
         if st.loadingHistory { out.append(.older(loading: true)) } else if chat.hasMoreHistory { out.append(.older(loading: false)) }
@@ -184,11 +210,14 @@ public enum PetTranscript {
             if !m.files.isEmpty { out.append(.files(m.files.map(chip), mine: mine)) }
         }
         if !chat.history.isEmpty, !chat.turns.isEmpty { out.append(.divider("이번 대화")) }
-        if chat.turns.isEmpty, chat.history.isEmpty { out.append(.hello(title: "무엇을 도와드릴까요?", examples: examples)) }
+        if chat.turns.isEmpty, chat.history.isEmpty, selection.preview == nil, !selection.intro { out.append(.hello(title: "무엇을 도와드릴까요?", examples: examples)) }
 
         let turnIDs = Set(chat.turns.map { $0.clientMsgID })
         for turn in chat.turns {
-            out.append(.mine(text: turn.userText, attachments: turn.attachmentNames, past: false))
+            let request = st.selectionTurns[turn.clientMsgID]
+            // A selection request shows its chip instead of the context file's name.
+            out.append(.mine(text: turn.userText, attachments: request == nil ? turn.attachmentNames : [], past: false))
+            if let r = request { out.append(.requestChip(r.chip)) }
             // What Nacho is doing on the way: tools and "still working on it" lines.
             if !turn.tools.isEmpty {
                 var parts: [PetTextPart] = []
@@ -215,6 +244,11 @@ public enum PetTranscript {
             if !answer.isEmpty || streaming { out.append(.nacho(text: answer, past: false, streaming: streaming)) }
             if let f = failure { out.append(.line(PetChatLine(kind: .danger, symbol: "exclamationmark.triangle", parts: [PetTextPart(f)]))) }
             if !turn.files.isEmpty { out.append(.files(turn.files.map(chip), mine: false)) }
+            if let r = request, turn.status == .done, !answer.isEmpty {
+                let open = selection.expanded.contains(turn.clientMsgID)
+                out.append(.answerActions(turnID: turn.clientMsgID, showingSent: open))
+                if open { out.append(.sentContext(r.rows)) }
+            }
             for id in turn.cardIDs { if let c = chat.cards.first(where: { $0.id == id }) { out.append(.card(card(c))) } }
             // Memory: first what this answer used, then what it changed (one line per change, updated in place).
             if !turn.usedMemoryIDs.isEmpty, turn.status == .done {
@@ -233,6 +267,8 @@ public enum PetTranscript {
         if let u = chat.usage, u.exhausted || u.lowBalance || u.blockReason != nil {
             out.append(.line(PetChatLine(kind: .usage, symbol: "creditcard", parts: [PetTextPart(u.summary)])))
         }
+        if selection.intro { out.append(.selectionIntro) }
+        if let p = selection.preview { out.append(.selectionPreview(p)) }
         return out
     }
 

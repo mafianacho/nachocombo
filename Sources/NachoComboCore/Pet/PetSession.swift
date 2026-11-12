@@ -30,6 +30,8 @@ public struct PetSessionState: Equatable {
     public var config: PetClientConfig?
     public var loadingHistory = false
     public var dictating = false
+    /// Requests from the selection bar by the turn's client message id (chip, 다시, 보낸 내용 보기). Memory only.
+    public var selectionTurns: [String: PetSelectionSent] = [:]
     public init() {}
 }
 
@@ -112,6 +114,7 @@ public final class PetSession {
             self.opened = false
             self.dropClients(keepChat: false)
             self.state.pending = []
+            self.state.selectionTurns = [:]
             self.state.uploading = false
         }
     }
@@ -213,6 +216,7 @@ public final class PetSession {
             self.secrets.delete(ConnectorBinding.agentKey(scope: scope))
             self.dropClients(keepChat: false)
             self.state.pending = []
+            self.state.selectionTurns = [:]
             self.state.auth = .signedOut
             self.state.notice = "로그아웃했어요."
             self.auth.signOut()
@@ -367,6 +371,46 @@ public final class PetSession {
                     case .success:
                         let sent = Set(files.map { $0.id })
                         self.state.pending.removeAll { sent.contains($0.id) }
+                        self.state.notice = nil
+                        finish(nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// A selection-bar request: uploads only its context file (files waiting in the composer stay there) and sends
+    /// the instruction. The turn is remembered for its chip and the answer's actions.
+    public func sendSelection(_ sent: PetSelectionSent, completion: @escaping (String?) -> Void) {
+        queue.async {
+            let finish: (String?) -> Void = { msg in
+                if let m = msg { self.state.notice = m }
+                self.publish()
+                completion(msg)
+            }
+            self.state.lastInteraction = self.now()
+            guard self.state.auth == .signedIn else { finish(AuthProblem.signedOut.koreanMessage); return }
+            guard let chat = self.chat, self.state.chat.phase == .connected, let endpoint = self.settings.endpoint else {
+                if self.chat == nil { self.connectChat() }
+                finish(SendRefusal.notConnected.koreanMessage)
+                return
+            }
+            guard !self.state.uploading else { finish("파일을 올리는 중이에요. 잠시만요."); return }
+            if self.state.chat.isBusy { finish(SendRefusal.busy.koreanMessage); return }
+            self.state.uploading = true
+            self.publish()
+            self.upload([sent.file], endpoint: endpoint, done: []) { result in
+                self.state.uploading = false
+                switch result {
+                case let .failure(p):
+                    if p == .unauthorized { self.state.auth = .signedOut }
+                    finish(p.koreanMessage)
+                case let .success(attachments):
+                    guard self.chat === chat else { finish(SendRefusal.notConnected.koreanMessage); return }
+                    switch chat.send(text: sent.instruction, attachments: attachments) {
+                    case let .failure(r): finish(r.koreanMessage)
+                    case let .success(id):
+                        self.state.selectionTurns[id] = sent
                         self.state.notice = nil
                         finish(nil)
                     }
@@ -781,3 +825,5 @@ extension PetSession {
         }
     }
 }
+
+extension PetSession: PetSelectionSending {}

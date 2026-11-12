@@ -29,6 +29,11 @@ public enum PetTokens {
         public static let chipMaxWidth: Double = 170
         public static let badge: Double = 20
         public static let badgeIcon: Double = 12
+        public static let selectBarHeight: Double = 34
+        public static let selectBarIcon: Double = 14
+        public static let selectBarOffset: Double = 8
+        public static let selectAskWidth: Double = 400
+        public static let contextRowIcon: Double = 14
     }
 
     public enum Space {
@@ -48,6 +53,7 @@ public enum PetTokens {
         public static let control: Double = 8
         public static let chip: Double = 12
         public static let thumbnail: Double = 6
+        public static let selectBar: Double = 10
     }
 
     public enum Font {
@@ -98,6 +104,8 @@ public enum PetTokens {
         public static let press: Double = 110
         public static let land: Double = 280
         public static let frameInterval: Double = 33
+        public static let selectBarDelay: Double = 300
+        public static let selectBarFade: Double = 120
     }
 
     public enum MotionAmount {
@@ -248,6 +256,11 @@ public enum PetTokens {
         d["size.chipMaxWidth"] = text(Size.chipMaxWidth)
         d["size.badge"] = text(Size.badge)
         d["size.badgeIcon"] = text(Size.badgeIcon)
+        d["size.selectBarHeight"] = text(Size.selectBarHeight)
+        d["size.selectBarIcon"] = text(Size.selectBarIcon)
+        d["size.selectBarOffset"] = text(Size.selectBarOffset)
+        d["size.selectAskWidth"] = text(Size.selectAskWidth)
+        d["size.contextRowIcon"] = text(Size.contextRowIcon)
         d["space.xxs"] = text(Space.xxs)
         d["space.xs"] = text(Space.xs)
         d["space.s"] = text(Space.s)
@@ -261,6 +274,7 @@ public enum PetTokens {
         d["radius.control"] = text(Radius.control)
         d["radius.chip"] = text(Radius.chip)
         d["radius.thumbnail"] = text(Radius.thumbnail)
+        d["radius.selectBar"] = text(Radius.selectBar)
         d["font.family"] = Font.family
         d["font.title"] = text(Font.title)
         d["font.body"] = text(Font.body)
@@ -299,6 +313,8 @@ public enum PetTokens {
         d["motion.press"] = text(Motion.press)
         d["motion.land"] = text(Motion.land)
         d["motion.frameInterval"] = text(Motion.frameInterval)
+        d["motion.selectBarDelay"] = text(Motion.selectBarDelay)
+        d["motion.selectBarFade"] = text(Motion.selectBarFade)
         d["motionAmount.transitionScale"] = text(MotionAmount.transitionScale)
         d["motionAmount.breathLift"] = text(MotionAmount.breathLift)
         d["motionAmount.breathScale"] = text(MotionAmount.breathScale)

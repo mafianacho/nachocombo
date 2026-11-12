@@ -179,16 +179,22 @@ final class PetCharacterView: NSView {
         updateBadge()
     }
 
+    /// A badge only where the face alone cannot say it: dictating (red mic, only while really dictating), thinking,
+    /// dozing. No badge while answering: the chat header already says so. Each badge says its meaning as a tooltip and
+    /// to VoiceOver.
     private func updateBadge() {
         let symbol: String?
+        let meaning: String?
         switch face {
-        case .listening: symbol = "mic.fill"
-        case .thinking: symbol = "ellipsis"
-        case .speaking: symbol = "bubble.left"
-        case .sleeping: symbol = "zzz"
-        default: symbol = nil
+        case .listening: symbol = "mic.fill"; meaning = "받아쓰는 중"
+        case .thinking: symbol = "ellipsis"; meaning = "생각하는 중"
+        case .sleeping: symbol = "zzz"; meaning = "조는 중"
+        default: symbol = nil; meaning = nil
         }
         badge.isHidden = symbol == nil
+        badge.toolTip = meaning
+        badge.setAccessibilityElement(meaning != nil)
+        badge.setAccessibilityLabel(meaning)
         let rec = face == .listening
         badge.fill = rec ? PetTheme.color(\.danger) : PetTheme.color(\.accentSoft)
         badgeIcon.contentTintColor = rec ? PetTheme.color(\.onDanger) : PetTheme.accent

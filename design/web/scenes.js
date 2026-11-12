@@ -37,10 +37,11 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 // ---------- pieces ----------
 const pet = (face = 'idle', extra = '') => {
   let badge = '';
-  if (face === 'listening') badge = `<span class="badge rec">${icon('mic')}</span>`;
-  if (face === 'thinking') badge = '<span class="badge dots"><i></i><i></i><i></i></span>';
-  if (face === 'speaking') badge = `<span class="badge">${icon('bubble')}</span>`;
-  if (face === 'sleeping') badge = '<span class="badge">z</span>';
+  // A badge only where the face alone cannot say it: dictation (mic), thinking (dots), dozing (z). While answering the
+  // chat header already says so, so no badge then. Each badge says its meaning as a tooltip and to VoiceOver.
+  if (face === 'listening') badge = `<span class="badge rec" title="받아쓰는 중" aria-label="받아쓰는 중">${icon('mic')}</span>`;
+  if (face === 'thinking') badge = '<span class="badge dots" title="생각하는 중" aria-label="생각하는 중"><i></i><i></i><i></i></span>';
+  if (face === 'sleeping') badge = '<span class="badge" title="조는 중" aria-label="조는 중">z</span>';
   return `<div class="pet ${face} ${extra}" data-face="${face}" role="button" aria-label="나초 펫"><div class="figure"><img class="prev" alt="" style="opacity:0"><img class="cur" src="${ART}${FACE[face]}.png" alt=""></div>${badge}</div>`;
 };
 const head = ({ status = '연결됨', dot = '', credits = '크레딧 180', tab = 0 } = {}) => `
@@ -209,6 +210,137 @@ scene('motion', '모션 미리보기 (16초: 상태 순환 · 클릭 · 끌기 �
     `<b style="left:${(t / P.length) * 100}%">${{ idle: '대기', listening: '듣기', thinking: '생각', speaking: '답변', happy: '완료', tired: '졸음', sleeping: '잠' }[f]}</b>`).join('');
   return `<div class="stage motion-stage" style="width:420px;height:300px"><div class="motion-bar"><i></i>${ticks}</div>${pet('idle')}<div class="motion-caption"></div></div>`;
 });
+
+
+// ---------- selection bar (글자 선택 동작 바 ↔ 나초 펫) ----------
+// The host app's window and its text are stand-ins. What the bar sends is shown in the chat before anything leaves.
+Object.assign(PATHS, {
+  copy: 'M9 9h10v12H9zM5 15V3h10',
+  search: 'M11 18a7 7 0 100-14 7 7 0 000 14zM20 20l-4-4',
+  translate: 'M4 5h9M8.5 3v2M6 5c1 4 4 7 7 8M11 5c-1 4-4 7-7 8M13 21l4-9 4 9M14.5 18h5',
+  summary: 'M5 6h14M5 10h14M5 14h9M5 18h6',
+  explain: 'M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z',
+  more: 'M6 12h.01M12 12h.01M18 12h.01',
+  appwin: 'M3 5h18v14H3zM3 9h18',
+  title: 'M4 6h16M4 12h10',
+  globe: 'M12 21a9 9 0 100-18 9 9 0 000 18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
+  around: 'M4 6h16M4 18h16M8 10h8v4H8z',
+  lang: 'M4 5h9M8.5 3v2M6 5c1 4 4 7 7 8M11 5c-1 4-4 7-7 8',
+  lock: 'M7 11V8a5 5 0 0110 0v3M5 11h14v10H5z',
+  quote: 'M7 7h4v4H8c0 2 1 3 3 3M14 7h4v4h-3c0 2 1 3 3 3',
+  grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
+  refresh: 'M20 12a8 8 0 11-2.3-5.6M20 4v4.5h-4.5',
+});
+const PAGE_TITLE = 'mafianacho/nachocombo: Small Mac gadgets in one box';
+const PAGE_URL = 'github.com/mafianacho/nachocombo';
+const SELECTED = 'Every gadget starts off. Switching one on never asks for a permission it does not need, and switching it off stops it completely.';
+const selButtons = (hot = '', compact = false) => [['copy', '복사'], ['search', '검색'], ['translate', '번역'], ['summary', '요약'], ['explain', '설명']]
+  .map(([i, t]) => `<button class="${hot === i ? 'hot' : ''}" title="${t}" aria-label="${t}">${icon(i)}${compact ? '' : t}</button>`).join('');
+const selBar = ({ hot = '', below = false, compact = false } = {}) => `<span class="selbar${below ? ' below' : ''}" role="toolbar" aria-label="고른 글로 하기">${selButtons(hot, compact)}<span class="div"></span>
+  <button class="nacho ${hot === 'nacho' ? 'hot' : ''}" title="나초에게 묻기"><img src="${ART}idle.png" alt="">나초에게 묻기</button>
+  <button class="more ${hot === 'more' ? 'hot' : ''}" title="더 보기">${icon('more')}</button></span>`;
+const askBar = (text) => `<span class="selbar ask" role="toolbar" aria-label="나초에게 묻기"><img src="${ART}idle.png" alt="">
+  <span class="q">${text ? esc(text) : '<span class="ph">고른 글에 대해 물어보기…</span>'}</span>
+  <span class="kbd" title="Return: 보낼 내용 확인 · Esc: 닫기">↩ 확인 · esc</span><button class="send" title="보낼 내용 확인">${icon('send')}</button></span>`;
+const appWin = (selection) => `<div class="appwin"><div class="tb"><i></i><i></i><i></i><span class="url">${icon('lock').replace('<svg', '<svg style="width:10px;height:10px;margin-right:4px"')}${PAGE_URL}</span></div>
+  <div class="page"><h1>Nacho Combo</h1><p class="muted">Small Mac gadgets in one box · MIT · macOS 12 or later</p>
+  <p>Nacho Combo puts the small tools a Mac user reaches for every day into one menu bar app: window snapping, a file shelf, clipboard history, a system monitor and more.</p>
+  <p>${selection}</p>
+  <p>The Nacho character sits in a corner of the screen and can be asked about anything, including what you have selected.</p></div></div>`;
+const sel = (inner = '') => `<span class="selwrap"><mark class="sel">${SELECTED}</mark>${inner}</span>`;
+const selStage = (inner, face = 'idle', h = 470) => `<div class="stage" style="width:980px;height:${h}px">${inner}${pet(face)}</div>`;
+const chatStage = (inner, c, face = 'idle') => `<div class="stage" style="width:980px;height:700px">${inner}${chat(c)}${pet(face)}</div>`;
+const ctxRow = (ic, label, value, { quote = false, off = false, note = '' } = {}) => `<div class="row2${off ? ' off' : ''}${quote ? ' tall' : ''}">${icon(ic)}
+  <span class="t">${quote ? `<b>${label} <a class="link">전체 보기</a></b><span class="quote">${value}</span>`
+    : `<span class="kv"><b>${label}</b><span>${value}</span>${off ? '<small>뺐어요</small>' : note ? `<small>${note}</small>` : ''}</span>`}</span>
+  <button class="rm" title="${off ? '다시 넣기' : '빼기'}" aria-label="${label} ${off ? '다시 넣기' : '빼기'}">${off ? '다시 넣기' : icon('x')}</button></div>`;
+
+scene('sel-bar', '선택 동작 바: 글자를 고르면 근처에 뜸', () => selStage(appWin(sel(selBar({ hot: 'nacho' })))
+  + `<div class="doclabel"><b>보이기만 해요.</b> 버튼을 누르기 전에는 고른 글이 어디로도 가지 않아요. 비밀번호 칸·보안 입력 중·제외한 앱에서는 뜨지 않아요.</div>`));
+scene('sel-more', '선택 동작 바: ⋯ 메뉴', () => selStage(appWin(sel(selBar({ hot: 'more' })))
+  + `<div class="selmenu" style="left:452px;top:188px"><div class="hot">Safari에서는 띄우지 않기</div><div>잠시 끄기 (1시간)</div><hr><div>선택 동작 바 설정…</div></div>`));
+scene('sel-ask', '나초에게 묻기: 바가 한 줄 질문 칸으로', () => selStage(appWin(sel(askBar('이 문장 쉽게 풀어서 설명해 줘'))), 'idle'));
+scene('sel-preview', '보낼 내용 미리 보기 (보내기 전, 항목 빼기)', () => chatStage(appWin(sel()), {
+  headOpts: { status: '보낼 내용을 확인해 주세요', dot: 'wait', credits: '' },
+  log: `<div class="card ctx"><div class="q">${icon('translate')}<span>번역 · 한국어로</span></div>
+      ${ctxRow('quote', '고른 글 · 129자', esc(SELECTED), { quote: true })}
+      ${ctxRow('appwin', '앱', 'Safari <span class="sep">·</span> com.apple.Safari')}
+      ${ctxRow('title', '창 제목', esc(PAGE_TITLE))}
+      ${ctxRow('globe', '페이지', esc(PAGE_URL))}
+      ${ctxRow('around', '앞뒤 글', '앞 162자 · 뒤 96자', { off: true })}
+      ${ctxRow('lang', '언어', '영어 (추정)')}
+      <div class="acts"><button class="primary">${icon('send')}보내기</button><button class="opt">취소</button></div>
+      <div class="foot">보내기를 누르기 전에는 아무것도 서버로 가지 않아요.</div></div>`,
+  comp: { focus: false },
+}, 'waiting'));
+const appWinAll = () => appWin(SELECTED).replace(/<(h1|p)([^>]*)>([^<]*)<\/\1>/g, '<$1$2><mark class="sel">$3</mark></$1>')
+  .replace('</div></div>', '<p class="muted"><mark class="sel">… 아래로 글이 계속 이어져요 (모두 12,430자)</mark></p></div></div>');
+scene('sel-long', '긴 글을 골랐을 때: 상한에서 잘렸다고 미리 보기에 표시', () => chatStage(appWinAll(), {
+  headOpts: { status: '보낼 내용을 확인해 주세요', dot: 'wait', credits: '' },
+  log: `<div class="card ctx"><div class="q">${icon('summary')}<span>요약</span></div>
+      <div class="row2 tall">${icon('quote')}<span class="t"><b>고른 글 · 12,430자 <a class="link">전체 보기</a></b>
+        <span class="trunc">${icon('warn')}너무 길어서 앞 8,000자만 보내요</span>
+        <span class="quote">${esc('Nacho Combo puts the small tools a Mac user reaches for every day into one menu bar app: window snapping, a file shelf, clipboard history, a system monitor and more.')}</span></span>
+        <button class="rm" title="빼기" aria-label="고른 글 빼기">${icon('x')}</button></div>
+      ${ctxRow('appwin', '앱', 'Safari <span class="sep">·</span> com.apple.Safari')}
+      ${ctxRow('title', '창 제목', esc(PAGE_TITLE))}
+      ${ctxRow('globe', '페이지', esc(PAGE_URL))}
+      ${ctxRow('around', '앞뒤 글', '앞 400자 · 뒤 400자', { note: '각 400자까지' })}
+      ${ctxRow('lang', '언어', '영어 (추정)')}
+      <div class="acts"><button class="primary">${icon('send')}보내기</button><button class="opt">취소</button></div></div>`,
+  comp: { focus: false },
+}, 'waiting'));
+scene('sel-stream', '보낸 뒤: 펫 말풍선에 결과가 흘러나옴', () => chatStage(appWin(sel()), {
+  headOpts: { status: '번역하는 중', dot: 'busy' },
+  log: mine('번역해 줘', `<div><span class="reqchip">${icon('quote')}Safari · 고른 글 129자 · 맥락 4개</span></div>`)
+    + nacho('모든 가젯은 꺼진 채로 시작해요. 하나를 켜도 필요 없는 권한은 묻지 않고, 끄면 완전히<span class="caret"></span>'),
+  comp: { send: 'stop', focus: false },
+}, 'speaking'));
+scene('sel-result', '결과: 복사 · 다시 · 보낸 내용 보기', () => chatStage(appWin(sel()), {
+  log: mine('요약해 줘', `<div><span class="reqchip">${icon('quote')}Safari · 고른 글 129자 · 맥락 3개</span></div>`)
+    + nacho('가젯은 처음에 모두 꺼져 있고, 켤 때 꼭 필요한 권한만 묻고, 끄면 완전히 멈춘다는 설명이에요.')
+    + `<div class="row nacho answer-acts"><button class="ex">${icon('copy')}복사</button><button class="ex">${icon('refresh')}다시</button><button class="ex">${icon('doc')}보낸 내용 보기</button></div>`
+    + mine('그럼 권한은 언제 물어봐?')
+    + nacho('켜는 순간에만 물어요. 예를 들어 창 붙이기를 켤 때 손쉬운 사용 권한을 한 번 물어봐요.'),
+}, 'happy'));
+scene('sel-secure', '뜨지 않는 곳: 비밀번호 칸 · 보안 입력 · 제외 앱', () => selStage(`<div class="appwin" style="width:420px">
+  <div class="tb"><i></i><i></i><i></i><span class="url">${icon('lock').replace('<svg', '<svg style="width:10px;height:10px;margin-right:4px"')}account.example.com</span></div>
+  <div class="page"><h1 style="font-size:17px">로그인</h1><p class="muted">아이디</p><div class="field" style="height:30px;margin-bottom:12px">nacho@example.com</div>
+  <p class="muted">비밀번호</p><div class="field focus" style="height:30px"><mark class="sel">••••••••••</mark></div></div></div>
+  <div class="doclabel" style="left:470px;bottom:auto;top:var(--space-xl);max-width:470px"><b>바를 띄우지 않아요 (화면에 아무것도 없음).</b><br>
+  · 비밀번호 칸, 보안 입력이 켜진 동안<br>· 기본 제외 앱: 1Password, Bitwarden, 키체인 접근, 암호, 시스템 설정, 터미널(Terminal·iTerm·Warp, 설정에서 풀 수 있음)<br>· 설정에서 사용자가 더한 앱<br>
+  고른 글은 로그·진단 파일에 남기지 않아요. 앱이 보는 것은 버튼을 누른 순간의 고른 글과, 미리 보기에서 남긴 항목뿐이에요.</div>`, 'idle', 300));
+scene('sel-intro', '첫 사용 안내 (기본은 꺼짐, 안내 뒤 켜기)', () => chatStage('', {
+  log: `<div class="card"><div class="q">${icon('spark')}<span>새로 생겼어요: 선택 동작 바</span></div>
+      <div class="intro-bar">${selBar({ compact: true })}</div>
+      <div class="detail">아무 앱에서나 글자를 고르면 작은 바가 떠요. 번역·요약·설명을 누르거나 나초에게 바로 물어볼 수 있어요. 보낼 내용은 보내기 전에 보여 드려요.</div>
+      <div class="opts"><button class="opt chosen">켜기</button><button class="opt">나중에</button></div>
+      <div class="st">켜면 고른 글을 읽기 위해 손쉬운 사용 권한을 한 번 물어봐요.</div></div>`,
+}, 'happy'));
+scene('sel-settings', '설정: Nacho Pet ▸ Selection Bar', () => `<div class="stage" style="width:760px;height:700px"><div class="settings tall">
+  <div class="titlebar"><i></i><i></i><i></i><span>Nacho Combo</span></div>
+  <div class="gadget-head"><img src="${ART}idle.png" alt=""><div><b>Nacho Pet</b><span>Signed in as your Nacho account · Connected</span></div><span class="toggle"></span></div>
+  <div class="scard">
+    <div class="srow"><b class="grow">Selection Bar</b><span class="toggle" style="margin-left:0"></span></div>
+    <span class="cap2">Select text in any app and a small bar appears next to it: copy, search, translate, summarize, explain, ask Nacho. Nothing is sent until you press a button, and you see what will be sent first. Reading the selection needs Accessibility; it is asked only when you switch this on.</span>
+    <div class="cols2">
+      <div><h3>Buttons (drag to reorder)</h3><div class="olist">
+        ${[['Copy', 1], ['Search', 1], ['Translate', 1], ['Summarize', 1], ['Explain', 1], ['Ask Nacho', 2]].map(([n, s]) =>
+          `<div><span class="grip">⋮⋮</span><span class="check"><i class="${s ? '' : 'offbox'}">${s ? icon('check') : ''}</i>${n}</span>${s === 2 ? '<span class="lock">always shown</span>' : ''}</div>`).join('')}
+      </div>
+      <h3>Show the bar</h3><span class="popup">After 0.3 s ${icon('down')}</span>
+      <span class="cap2">Or only while holding ⌘ when you let go of the mouse.</span>
+      <h3>Search with</h3><span class="popup">Google ${icon('down')}</span>
+      <span class="cap2">Opens in your default browser. Also Naver or DuckDuckGo.</span></div>
+      <div><h3>Never in these apps</h3><div class="olist">
+        ${['1Password', 'Bitwarden', 'Keychain Access', 'Passwords', 'System Settings'].map((n) => `<div>${n}<span class="lock">built in</span></div>`).join('')}
+        ${['Terminal', 'iTerm', 'Warp'].map((n) => `<div><span class="check"><i>${icon('check')}</i>${n}</span><span class="lock">built in · can be allowed</span></div>`).join('')}
+        <div>Slack<span class="lock" style="color:var(--color-link)">Remove</span></div>
+      </div>
+      <button class="btn" style="align-self:flex-start">Add App…</button>
+      <span class="cap2">Password fields and secure input are always skipped. Terminals are skipped because they often show keys; untick one to allow it. Banking sites cannot be told apart by app: add the browser if you need to. Selected text is never written to logs.</span></div>
+    </div>
+  </div></div></div>`);
 
 // ---------- motion: every pet on the page follows design/web/motion.js ----------
 function applyPose(el, p) {

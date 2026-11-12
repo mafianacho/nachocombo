@@ -357,8 +357,9 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         guard let module = module else { return }
         let st = module.state
         let signedIn = st.auth == .signedIn
-        let head = PetTranscript.headerStatus(st)
-        status.stringValue = head.text + (PetTranscript.headerCredits(st).map { " · \($0)" } ?? "")
+        let selection = module.selectionChatState
+        let head = PetTranscript.headerStatus(st, selection: selection)
+        status.stringValue = head.text + (PetTranscript.headerCredits(st, selection: selection).map { " · \($0)" } ?? "")
         switch head.dot {
         case .ok: dot.fill = PetTheme.color(\.success)
         case .busy: dot.fill = PetTheme.accent
@@ -413,7 +414,8 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
 
     private func renderLog(_ st: PetSessionState) {
         guard st.auth == .signedIn else { return }
-        var items = PetTranscript.items(st, undoSecondsLeft: { [weak self] id in self?.undoSecondsLeft(id, st) })
+        var items = PetTranscript.items(st, undoSecondsLeft: { [weak self] id in self?.undoSecondsLeft(id, st) },
+                                        selection: module?.selectionChatState ?? PetSelectionChatState())
         if let n = noticeLine(st) { items.append(n) }
         guard items != shownItems else { return }
         // Keep the views of the unchanged beginning (streaming only changes the end).
@@ -457,7 +459,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         case "undo": if let u = q["u"] { module?.undoForget(u) }
         case "memfb": if let t = q["turn"] { module?.askMemoryFeedback(turnID: t) }
         case "card": if let id = q["id"], let a = q["action"] { module?.answerCard(id, action: a, options: q["option"].map { [$0] } ?? []) }
-        default: break
+        default: _ = module?.selectionLink(url.host ?? "", q)
         }
     }
 

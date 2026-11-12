@@ -38,6 +38,29 @@ for (const s of scenes) for (const th of ['light', 'dark']) {
       for (const c of chars) { if (/\s/.test(c.ch)) { word = []; continue; } if (word.length && Math.abs(c.top - prevTop) > 4) out.push(`word split: "${el.textContent.trim().slice(0, 24)}" at "${word.map((w) => w.ch).join('')}${c.ch}"`); word.push(c); prevTop = c.top; }
       if (el.classList.contains('bubble') && lines.length > 1 && !/\s/.test(lines[lines.length - 1].text.trim())) out.push(`orphan last line: "${lines[lines.length - 1].text.trim()}" in "${el.textContent.trim().slice(0, 24)}"`);
     }
+    // Floating text (absolutely placed, no background of its own or of a parent) over other text: unreadable.
+    const textRects = (el) => { const rs = []; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n; (n = w.nextNode());) { if (!n.textContent.trim()) continue; const rg = document.createRange(); rg.selectNodeContents(n);
+        for (const rc of rg.getClientRects()) if (rc.width && rc.height) rs.push({ rc, node: n }); } return rs; };
+    // A backdrop only counts on the floating element or on parents that do not also hold the text below it.
+    const covers = (e) => { const cs = getComputedStyle(e);
+      // A see-through fill only counts with a blur behind it (the app's glass); a plain fill must be (nearly) opaque.
+      const m = cs.backgroundColor.match(/rgba?\(([^)]+)\)/); const parts = m ? m[1].split(',') : [];
+      const alpha = !m ? 0 : parts.length < 4 ? 1 : parseFloat(parts[3]);
+      return alpha >= 0.98 || (alpha > 0.5 && cs.backdropFilter && cs.backdropFilter !== 'none') || (cs.backgroundImage && cs.backgroundImage !== 'none'); };
+    const allText = textRects(document.querySelector('.stage'));
+    for (const el of document.querySelectorAll('.stage *')) {
+      const cs = getComputedStyle(el); if (cs.position !== 'absolute' && cs.position !== 'fixed') continue;
+      let hit = null;
+      for (const { rc: a } of textRects(el)) { for (const { rc: b, node } of allText) {
+        if (el.contains(node)) continue;
+        if (!(a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1)) continue;
+        let shielded = false;
+        for (let e = el; e && !e.contains(node); e = e.parentElement) if (covers(e)) { shielded = true; break; }
+        if (!shielded) { hit = node; break; } }
+        if (hit) break; }
+      if (hit) out.push(`floating text over text: "${el.textContent.trim().slice(0, 24)}" over "${hit.textContent.trim().slice(0, 24)}"`);
+    }
     const chat = document.querySelector('.chat'), pet = document.querySelector('.stage > .pet');
     if (chat && pet) { const a = chat.getBoundingClientRect(), c = pet.getBoundingClientRect(); if (a.bottom > c.top) out.push('chat overlaps pet'); out.push(`gap chat→pet ${Math.round(c.top - a.bottom)}px`); }
     return out;

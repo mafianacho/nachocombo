@@ -23,8 +23,8 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     private let login = PetWebLogin()
     private(set) var session: PetSession!
     private(set) var state = PetSessionState()
-    private var petWindow: PetWindow?
-    private var chatWindow: PetChatWindow?
+    private(set) var petWindow: PetWindow?
+    private(set) var chatWindow: PetChatWindow?
     private var faceTimer: Timer?
     private var nameTag: PetNameTag?
     private var gateObservers: [(NotificationCenter, NSObjectProtocol)] = []
@@ -33,12 +33,25 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     let serverRecorder = PetServerRecorder()
     private(set) var dictationState = DictationState()
     private(set) var commandsRun = 0
+    // Selection bar (PetSelection*.swift): the flow, the event watch, the panel, opened "보낸 내용 보기" lists.
+    private(set) var selection: PetSelectionFlow!
+    let selectionWatcher = PetSelectionWatcher()
+    let selectionBar = PetSelectionBarPanel()
+    var selectionExpanded: Set<String> = []
+    var selectionTrustTimer: Timer?
+    var selectionAnchor: NSRect?
 
     override init() {
         settings = settingsStore.load()
         super.init()
         session = makeSession()
         login.anchor = { [weak self] in self?.chatWindow ?? self?.petWindow }
+        selection = PetSelectionFlow(sender: self, copyText: { text in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }, openURL: { NSWorkspace.shared.open($0) })
+        selection.onChange = { [weak self] in self?.selectionChanged() }
+        setUpSelectionBar()
     }
 
     private func makeSession() -> PetSession {
@@ -67,12 +80,18 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         let t = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.refreshFace() }
         RunLoop.main.add(t, forMode: .common)
         faceTimer = t
+        refreshSelectionWatcher()
         return .running
     }
 
     func stop() {
         faceTimer?.invalidate()
         faceTimer = nil
+        selectionWatcher.stop()
+        selectionTrustTimer?.invalidate()
+        selectionTrustTimer = nil
+        selection.dismiss()
+        selectionBar.hide()
         for (center, o) in gateObservers { center.removeObserver(o) }
         gateObservers = []
         nameTag?.orderOut(nil)
@@ -93,7 +112,10 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     var diagnostics: [String: String] {
         ["auth": "\(state.auth)", "chat": "\(state.chat.phase)", "connector": "\(state.connector)",
          "turns": "\(state.chat.turns.count)", "pending": "\(state.pending.count)", "commands": "\(commandsRun)",
-         "chatOpen": chatWindow?.isVisible == true ? "yes" : "no", "server": settings.endpoint?.base.absoluteString ?? "-"]
+         "chatOpen": chatWindow?.isVisible == true ? "yes" : "no", "server": settings.endpoint?.base.absoluteString ?? "-",
+         // Phase and counts only: never the selected text.
+         "selectionBar": settings.selectionBar.enabled ? (selectionWatcher.isRunning ? "on" : "on, waiting for Accessibility") : "off",
+         "selection": selection.diagnostics]
     }
 
     /// One line for the gadget tile.
@@ -133,6 +155,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         } else {
             session.apply(settings: next)
         }
+        refreshSelectionWatcher()
         onChange?()
     }
 
@@ -153,12 +176,12 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         openChat()
     }
 
-    func openChat() {
+    func openChat(focusInput: Bool = true) {
         if chatWindow == nil { chatWindow = PetChatWindow(module: self) }
         chatWindow?.position(near: petWindow)
         chatWindow?.render()
         chatWindow?.makeKeyAndOrderFront(nil)
-        chatWindow?.focusInput()
+        if focusInput { chatWindow?.focusInput() }
         nameTag?.orderOut(nil)
         session.touch()
         session.open()
@@ -377,7 +400,8 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     }
 
     var face: PetFace {
-        PetFace.derive(dictating: dictationState.isListening || state.dictating, chat: state.chat, now: Date(), lastInteraction: state.lastInteraction)
+        if selection?.phase == .preview { return .waiting }
+        return PetFace.derive(dictating: dictationState.isListening || state.dictating, chat: state.chat, now: Date(), lastInteraction: state.lastInteraction)
     }
 
     private func refreshFace() { petWindow?.show(face) }
