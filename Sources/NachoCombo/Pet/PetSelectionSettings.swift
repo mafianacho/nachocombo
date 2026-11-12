@@ -157,8 +157,10 @@ final class PetSelectionSettingsSection: NSObject {
                                               + "untick one to allow it. Banking sites cannot be told apart by app: add the browser if you need to. "
                                               + "Selected text is never written to logs.", width: columnWidth, style: .caption1, color: UI.secondaryText))
 
-        columns.orientation = width >= 600 ? .horizontal : .vertical
-        columns.alignment = .top
+        let twoColumns = width >= 600
+        columns.orientation = twoColumns ? .horizontal : .vertical
+        columns.alignment = twoColumns ? .top : .leading
+        for c in [left, right] { c.widthAnchor.constraint(equalToConstant: columnWidth).isActive = true }
         columns.spacing = width >= 600 ? 24 : 14
         columns.setViews([left, right], in: .leading)
         view.addArrangedSubview(columns)

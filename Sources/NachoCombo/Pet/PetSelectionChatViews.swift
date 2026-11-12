@@ -48,7 +48,10 @@ extension PetItemViews {
 
     private func caption(_ s: String, color: NSColor, weight: Double = PetTokens.Font.weightRegular, strike: Bool = false) -> NSTextField {
         let l = NSTextField(labelWithString: s)
-        var a: [NSAttributedString.Key: Any] = [.font: PetTheme.font(PetTokens.Font.caption, weight), .foregroundColor: color]
+        // The paragraph style carries the truncation: an attributed value ignores the field's own line break mode.
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingTail
+        var a: [NSAttributedString.Key: Any] = [.font: PetTheme.font(PetTokens.Font.caption, weight), .foregroundColor: color, .paragraphStyle: p]
         if strike { a[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
         l.attributedStringValue = NSAttributedString(string: s, attributes: a)
         l.lineBreakMode = .byTruncatingTail
@@ -56,8 +59,12 @@ extension PetItemViews {
         return l
     }
 
+    private func linkWidth(_ title: String) -> CGFloat {
+        ceil((title as NSString).size(withAttributes: [.font: PetTheme.caption]).width) + 8
+    }
+
     private func linkButton(_ title: String, _ url: URL, label: String? = nil) -> NSView {
-        let t = PetLinkText(PetLinkText.text([PetTextPart(title, link: url)], font: PetTheme.caption, color: PetTheme.link), maxWidth: 120)
+        let t = PetLinkText(PetLinkText.text([PetTextPart(title, link: url)], font: PetTheme.caption, color: PetTheme.link), maxWidth: linkWidth(title))
         t.onLink = onLink
         t.setAccessibilityLabel(label ?? title)
         return t
@@ -74,7 +81,7 @@ extension PetItemViews {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: CGFloat(S.contextRowIcon)).isActive = true
         row.addArrangedSubview(icon)
-        let buttonWidth: CGFloat = editable ? (r.removed ? 56 : 20) : 0
+        let buttonWidth: CGFloat = editable ? (r.removed ? linkWidth("다시 넣기") : 20) : 0
         let textWidth = cardInner - CGFloat(S.contextRowIcon + Sp.s) - (editable ? buttonWidth + CGFloat(Sp.s) : 0)
         let off = r.removed
         if r.field == .selection {
