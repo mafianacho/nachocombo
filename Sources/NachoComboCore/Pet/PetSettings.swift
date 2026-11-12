@@ -41,6 +41,8 @@ public struct PetSettings: Codable, Equatable {
     public var petPosition: PetPosition?
     /// Nacho may arrange windows and switch gadgets on or off when asked in the chat (connector tools).
     public var allowComboControl: Bool = true
+    /// The selection bar (part of Nacho Pet, not a gadget). Off by default.
+    public var selectionBar = PetSelectionBarSettings()
 
     public static let productionServerURL = "https://nacho.nachotown.com"
     public static let productionIssuerURL = "https://auth.nachotown.com/realms/nachotown"
@@ -52,7 +54,7 @@ public struct PetSettings: Codable, Equatable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case serverMode, customServerURL, customIssuerURL, petPosition, allowComboControl
+        case serverMode, customServerURL, customIssuerURL, petPosition, allowComboControl, selectionBar
     }
 
     /// Every field falls back on its own, so a file from an older or newer version still loads.
@@ -63,6 +65,7 @@ public struct PetSettings: Codable, Equatable {
         customIssuerURL = (try? c.decodeIfPresent(String.self, forKey: .customIssuerURL)) ?? ""
         petPosition = try? c.decodeIfPresent(PetPosition.self, forKey: .petPosition)
         allowComboControl = (try? c.decodeIfPresent(Bool.self, forKey: .allowComboControl)) ?? true
+        selectionBar = (try? c.decodeIfPresent(PetSelectionBarSettings.self, forKey: .selectionBar)) ?? PetSelectionBarSettings()
     }
 
     /// Resolved server for the current mode, or nil when the custom URL is empty/invalid.
@@ -251,6 +254,7 @@ public final class PetSettingsStore: PetSettingsStoring {
         if let p = out.petPosition, !(p.x.isFinite && p.y.isFinite) || abs(p.x) > 100_000 || abs(p.y) > 100_000 {
             out.petPosition = nil
         }
+        out.selectionBar = PetSelectionBarSettings.sanitized(out.selectionBar)
         return out
     }
 }

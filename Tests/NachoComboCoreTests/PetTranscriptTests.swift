@@ -24,6 +24,11 @@ final class PetTranscriptTests: XCTestCase {
             case let .card(c): return "card \(c.title) [\(c.options.map { $0.label }.joined(separator: "|"))] \(c.status ?? "-")"
             case let .note(n): return "note \(n)"
             case let .divider(d): return "divider \(d)"
+            case let .requestChip(c): return "chip \(c)"
+            case let .answerActions(id, open): return "actions \(id)\(open ? "(open)" : "")"
+            case let .sentContext(rows): return "sent \(rows.count)"
+            case let .selectionPreview(p): return "preview \(p.title)"
+            case .selectionIntro: return "intro"
             }
         }
     }

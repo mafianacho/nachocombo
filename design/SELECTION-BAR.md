@@ -2,7 +2,11 @@
 
 A PopClip-like bar for text selected in any app, part of **Nacho Pet** (no separate gadget). Scenes:
 `design/web/index.html?scene=sel-…` (`sel-bar`, `sel-more`, `sel-ask`, `sel-preview`, `sel-long`, `sel-stream`,
-`sel-result`, `sel-secure`, `sel-intro`, `sel-settings`). Native port follows after the mockup review. No server change.
+`sel-result`, `sel-secure`, `sel-intro`, `sel-settings`). No server change.
+
+Native (AppKit): rules in `Sources/NachoComboCore/Pet/PetSelection.swift` (Linux tests
+`Tests/NachoComboCoreTests/PetSelectionTests.swift`), screen in `Sources/NachoCombo/Pet/PetSelection*.swift` and
+`NachoPetModule+Selection.swift`, off-screen captures in `Tests/NachoComboAppTests/SelectionCaptureTests.swift`.
 
 ## Flow
 1. Text is selected (mouse up or ⇧-arrow selection ends). After `motion.selectBarDelay` (default 300 ms; or only with ⌘
@@ -27,7 +31,7 @@ text attachment** (`선택 맥락.md`, `text/markdown`). It uses the existing `P
 | selected text | AX `kAXSelectedTextAttribute` of the focused element | 8,000 chars |
 | app name, bundle id | `NSWorkspace.frontmostApplication` | — |
 | window title | AX title of the focused window | 200 chars |
-| URL, page title | browsers only (Safari, Chrome, Arc, Edge, Firefox), via AX of the address field / document; none when unavailable | 500 chars |
+| URL, page title | browsers only (Safari, Chrome, Arc, Edge, Firefox, Brave, Vivaldi, Opera), `AXURL` of the web area or the window's `AXDocument`; none when unavailable. Query, fragment and user info are dropped (they can hold sign-in tokens) | 500 chars |
 | text before / after | AX `kAXStringForRangeParameterizedAttribute` around the selected range | 400 chars each side |
 | language (guess) | `NLLanguageRecognizer` on the selection | — |
 
@@ -43,19 +47,24 @@ setting later; for now all are on.
   plus terminals (Terminal, iTerm, Warp: they often show keys), which the user can allow one by one. The user can add
   more apps and remove only the ones they added. Banking sites cannot be told apart by app (no URL filter): users who
   want that add the browser.
-- Selected text, context and answers are never written to logs or diagnostics (only counts and lengths).
+- Selected text, context and answers are never written to logs or diagnostics (only counts and lengths). The
+  capture, context, rows and sent request print and dump without their text (tested).
+- The order is fixed in `PetSelectionReader`: probe (app, role, secure input) → gate → only then read the text.
+  A password field, secure input, an excluded app or Nacho Combo's own windows are never read.
+- The attachment starts with a line telling Nacho the text is material, not instructions to follow.
 - Accessibility is needed to read the selection. It is asked only when the user switches the bar on (from the
   first-use card or Settings), never at launch.
 
 ## Settings (Nacho Pet card ▸ Selection Bar)
 On/off (default **off**; the first-use card in the chat offers to switch it on), button order and visibility (Ask
 Nacho always shown), delay (0.3 s default; 0 / 0.6 s / only with ⌘), search engine (Google default; Naver,
-DuckDuckGo), excluded apps.
+DuckDuckGo), excluded apps. The settings page of the app is narrower (488 pt) than the mockup, so the two columns
+stack there.
 
 ## Pet badges (changed in the mockup with this draft)
 The pet shows a badge only where the face alone cannot say it: dictation (red mic, only while really dictating),
 thinking (dots), dozing (z). Each has its meaning as tooltip and accessibility label. The "answering" badge was removed,
-because the chat header already says it. The native pet still has it until the port.
+because the chat header already says it (native too).
 
 ## Tokens added
 `size.selectBarHeight`, `selectBarIcon`, `selectBarOffset`, `selectAskWidth`, `contextRowIcon`, `radius.selectBar`,

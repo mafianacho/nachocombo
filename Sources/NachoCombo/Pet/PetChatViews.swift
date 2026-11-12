@@ -214,6 +214,11 @@ struct PetItemViews {
         case let .card(c): return card(c)
         case let .note(n): return PetRow(label(n, font: PetTheme.caption, color: PetTheme.tertiary, align: .center), width: width, center: true)
         case let .divider(d): return divider(d)
+        case let .requestChip(c): return requestChip(c)
+        case let .answerActions(id, open): return answerActions(id, showingSent: open)
+        case let .sentContext(rows): return sentContext(rows)
+        case let .selectionPreview(p): return selectionPreview(p)
+        case .selectionIntro: return selectionIntro()
         }
     }
 

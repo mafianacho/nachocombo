@@ -13,6 +13,7 @@ final class PetSettingsCard: NSObject {
     private let customIssuer = NSTextField()
     private let customRow = NSStackView()
     private let serverNote: NSTextField
+    private var selectionSection: PetSelectionSettingsSection?
     private let controlCheck = NSButton(checkboxWithTitle: "Let Nacho snap windows and switch gadgets on this Mac",
                                         target: nil, action: nil)
 
@@ -67,6 +68,10 @@ final class PetSettingsCard: NSObject {
         view.addArrangedSubview(UI.wrapLabel("Nacho can snap the front window (Window Snap's Accessibility permission) and switch other gadgets "
                                              + "on or off. Never Computer Use, never Nacho Pet itself, and never a gadget that still needs a permission.",
                                              width: width, style: .caption1, color: UI.secondaryText))
+        // The selection bar is part of Nacho Pet (not a gadget of its own).
+        let section = PetSelectionSettingsSection(host: module, width: width)
+        selectionSection = section
+        view.addArrangedSubview(section.view)
         let reset = NSButton(title: "Put Nacho Back in the Corner", target: self, action: #selector(resetClicked))
         reset.setAccessibilityIdentifier("pet-reset-position")
         view.addArrangedSubview(reset)
@@ -102,6 +107,7 @@ final class PetSettingsCard: NSObject {
             serverNote.stringValue = "\(s.endpoint?.base.absoluteString ?? "-") · login \(s.oidc?.issuer.absoluteString ?? "-")"
         }
         controlCheck.state = s.allowComboControl ? .on : .off
+        selectionSection?.refresh()
     }
 
     @objc private func accountClicked() {
