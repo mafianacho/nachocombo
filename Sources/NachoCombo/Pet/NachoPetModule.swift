@@ -301,6 +301,18 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         }
     }
 
+    /// [시작] / [취소] on a plan card (a task the server holds until it is confirmed).
+    func taskAction(_ id: String, action: String) {
+        let done: (String?) -> Void = { [weak self] refusal in
+            DispatchQueue.main.async { if let r = refusal { self?.chatWindow?.flash(r) } }
+        }
+        switch action {
+        case "start": session.startTask(id: id, completion: done)
+        case "cancel": session.cancelTask(id: id, completion: done)
+        default: break
+        }
+    }
+
     /// "기억이 틀렸어요": asks what is wrong, then sends it as memory feedback for that answer.
     func askMemoryFeedback(turnID: String) {
         let alert = NSAlert()
