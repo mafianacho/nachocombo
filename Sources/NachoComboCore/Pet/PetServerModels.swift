@@ -114,6 +114,8 @@ public struct PetCard: Equatable {
     public struct Option: Equatable {
         public var id: String
         public var label: String
+        /// Why Nacho offers it (choice / suggestion `reason`), shown under the label.
+        public var reason: String? = nil
     }
 
     public var id: String
@@ -127,30 +129,52 @@ public struct PetCard: Equatable {
     public var multiple: Bool
     public var answeredAction: String?
     public var expiresAt: String?
+    /// Approval: what kind of action (payment, booking, send_message, phone_call, publish, change_permission, delete, other).
+    public var actionType: String? = nil
+    /// Approval: can_cancel | conditional | cannot_cancel, and the server's one-line note about undoing it.
+    public var reversibility: String? = nil
+    public var reversibilityText: String? = nil
+    /// The options the stored answer chose (`answer.option_id` / `answer.option_ids`), to mark them after answering.
+    public var answeredOptionIDs: [String] = []
+    /// Rule proposal: what the user said in the chat (the rule is made only by a tap or a number).
+    public var saidText: String? = nil
 
     static func decode(_ o: JSONObject) -> PetCard {
         let p = o.obj("payload") ?? [:]
+        let kind = o.str("kind") ?? ""
         var detail: [String] = []
         if let merchant = p.str("merchant") { detail.append(merchant) }
         if let amount = p.int("amount") { detail.append(PetText.amount(amount, currency: p.str("currency"))) }
         if let counterpart = p.str("counterpart") { detail.append(counterpart) }
-        if let rev = p.str("reversibility_text") { detail.append(rev) }
-        let options = p.objs("options").compactMap { opt -> Option? in
-            guard let id = opt.str("id"), let label = opt.str("label") else { return nil }
-            return Option(id: id, label: label)
+        // The approval card says how to undo it on its own line (PetCardRules); other cards keep it in the detail.
+        if kind != "approval", let rev = p.str("reversibility_text") { detail.append(rev) }
+        // A rule proposal's choices are its rule options (`summary` is the sentence the user reads).
+        let raw = kind == "rule_proposal" ? p.objs("rule_options") : p.objs("options")
+        let options = raw.compactMap { opt -> Option? in
+            guard let id = opt.str("id"), let label = opt.str("label") ?? opt.str("summary") else { return nil }
+            return Option(id: id, label: label, reason: opt.str("reason"))
         }
-        return PetCard(id: o.str("id") ?? o.str("request_id") ?? "", kind: o.str("kind") ?? "", status: o.str("status") ?? "pending",
-                       version: o.int("version") ?? 0, taskID: o.str("task_id"),
-                       title: p.str("title") ?? p.str("question") ?? o.str("kind") ?? "",
-                       detail: detail.isEmpty ? nil : detail.joined(separator: " · "), options: options,
-                       multiple: p.bool("multiple") ?? false, answeredAction: o.str("answered_action"), expiresAt: o.str("expires_at"))
+        let answer = o.obj("answer") ?? [:]
+        let chosen = answer.strs("option_ids") + (answer.str("option_id").map { [$0] } ?? [])
+        var card = PetCard(id: o.str("id") ?? o.str("request_id") ?? "", kind: kind, status: o.str("status") ?? "pending",
+                           version: o.int("version") ?? 0, taskID: o.str("task_id"),
+                           title: p.str("title") ?? p.str("question") ?? (kind == "rule_proposal" ? "이 범위는 묻지 않고 진행할까요?" : kind),
+                           detail: detail.isEmpty ? nil : detail.joined(separator: " · "), options: options,
+                           multiple: p.bool("multiple") ?? false, answeredAction: o.str("answered_action"), expiresAt: o.str("expires_at"))
+        card.actionType = p.str("action_type")
+        card.reversibility = p.str("reversibility")
+        card.reversibilityText = p.str("reversibility_text")
+        card.answeredOptionIDs = chosen
+        card.saidText = p.str("said_text")
+        return card
     }
 
     public var isPending: Bool { status == "pending" }
 
-    /// The pet answers choices itself. Approvals (payments, calls, sending, deleting …), logins, codes and payment cards
-    /// stay on the phone app until the bosses decide otherwise (PR body: "보류").
-    public var answerableHere: Bool { kind == "choice" || kind == "suggestions" }
+    /// The pet answers approvals (실행 / 거절), choices (one or several), suggestions and rule proposals itself.
+    /// Cards that need a value typed in (login, OTP, security code, payment card) or a browser or a service connection
+    /// stay on the phone app as before.
+    public var answerableHere: Bool { ["approval", "choice", "suggestions", "rule_proposal"].contains(kind) }
 
     public var statusText: String {
         switch status {
@@ -167,8 +191,9 @@ public struct PetCard: Equatable {
         case "expired": return "시간이 지나 만료됐어요"
         case "superseded": return "새 요청으로 바뀌었어요"
         default:
+            if kind == "approval" { return "실행할지 답해 주세요" }
             if answerableHere { return "골라 주세요" }
-            return kind == "approval" ? "휴대폰의 나초 앱에서 승인해 주세요" : "휴대폰의 나초 앱에서 이어서 해 주세요"
+            return "휴대폰의 나초 앱에서 이어서 해 주세요"
         }
     }
 }

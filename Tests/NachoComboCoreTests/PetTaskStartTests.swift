@@ -83,6 +83,8 @@ final class PetTaskStartModelTests: XCTestCase {
         XCTAssertEqual(card.options[0].link, PetLinks.url("task", ["id": taskID, "action": "start"]))
         XCTAssertEqual(card.options[1].link, PetLinks.url("task", ["id": taskID, "action": "cancel"]))
         XCTAssertTrue(card.statusWaits)
+        XCTAssertEqual(card.options.map { $0.role }, [.primary, .quiet])
+        XCTAssertNil(PetTranscript.activeCardID(items), "number keys never go to a plan card")
         // The card sits under the turn that asked (after its answer), not above it in the record.
         let mine = items.firstIndex { if case .mine = $0 { return true }; return false }!
         let cardAt = items.firstIndex { if case let .card(c) = $0 { return c.id == card.id }; return false }!

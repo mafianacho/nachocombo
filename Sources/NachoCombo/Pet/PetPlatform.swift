@@ -212,6 +212,13 @@ final class PetServerRecorder: NSObject, AVAudioRecorderDelegate {
 
     var isRecording: Bool { recorder?.isRecording == true }
 
+    /// The sound level now, 0 (quiet) … 1 (loud), for the ring around the pet while it listens.
+    var level: Double {
+        guard let r = recorder, r.isRecording else { return 0 }
+        r.updateMeters()
+        return max(0, min(1, (Double(r.averagePower(forChannel: 0)) + 50) / 45))
+    }
+
     /// Asks for the microphone, then records up to `maxSec`. `granted(false)` when the user refused.
     func start(maxSec: Int, granted: @escaping (Bool) -> Void, finished: @escaping (Data?, Double) -> Void) {
         let begin = { [weak self] in
@@ -221,6 +228,7 @@ final class PetServerRecorder: NSObject, AVAudioRecorderDelegate {
                                            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue]
             guard let r = try? AVAudioRecorder(url: url, settings: settings) else { granted(false); return }
             r.delegate = self
+            r.isMeteringEnabled = true
             self.recorder = r
             self.fileURL = url
             self.finished = finished

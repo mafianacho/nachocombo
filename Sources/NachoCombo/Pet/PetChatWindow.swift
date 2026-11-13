@@ -46,7 +46,12 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private let signInNote = NSTextField(wrappingLabelWithString: "")
 
     private var flashText: String?
+    private var flashParts: [PetTextPart]?
     private var flashUntil = Date.distantPast
+    /// The newest card waiting for an answer here (number keys, Enter and Esc go to it while the input is empty).
+    private(set) var activeCardID: String?
+    /// A number key that marked a card row; if more text follows, it was the start of a message and goes back in.
+    private var heldDigit: (n: Int, card: String)?
     private var connectionsText: NSAttributedString?
     private var shownItems: [PetChatItem] = []
     private var shownViews: [NSView] = []
@@ -79,7 +84,15 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     }
 
     override var canBecomeKey: Bool { true }
-    override func cancelOperation(_ sender: Any?) { module?.closeChat() }
+    override func cancelOperation(_ sender: Any?) { escapePressed() }
+
+    /// Esc: cancels a recording, then clears a card's mark or ticks, then closes the chat.
+    private func escapePressed() {
+        guard let module = module else { return }
+        if module.holdEscape() { return }
+        if input.stringValue.isEmpty, module.cardKey(.escape, cardID: activeCardID) { heldDigit = nil; return }
+        module.closeChat()
+    }
 
     override func close() {
         module?.dictation.stop()
@@ -456,9 +469,19 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     /// A short message at the end of the log for a few seconds (refused file, nothing to send…).
     func flash(_ text: String) {
         flashText = text
+        flashParts = nil
         flashUntil = Date().addingTimeInterval(6)
         render()
         DispatchQueue.main.asyncAfter(deadline: .now() + 6.1) { [weak self] in self?.render() }
+    }
+
+    /// The same with links ("설정 열기"), kept a little longer so the link can be clicked.
+    func flash(parts: [PetTextPart]) {
+        flashText = parts.map { $0.text }.joined()
+        flashParts = parts
+        flashUntil = Date().addingTimeInterval(10)
+        render()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.1) { [weak self] in self?.render() }
     }
 
     // MARK: rendering
@@ -513,6 +536,9 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private func noticeLine(_ st: PetSessionState) -> PetChatItem? {
         guard let module = module else { return nil }
         var text: String?
+        if let parts = flashParts, Date() < flashUntil {
+            return .line(PetChatLine(kind: .notice, symbol: "info.circle", parts: parts))
+        }
         if let f = flashText, Date() < flashUntil { text = f }
         else if case let .denied(d) = module.dictationState.phase { text = d.koreanMessage }
         else if case let .unavailable(m) = module.dictationState.phase { text = m }
@@ -525,7 +551,9 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private func renderLog(_ st: PetSessionState) {
         guard st.auth == .signedIn else { return }
         var items = PetTranscript.items(st, undoSecondsLeft: { [weak self] id in self?.undoSecondsLeft(id, st) },
-                                        selection: module?.selectionChatState ?? PetSelectionChatState())
+                                        selection: module?.selectionChatState ?? PetSelectionChatState(),
+                                        cards: module?.cardLocal ?? [:])
+        activeCardID = PetTranscript.activeCardID(items)
         if let n = noticeLine(st) { items.append(n) }
         guard show(items: items) else { return }
         // The undo countdown ("7초 안에 되돌리기") ticks every second while it lasts.
@@ -578,6 +606,10 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         case "memfb": if let t = q["turn"] { module?.askMemoryFeedback(turnID: t) }
         case "card": if let id = q["id"], let a = q["action"] { module?.answerCard(id, action: a, options: q["option"].map { [$0] } ?? []) }
         case "task": if let id = q["id"], let a = q["action"] { module?.taskAction(id, action: a) }
+        case "cardrow": if let id = q["id"], let n = q["n"].flatMap(Int.init) { module?.cardRow(id, number: n) }
+        case "cardconfirm": if let id = q["id"] { module?.cardConfirm(id) }
+        case "cardretry": if let id = q["id"] { module?.cardRetry(id) }
+        case "micsettings": module?.openMicrophoneSettings()
         default: _ = module?.selectionLink(url.host ?? "", q)
         }
     }
@@ -723,10 +755,43 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         render()
     }
 
-    func controlTextDidChange(_ obj: Notification) { render() }
+    func controlTextDidChange(_ obj: Notification) {
+        module?.voiceInputStarted()
+        cardDigit()
+        render()
+    }
+
+    /// A single number typed into the empty field marks (or ticks) that row of the newest waiting card instead. When
+    /// more text follows, the number was the start of a message: it goes back in front and the mark goes away.
+    private func cardDigit() {
+        guard let module = module else { return }
+        let text = input.stringValue
+        if let held = heldDigit {
+            heldDigit = nil
+            if text.isEmpty { return }
+            if text.count == 1, let n = Int(text), n >= 1, module.cardKey(.digit(n), cardID: activeCardID) {
+                // Another number: another row (one choice) or one more tick (several).
+                heldDigit = (n, held.card)
+                input.stringValue = ""
+                return
+            }
+            module.cardKeyUndo(held.n, cardID: held.card)
+            input.stringValue = "\(held.n)" + text
+            input.currentEditor()?.selectedRange = NSRange(location: (input.stringValue as NSString).length, length: 0)
+            return
+        }
+        guard text.count == 1, let n = Int(text), n >= 1, let card = activeCardID, module.cardKey(.digit(n), cardID: card) else { return }
+        heldDigit = (n, card)
+        input.stringValue = ""
+    }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        if commandSelector == #selector(NSResponder.cancelOperation(_:)) { module?.closeChat(); return true }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) { escapePressed(); return true }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)), input.stringValue.isEmpty,
+           module?.cardKey(.enter, cardID: activeCardID) == true {
+            heldDigit = nil
+            return true
+        }
         return false
     }
 }

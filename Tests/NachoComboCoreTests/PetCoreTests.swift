@@ -391,7 +391,7 @@ final class PetConnectorClientTests: XCTestCase {
         let hello = try JSONSerialization.jsonObject(with: Data(t.sent[0].utf8)) as! [String: Any]
         XCTAssertEqual(hello["type"] as? String, "hello")
         XCTAssertEqual(hello["token"] as? String, "nct_abc")
-        XCTAssertEqual((hello["capabilities"] as? [[String: Any]])?.count, 3)
+        XCTAssertEqual((hello["capabilities"] as? [[String: Any]])?.count, PetCommands.names.count)
         t.deliver(#"{"type":"ready","agent_id":"a","kind":"nacho_combo"}"#); c.flush()
         XCTAssertEqual(c.phase, .ready)
         t.deliver(#"{"type":"request","id":"r1","capability":"combo_arrange_window","params":{"position":"right"}}"#); c.flush(); c.flush()
