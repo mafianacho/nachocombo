@@ -313,7 +313,8 @@ public enum PetTranscript {
         return PetFileChip(name: f.name, isImage: f.kind == "image", url: url, byNacho: f.byNacho, deleted: f.deleted)
     }
 
-    static func card(_ c: PetCard, local: PetCardLocal = PetCardLocal(), now: Date = Date()) -> PetCardItem {
+    /// One card as the chat shows it (also used by the dev CLI).
+    public static func card(_ c: PetCard, local: PetCardLocal = PetCardLocal(), now: Date = Date()) -> PetCardItem {
         let style = PetCardStyle.of(c)
         let state = PetCardRules.stateLine(c, local: local, now: now)
         guard style != .elsewhere else {
