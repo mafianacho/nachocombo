@@ -503,8 +503,19 @@ first launch. It is **on by default**, needs no permission and connects to nothi
 - **Picks up where you left off:** the bubble shows the earlier talk of your Nacho room (**이전 대화 더 보기** loads more),
   messages sent from the phone app, and answers that finished while the connection was down.
 - **Shows the work:** the tools Nacho uses, its "still working on it" lines, files it made (click to open) and, when a
-  request becomes a task, the task's progress and its answer when it is done. Choice questions (e.g. which time) can be
-  answered in the bubble; approvals, logins and codes are answered in the phone app.
+  request becomes a task, the task's progress and its answer when it is done.
+- **Answers Nacho's questions in the bubble:** every option has a number. An approval says what Nacho wants to do, the
+  result and whether it can be undone, with **실행** above **거절** (same size). One choice: numbered rows, a click
+  answers. Several: tick rows, then **확정**. Suggestions are quick-reply chips under Nacho's answer (a click sends that
+  text). A rule proposal shows the rule's sentence with **적용** / **아니요**. With the text field empty, a number key marks
+  that row (Enter answers, Esc clears; several: the number ticks, Enter confirms). The card shows sending, a failure with
+  **다시 시도**, the chosen row once answered, and expiry (time in KST). Logins, codes and payment cards stay in the phone app.
+- **Hold to talk:** press Nacho and keep still: a ring fills over 2 seconds, then Nacho listens (listening face, a ring
+  that follows your voice). Let go: the server writes it down and it is sent by itself as your message. Let go earlier =
+  the usual click; move it = the usual drag; Esc or dragging off Nacho cancels. The first time macOS asks for the
+  microphone; if it is refused, the bubble says so with a link to the settings. Nacho's answer to a spoken message: its
+  first sentence is read with the Mac's built-in Korean voice (Settings ▸ *Read the first sentence…*, on by default; any
+  new input or stop silences it).
 - **Memory:** "🧠 기억했어요" lines with **잊어 줘** (and **되돌리기** for 10 seconds); under an answer that used memories,
   **기억이 틀렸어요** tells Nacho what to correct.
 - **Dictation:** when the server offers it (`/client/config`), the mic records up to 60 seconds and the server writes it
@@ -543,6 +554,11 @@ its login page signs you in at once.
 4. **Streaming:** send a message → Nacho's face goes thinking → answering; text streams in; 멈추기 stops a long answer.
 5. **Dictation:** press the mic → macOS asks for the microphone once → speak → press again → the text appears in the
    field (server dictation; with a server that does not offer it, macOS speech recognition as before).
+5a. **Hold to talk:** press Nacho and hold still → the ring fills (about 2 s) → listening face → say "내일 날씨 알려 줘" →
+   let go → your words appear as your bubble and are sent; the answer's first sentence is spoken. Short press = chat
+   opens/closes as before; drag = moves as before; Esc while listening = canceled.
+5b. **Cards:** with the mock server, `/task 예약해 줘` → the choice card has numbered rows; press `2` then Enter → 골랐어요
+   with row 2 marked.
 6. **History and tasks:** reopen the bubble after a relaunch → earlier messages are there; with the mock server, send
    `/task 예약해 줘` → progress lines, a choice question you can click, then the answer; `/remember 고양이` → 🧠 line,
    잊어 줘 → 되돌리기.

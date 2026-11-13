@@ -74,8 +74,18 @@ public struct PetFileChip: Equatable {
 public struct PetCardItem: Equatable {
     public struct Option: Equatable {
         public var label: String
+        /// The click (nil = not clickable: answered, sending, or a card for the phone).
         public var link: URL?
+        /// The stored answer chose it.
         public var chosen: Bool
+        /// 1…N (0 = unnumbered).
+        public var number: Int = 0
+        public var detail: String? = nil
+        public var role: PetCardRow.Role = .option
+        /// Ticked (several choices) or picked with a number key (Enter sends it).
+        public var marked = false
+        /// A check row of a multiple choice.
+        public var tickable = false
     }
     public var id: String
     public var symbol: String
@@ -83,9 +93,18 @@ public struct PetCardItem: Equatable {
     public var detail: String?
     public var options: [Option]
     /// A note under the options only where it adds something the question does not say ("휴대폰에서 승인해 주세요",
-    /// "골랐어요"); never "골라 주세요" under a choice.
+    /// "골랐어요", "보내는 중…"); never "골라 주세요" under a choice.
     public var status: String?
     public var statusWaits: Bool
+    public var style: PetCardStyle = .elsewhere
+    /// Approval: what, the result, whether it can be undone (one line each).
+    public var summary: [String] = []
+    /// Several choices: the 확정 button (nil link until something is ticked).
+    public var confirm: Option? = nil
+    /// The number keys and the expiry time (KST) while it waits.
+    public var hint: String? = nil
+    /// 다시 시도 after a failed answer.
+    public var retry: URL? = nil
 }
 
 public enum PetLinks {
@@ -195,8 +214,11 @@ public enum PetTranscript {
     }
 
     /// - Parameter undoSecondsLeft: seconds left to undo a forget this session asked for (nil = no longer possible).
+    /// - Parameter cards: what the app keeps per card while the user answers it (ticks, number-key mark, sending, failure).
     public static func items(_ st: PetSessionState, undoSecondsLeft: (String) -> Int?,
-                             selection: PetSelectionChatState = PetSelectionChatState()) -> [PetChatItem] {
+                             selection: PetSelectionChatState = PetSelectionChatState(),
+                             cards local: [String: PetCardLocal] = [:], now: Date = Date()) -> [PetChatItem] {
+        let card: (PetCard) -> PetCardItem = { c in PetTranscript.card(c, local: local[c.id] ?? PetCardLocal(), now: now) }
         var out: [PetChatItem] = []
         let chat = st.chat
         if st.loadingHistory { out.append(.older(loading: true)) } else if chat.hasMoreHistory { out.append(.older(loading: false)) }
@@ -291,18 +313,47 @@ public enum PetTranscript {
         return PetFileChip(name: f.name, isImage: f.kind == "image", url: url, byNacho: f.byNacho, deleted: f.deleted)
     }
 
-    static func card(_ c: PetCard) -> PetCardItem {
-        let choosable = c.isPending && c.answerableHere
-        let options = c.options.map { o in
-            PetCardItem.Option(label: o.label,
-                               link: choosable ? PetLinks.url("card", ["id": c.id, "action": "choose", "option": o.id]) : nil,
-                               chosen: false)
+    static func card(_ c: PetCard, local: PetCardLocal = PetCardLocal(), now: Date = Date()) -> PetCardItem {
+        let style = PetCardStyle.of(c)
+        let state = PetCardRules.stateLine(c, local: local, now: now)
+        guard style != .elsewhere else {
+            // Login, codes, payment cards, browser, connections: the phone app, as before.
+            return PetCardItem(id: c.id, symbol: "iphone", title: c.title, detail: c.detail, options: [], status: state.status,
+                               statusWaits: c.isPending, style: style)
         }
-        var status: String? = c.statusText
-        if choosable { status = nil }  // the question already asks
-        return PetCardItem(id: c.id, symbol: c.answerableHere ? "questionmark.circle" : "iphone", title: c.title, detail: c.detail,
-                           options: c.isPending && !c.answerableHere ? [] : options, status: status,
-                           statusWaits: c.isPending)
+        let open = c.isPending && local.sending == nil
+        let chosen = PetCardRules.chosenNumbers(c)
+        let options = PetCardRules.rows(c).map { r in
+            PetCardItem.Option(label: r.label, link: open ? PetLinks.url("cardrow", ["id": c.id, "n": String(r.number)]) : nil,
+                               chosen: chosen.contains(r.number), number: r.number, detail: r.detail, role: r.role,
+                               marked: c.isPending && (local.highlighted == r.number || (r.optionID.map { local.ticked.contains($0) } ?? false)),
+                               tickable: style == .multiple)
+        }
+        var confirm: PetCardItem.Option?
+        if style == .multiple, c.isPending {
+            let ready = PetCardRules.confirm(c, ticked: local.ticked) != nil
+            confirm = PetCardItem.Option(label: local.ticked.isEmpty ? "확정" : "확정 (\(local.ticked.count)개)",
+                                         link: open && ready ? PetLinks.url("cardconfirm", ["id": c.id]) : nil, chosen: false, role: .primary)
+        }
+        var detail = c.detail
+        if style == .ruleProposal {
+            detail = c.saidText.map { "“\($0)”라고 하셨어요. 고르면 이 범위는 다시 묻지 않아요." } ?? "고르면 이 범위는 다시 묻지 않아요."
+            // One rule: its sentence above 적용 / 아니요.
+            if c.options.count == 1, let o = c.options.first { detail = o.label + "\n" + (detail ?? "") }
+        }
+        return PetCardItem(id: c.id, symbol: style == .approval ? "checkmark.shield" : "questionmark.circle", title: c.title,
+                           detail: style == .approval ? nil : detail, options: options, status: state.status,
+                           statusWaits: state.waits, style: style, summary: style == .approval ? PetCardRules.approvalSummary(c) : [],
+                           confirm: confirm, hint: c.isPending ? state.hint : nil,
+                           retry: state.retry ? PetLinks.url("cardretry", ["id": c.id]) : nil)
+    }
+
+    /// The newest card in the log that waits for an answer here: the number keys go to it.
+    public static func activeCardID(_ items: [PetChatItem]) -> String? {
+        for item in items.reversed() {
+            if case let .card(c) = item, c.style != .elsewhere, c.statusWaits || c.options.contains(where: { $0.link != nil }) { return c.id }
+        }
+        return nil
     }
 }
 

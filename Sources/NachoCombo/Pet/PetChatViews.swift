@@ -336,13 +336,20 @@ struct PetItemViews {
         return PetRow(PetFlow.rows(views, maxWidth: width, gap: Sp.xs, alignment: mine ? .trailing : .leading), width: width, trailing: mine)
     }
 
-    /// `.card`: question, detail, option buttons (`.opt`), and a note only where it adds something.
+    /// `.card` by kind: an approval (summary, 실행 above 거절, same size), one choice (numbered rows, a click answers),
+    /// several choices (check rows + 확정), a rule proposal (its sentence + 적용 / 아니요), suggestions (numbered quick
+    /// replies under Nacho's answer, no box). Under it: sending / failed (다시 시도) / answered / expired, and the
+    /// number-key hint with the expiry time in KST. Cards for the phone keep the old look.
     private func card(_ c: PetCardItem) -> NSView {
+        if c.style == .suggestions { return suggestions(c) }
         let box = PetBox()
         box.fill = PetTheme.color(\.surfaceRaised)
         box.stroke = PetTheme.color(\.separator)
         box.radius = CGFloat(Rd.card)
         box.translatesAutoresizingMaskIntoConstraints = false
+        box.setAccessibilityElement(true)
+        box.setAccessibilityRole(.group)
+        box.setAccessibilityLabel(c.title)
         let inner = width - CGFloat(2 * Sp.m)
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -357,20 +364,40 @@ struct PetItemViews {
         head.alignment = .top
         head.spacing = CGFloat(Sp.s)
         stack.addArrangedSubview(head)
+        for line in c.summary { stack.addArrangedSubview(label(line, font: PetTheme.caption, color: PetTheme.secondary, maxWidth: inner)) }
         if let d = c.detail { stack.addArrangedSubview(label(d, font: PetTheme.caption, color: PetTheme.secondary, maxWidth: inner)) }
-        if !c.options.isEmpty {
-            let buttons = c.options.map { o -> NSView in
-                let b = PetPill(title: o.label, fill: PetTheme.color(o.chosen ? \.accentSoft : \.surface),
-                                stroke: o.chosen ? PetTheme.accent : PetTheme.color(\.separator))
-                b.isEnabled = o.link != nil
-                if let l = o.link { b.onClick = { onLink(l) } }
-                return b
-            }
+        if c.style == .elsewhere, !c.options.isEmpty {
+            // (Not drawn today: phone cards come without options.)
+            let buttons = c.options.map { o -> NSView in PetPill(title: o.label, fill: PetTheme.color(\.surface), stroke: PetTheme.color(\.separator)) }
             stack.addArrangedSubview(PetFlow.rows(buttons, maxWidth: inner, gap: Sp.s))
+        } else if !c.options.isEmpty {
+            let closed = c.options.allSatisfy { $0.link == nil } && c.status != nil && !c.statusWaits
+            let rows = NSStackView()
+            rows.orientation = .vertical
+            rows.alignment = .leading
+            rows.spacing = CGFloat(Sp.s)  // 8 pt: 실행 above 거절, rows apart
+            for o in c.options {
+                let r = PetChoiceRow(o, width: inner, closed: closed)
+                if let l = o.link { r.onClick = { onLink(l) } }
+                rows.addArrangedSubview(r)
+            }
+            if let confirm = c.confirm {
+                let r = PetChoiceRow(confirm, width: inner, closed: false)
+                if let l = confirm.link { r.onClick = { onLink(l) } }
+                rows.addArrangedSubview(r)
+            }
+            stack.addArrangedSubview(rows)
         }
         if let s = c.status {
             stack.addArrangedSubview(label(s, font: PetTheme.caption, color: c.statusWaits ? PetTheme.color(\.warning) : PetTheme.tertiary, maxWidth: inner))
         }
+        if let retry = c.retry {
+            let b = PetPill(title: "다시 시도", symbol: "arrow.clockwise", iconSize: S.badgeIcon, font: PetTheme.caption, color: PetTheme.link,
+                            fill: PetTheme.color(\.surface), stroke: PetTheme.color(\.separator), height: S.chipHeight, radius: Rd.chip, padding: Sp.s)
+            b.onClick = { onLink(retry) }
+            stack.addArrangedSubview(b)
+        }
+        if let h = c.hint { stack.addArrangedSubview(label(h, font: PetTheme.caption, color: PetTheme.tertiary, maxWidth: inner)) }
         box.addSubview(stack)
         NSLayoutConstraint.activate([
             box.widthAnchor.constraint(equalToConstant: width),
@@ -380,6 +407,34 @@ struct PetItemViews {
             stack.trailingAnchor.constraint(lessThanOrEqualTo: box.trailingAnchor, constant: -CGFloat(Sp.m)),
         ])
         return box
+    }
+
+    /// Suggestions: numbered quick-reply chips under Nacho's answer (a click sends that text), then the state.
+    private func suggestions(_ c: PetCardItem) -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = CGFloat(Sp.xs)
+        let closed = c.options.allSatisfy { $0.link == nil } && !c.statusWaits
+        let chips = c.options.map { o -> NSView in
+            let r = PetChoiceRow(o, width: nil, closed: closed)
+            if let l = o.link { r.onClick = { onLink(l) } }
+            return r
+        }
+        stack.addArrangedSubview(PetFlow.rows(chips, maxWidth: width, gap: Sp.xs))
+        if let s = c.status {
+            stack.addArrangedSubview(label(s, font: PetTheme.caption, color: c.statusWaits ? PetTheme.color(\.warning) : PetTheme.tertiary))
+        }
+        if let retry = c.retry {
+            let b = PetPill(title: "다시 시도", symbol: "arrow.clockwise", iconSize: S.badgeIcon, font: PetTheme.caption, color: PetTheme.link,
+                            fill: PetTheme.color(\.surface), stroke: PetTheme.color(\.separator), height: S.chipHeight, radius: Rd.chip, padding: Sp.s)
+            b.onClick = { onLink(retry) }
+            stack.addArrangedSubview(b)
+        }
+        stack.setAccessibilityElement(true)
+        stack.setAccessibilityRole(.group)
+        stack.setAccessibilityLabel("빠른 답")
+        return PetRow(stack, width: width)
     }
 
     /// `.older`: "이전 대화 더 보기" as a small link chip.
@@ -426,6 +481,128 @@ struct PetItemViews {
         row.widthAnchor.constraint(equalToConstant: width).isActive = true
         return row
     }
+}
+
+/// One numbered row of a card: `[1] 저녁 7시` (+ reason). Roles: an option row (left-aligned, full width; a check box
+/// when it is one of several), the primary button (실행, 적용, 확정: accent fill) and the quiet one (거절, 아니요: the
+/// card's surface with an edge). Primary and quiet have the same width and height, and the quiet one is never disabled
+/// while the card waits. `width: nil` = a quick-reply chip sized to its text. Marked (number key or ticked) rows have
+/// an accent edge; rows the stored answer chose carry a check; the others of a closed card fade.
+final class PetChoiceRow: PetBox {
+    var onClick: (() -> Void)?
+    private let enabled: Bool
+
+    init(_ o: PetCardItem.Option, width: CGFloat?, closed: Bool) {
+        enabled = o.link != nil
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        let chip = width == nil
+        radius = CGFloat(chip ? PetTokens.Radius.chip : PetTokens.Radius.control)
+        let height = chip ? PetTokens.Size.chipHeight : PetTokens.Size.control + 4
+        let textColor: NSColor
+        switch o.role {
+        case .primary:
+            fill = enabled || o.chosen ? PetTheme.accent : PetTheme.color(\.surface)
+            stroke = nil
+            textColor = enabled || o.chosen ? PetTheme.color(\.onAccent) : PetTheme.tertiary
+        case .quiet:
+            fill = PetTheme.color(\.surface)
+            stroke = PetTheme.color(\.separator)
+            textColor = PetTheme.text
+        case .option:
+            fill = PetTheme.color(o.chosen || o.marked ? \.accentSoft : \.surface)
+            stroke = o.marked ? PetTheme.accent : PetTheme.color(\.separator)
+            textColor = PetTheme.text
+        }
+        if o.marked, o.role != .option { stroke = PetTheme.color(\.focusRing) }
+        if closed, !o.chosen { alphaValue = CGFloat(PetTokens.Opacity.gone) }
+
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.spacing = CGFloat(PetTokens.Space.s)
+        row.alignment = .centerY
+        row.translatesAutoresizingMaskIntoConstraints = false
+        if o.tickable {
+            let tick = NSImageView(image: PetTheme.symbol(o.marked || o.chosen ? "checkmark.square.fill" : "square", size: PetTokens.Size.icon) ?? NSImage())
+            tick.contentTintColor = o.marked || o.chosen ? PetTheme.accent : PetTheme.tertiary
+            row.addArrangedSubview(tick)
+        }
+        if o.number > 0 { row.addArrangedSubview(PetNumberBadge(o.number, on: o.role == .primary && (enabled || o.chosen), marked: o.marked)) }
+        let font = chip ? PetTheme.caption : (o.role == .option ? PetTheme.body : PetTheme.font(PetTokens.Font.body, PetTokens.Font.weightSemibold))
+        let inner = (width ?? CGFloat(PetTokens.Size.chipMaxWidth) * 2) - CGFloat(2 * PetTokens.Space.m + 18 + PetTokens.Space.s)
+            - (o.tickable ? CGFloat(PetTokens.Size.icon + PetTokens.Space.s) : 0) - (o.chosen ? CGFloat(PetTokens.Size.icon + PetTokens.Space.s) : 0)
+        let text = NSMutableAttributedString(attributedString: PetLinkText.plain(o.label, font: font, color: textColor))
+        if let d = o.detail, !chip {
+            text.append(PetLinkText.plain("\n" + d, font: PetTheme.caption, color: PetTheme.secondary))
+        }
+        let label = PetLinkText(text, maxWidth: max(40, inner))
+        label.isSelectable = false
+        row.addArrangedSubview(label)
+        if o.chosen {
+            let check = NSImageView(image: PetTheme.symbol("checkmark.circle.fill", size: PetTokens.Size.icon) ?? NSImage())
+            check.contentTintColor = o.role == .primary ? PetTheme.color(\.onAccent) : PetTheme.accent
+            row.addArrangedSubview(check)
+        }
+        addSubview(row)
+        let pad = CGFloat(chip ? PetTokens.Space.s : PetTokens.Space.m)
+        var c = [heightAnchor.constraint(greaterThanOrEqualToConstant: CGFloat(height)),
+                 row.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: CGFloat(PetTokens.Space.xs)),
+                 row.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -CGFloat(PetTokens.Space.xs)),
+                 row.centerYAnchor.constraint(equalTo: centerYAnchor)]
+        if let w = width {
+            c.append(widthAnchor.constraint(equalToConstant: w))
+            if o.role == .option {
+                c.append(row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: pad))
+                c.append(row.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -pad))
+            } else {
+                c.append(row.centerXAnchor.constraint(equalTo: centerXAnchor))
+            }
+        } else {
+            c.append(row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: pad))
+            c.append(row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -pad))
+        }
+        NSLayoutConstraint.activate(c)
+        setAccessibilityElement(true)
+        setAccessibilityRole(o.tickable ? .checkBox : .button)
+        setAccessibilityLabel("\(o.number > 0 ? "\(o.number)번, " : "")\(o.label)")
+        if o.tickable { setAccessibilityValue(o.marked ? 1 : 0) }
+        setAccessibilityEnabled(enabled)
+        toolTip = o.number > 0 && enabled ? "숫자키 \(o.number)" : nil
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func resetCursorRects() { if enabled { addCursorRect(bounds, cursor: .pointingHand) } }
+    override func mouseDown(with event: NSEvent) { if enabled { alphaValue = 0.7 } }
+    override func mouseUp(with event: NSEvent) {
+        guard enabled else { return }
+        alphaValue = 1
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        onClick?()
+    }
+    override func accessibilityPerformPress() -> Bool { guard enabled else { return false }; onClick?(); return true }
+}
+
+/// The small round number in front of a card row (`1`, `2` …): the number key and the spoken "N번".
+final class PetNumberBadge: PetBox {
+    init(_ n: Int, on accent: Bool, marked: Bool) {
+        super.init(frame: .zero)
+        let d: CGFloat = 18
+        radius = d / 2
+        fill = accent ? PetTheme.color(\.onAccent).withAlphaComponent(0.22) : (marked ? PetTheme.accent : PetTheme.color(\.surfaceRaised))
+        stroke = accent || marked ? nil : PetTheme.color(\.separator)
+        translatesAutoresizingMaskIntoConstraints = false
+        widthAnchor.constraint(equalToConstant: d).isActive = true
+        heightAnchor.constraint(equalToConstant: d).isActive = true
+        let t = NSTextField(labelWithString: "\(n)")
+        t.font = PetTheme.font(PetTokens.Font.caption, PetTokens.Font.weightSemibold)
+        t.textColor = accent ? PetTheme.color(\.onAccent) : (marked ? PetTheme.color(\.onAccent) : PetTheme.secondary)
+        t.alignment = .center
+        t.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(t)
+        NSLayoutConstraint.activate([t.centerXAnchor.constraint(equalTo: centerXAnchor), t.centerYAnchor.constraint(equalTo: centerYAnchor)])
+        setAccessibilityElement(false)
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
 }
 
 /// The window's background: `.chat` (rounded, 1 pt edge) with the tail (`.chat::after`) pointing at the pet.

@@ -45,6 +45,9 @@ public struct PetSettings: Codable, Equatable {
     public var allowComboControl: Bool = true
     /// The selection bar (part of Nacho Pet, not a gadget). Off by default.
     public var selectionBar = PetSelectionBarSettings()
+    /// After the user spoke (hold the pet to talk), read the first sentence of Nacho's answer with the Mac's built-in
+    /// voice. On by default.
+    public var speakVoiceReplies: Bool = true
 
     public static let productionServerURL = "https://nacho.nachotown.com"
     public static let productionIssuerURL = "https://auth.nachotown.com/realms/nachotown"
@@ -57,6 +60,7 @@ public struct PetSettings: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case serverMode, customServerURL, customIssuerURL, petPosition, chatSize, allowComboControl, selectionBar
+        case speakVoiceReplies
     }
 
     /// Every field falls back on its own, so a file from an older or newer version still loads.
@@ -69,6 +73,7 @@ public struct PetSettings: Codable, Equatable {
         chatSize = try? c.decodeIfPresent(PetChatSize.self, forKey: .chatSize)
         allowComboControl = (try? c.decodeIfPresent(Bool.self, forKey: .allowComboControl)) ?? true
         selectionBar = (try? c.decodeIfPresent(PetSelectionBarSettings.self, forKey: .selectionBar)) ?? PetSelectionBarSettings()
+        speakVoiceReplies = (try? c.decodeIfPresent(Bool.self, forKey: .speakVoiceReplies)) ?? true
     }
 
     /// Resolved server for the current mode, or nil when the custom URL is empty/invalid.
