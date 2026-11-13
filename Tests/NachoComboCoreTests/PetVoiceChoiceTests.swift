@@ -84,7 +84,8 @@ final class PetCardRulesTests: XCTestCase {
         let item = PetTranscript.card(one, now: seoulNow)
         XCTAssertEqual(item.style, .ruleProposal)
         XCTAssertEqual(item.options.map { "\($0.number) \($0.label) \($0.role)" }, ["1 적용 primary", "2 아니요 quiet"])
-        XCTAssertEqual(item.detail, "배달앱에서 건당 30,000원 이하\n“3만 원까지 괜찮아”라고 하셨어요. 고르면 이 범위는 다시 묻지 않아요.")
+        XCTAssertEqual(item.summary, ["배달앱에서 건당 30,000원 이하"], "the rule itself, above the buttons")
+        XCTAssertEqual(item.detail, "“3만 원까지 괜찮아”라고 하셨어요. 적용하면 이 범위는 다시 묻지 않아요.")
         XCTAssertEqual(PetCardRules.rows(one).map { $0.answer }, [PetCardAnswer(action: "choose", optionIDs: ["o1"]), PetCardAnswer(action: "dismiss")])
         let two = PetCard.decode(["id": "r2", "kind": "rule_proposal", "status": "pending", "version": 1,
                                   "payload": ["rule_options": [["id": "o1", "summary": "건당 20,000원"], ["id": "o2", "summary": "일주일 60,000원"]]]])

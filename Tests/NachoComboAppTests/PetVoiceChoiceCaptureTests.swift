@@ -57,7 +57,7 @@ final class PetVoiceChoiceCaptureTests: XCTestCase {
     }
 
     private func render(_ name: String, st: PetSessionState, local: [String: PetCardLocal] = [:], extra: [PetChatItem] = [],
-                        dark: Bool, size: PetChatSize = PetChatSize(width: 380, height: 600), caption: String) throws -> PetChatWindow {
+                        dark: Bool, size: PetChatSize = PetChatSize(width: 380, height: 540), caption: String) throws -> PetChatWindow {
         let chat = PetChatWindow(module: nil, size: size)
         chat.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         let pet = NSRect(x: screen.width - CGFloat(PetTokens.Size.pet) - 24, y: 24, width: CGFloat(PetTokens.Size.pet), height: CGFloat(PetTokens.Size.pet))
@@ -111,13 +111,15 @@ final class PetVoiceChoiceCaptureTests: XCTestCase {
                 ringLayer.render(in: cg)
                 cg.restoreGState()
             }
-            let label = "\(caption)  ·  \(dark ? "dark" : "light")  ·  AppKit off-screen render on macOS CI, not a real Mac"
+            // Bottom left, beside the pet: never over the chat. Two lines: the scene, then what kind of picture it is.
             let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.black]
-            let text = label as NSString
-            let box = NSRect(x: 8, y: screen.height - 26, width: min(screen.width - 16, text.size(withAttributes: attrs).width + 16), height: 20)
+            let lines = [caption, "\(dark ? "dark" : "light") · macOS CI off-screen render, not a real Mac"] as [NSString]
+            let w = min(pet.minX - 24, (lines.map { $0.size(withAttributes: attrs).width }.max() ?? 0) + 16)
+            let box = NSRect(x: 8, y: 8, width: w, height: 38)
             NSColor.white.withAlphaComponent(0.85).setFill()
             NSBezierPath(roundedRect: box, xRadius: 6, yRadius: 6).fill()
-            text.draw(at: NSPoint(x: 16, y: screen.height - 23), withAttributes: attrs)
+            lines[0].draw(in: NSRect(x: 16, y: 26, width: w - 16, height: 16), withAttributes: attrs)
+            lines[1].draw(in: NSRect(x: 16, y: 11, width: w - 16, height: 16), withAttributes: attrs)
         }
         NSGraphicsContext.restoreGraphicsState()
         let png = try XCTUnwrap(canvas.representation(using: .png, properties: [:]))

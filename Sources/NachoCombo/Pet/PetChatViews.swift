@@ -364,7 +364,11 @@ struct PetItemViews {
         head.alignment = .top
         head.spacing = CGFloat(Sp.s)
         stack.addArrangedSubview(head)
-        for line in c.summary { stack.addArrangedSubview(label(line, font: PetTheme.caption, color: PetTheme.secondary, maxWidth: inner)) }
+        // Approval: caption lines (what, undo). Rule proposal: the rule itself, as body text.
+        let rule = c.style == .ruleProposal
+        for line in c.summary {
+            stack.addArrangedSubview(label(line, font: rule ? PetTheme.body : PetTheme.caption, color: rule ? PetTheme.text : PetTheme.secondary, maxWidth: inner))
+        }
         if let d = c.detail { stack.addArrangedSubview(label(d, font: PetTheme.caption, color: PetTheme.secondary, maxWidth: inner)) }
         if c.style == .elsewhere, !c.options.isEmpty {
             // (Not drawn today: phone cards come without options.)
@@ -545,7 +549,11 @@ final class PetChoiceRow: PetBox {
         }
         addSubview(row)
         let pad = CGFloat(chip ? PetTokens.Space.s : PetTokens.Space.m)
-        var c = [heightAnchor.constraint(greaterThanOrEqualToConstant: CGFloat(height)),
+        // As short as its content allows (at least the control height): without this the row's height is ambiguous and
+        // a row with a reason, or the quick-reply chips, stretch to fill the log.
+        let hug = heightAnchor.constraint(equalToConstant: CGFloat(height))
+        hug.priority = NSLayoutConstraint.Priority(749)
+        var c = [heightAnchor.constraint(greaterThanOrEqualToConstant: CGFloat(height)), hug,
                  row.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: CGFloat(PetTokens.Space.xs)),
                  row.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -CGFloat(PetTokens.Space.xs)),
                  row.centerYAnchor.constraint(equalTo: centerYAnchor)]

@@ -337,14 +337,17 @@ public enum PetTranscript {
                                          link: open && ready ? PetLinks.url("cardconfirm", ["id": c.id]) : nil, chosen: false, role: .primary)
         }
         var detail = c.detail
+        var summary: [String] = style == .approval ? PetCardRules.approvalSummary(c) : []
         if style == .ruleProposal {
-            detail = c.saidText.map { "“\($0)”라고 하셨어요. 고르면 이 범위는 다시 묻지 않아요." } ?? "고르면 이 범위는 다시 묻지 않아요."
-            // One rule: its sentence above 적용 / 아니요.
-            if c.options.count == 1, let o = c.options.first { detail = o.label + "\n" + (detail ?? "") }
+            // One rule: its sentence (as text) above 적용 / 아니요; several: numbered rows, then 아니요.
+            let one = c.options.count == 1
+            if one, let o = c.options.first { summary = [o.label] }
+            let then = one ? "적용하면 이 범위는 다시 묻지 않아요." : "하나를 고르면 그 범위는 다시 묻지 않아요."
+            detail = c.saidText.map { "“\($0)”라고 하셨어요. " + then } ?? then
         }
         return PetCardItem(id: c.id, symbol: style == .approval ? "checkmark.shield" : "questionmark.circle", title: c.title,
                            detail: style == .approval ? nil : detail, options: options, status: state.status,
-                           statusWaits: state.waits, style: style, summary: style == .approval ? PetCardRules.approvalSummary(c) : [],
+                           statusWaits: state.waits, style: style, summary: summary,
                            confirm: confirm, hint: c.isPending ? state.hint : nil,
                            retry: state.retry ? PetLinks.url("cardretry", ["id": c.id]) : nil)
     }
