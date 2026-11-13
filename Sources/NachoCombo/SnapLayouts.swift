@@ -108,14 +108,14 @@ final class WindowLayoutKeeper {
         onChange?()
     }
 
-    private static func apps() -> [NSRunningApplication] {
+    static func apps() -> [NSRunningApplication] {
         NSWorkspace.shared.runningApplications.filter {
             $0.activationPolicy == .regular && !$0.isHidden && $0.processIdentifier != getpid()
         }
     }
 
     /// The app's standard, not minimized windows, front to back.
-    private static func windows(of app: NSRunningApplication) -> [AXWindow] {
+    static func windows(of app: NSRunningApplication) -> [AXWindow] {
         let element = AXUIElementCreateApplication(app.processIdentifier)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &value) == .success,
@@ -127,7 +127,7 @@ final class WindowLayoutKeeper {
         }
     }
 
-    private static func fitted(_ frame: CGRect) -> CGRect {
+    static func fitted(_ frame: CGRect) -> CGRect {
         let screens = NSScreen.screens.map { $0.visibleFrame }
         guard !screens.contains(where: { $0.intersects(frame) }), let main = screens.first else { return frame }
         let width = min(frame.width, main.width), height = min(frame.height, main.height)

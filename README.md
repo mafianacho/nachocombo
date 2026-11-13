@@ -520,10 +520,17 @@ first launch. It is **on by default**, needs no permission and connects to nothi
 - **Hand over files:** right-click a shelf item ▸ **Give to Nacho**, drop files on Nacho, or use the paperclip. Nacho
   looks at pictures (JPEG, PNG, WebP, GIF; larger pictures are shrunk to fit 5 MB) and reads txt, md and csv; PDF and
   mp4 are passed on and kept but not opened.
-- **Arranges for you:** ask "창 왼쪽으로 붙여 줘" or "킵 어웨이크 켜 줘". Through the Nachotown connector, Nacho can snap
-  the front window (with Window Snap's Accessibility permission) and switch other gadgets on or off. It never switches
-  Computer Use or itself, never turns on a gadget that still needs a permission, and this can be switched off on the
-  Settings tab (*Let Nacho snap windows and switch gadgets on this Mac*).
+- **Arranges for you:** ask "창 왼쪽으로 붙여 줘", "사파리 열어 줘", "사파리는 왼쪽, 메모는 오른쪽에 놔 줘", "소리 30으로",
+  "지금 화면을 업무 모드로 저장해 줘" or "업무 모드 불러와 줘". Through the Nachotown connector Nacho can open, switch
+  and hide apps (names in Korean or English, or bundle IDs, matched against running and installed apps), list and
+  arrange several windows across displays, set the volume and the built-in display's brightness, set Focus Dim's
+  strength, empty the File Shelf (undoable), switch other gadgets on or off, and save / put back named workspaces
+  (running apps, window frames, gadgets; putting one back opens missing apps but never quits any). Windows and
+  workspaces need the Accessibility permission; without it Nacho says how to allow it. Do Not Disturb cannot be switched
+  by apps on macOS 12+ and external monitors' brightness is not set by Nacho: Nacho answers why. Quitting apps is not
+  offered until nacho-server asks the user to approve it. Nacho never switches Computer Use or itself, never turns on a
+  gadget that still needs a permission, and all of this can be switched off on the Settings tab (*Let Nacho use apps,
+  windows and gadgets on this Mac*), which also lists the saved workspaces with a Delete button.
 - **Moves with you:** drag Nacho anywhere; it comes back to the same place. Right-click ▸ 오른쪽 아래로 돌려놓기 puts it
   back. Switching the gadget off (or right-click ▸ 나초 숨기기) hides Nacho and closes every connection.
 - Server: Production (`nacho.nachotown.com`) by default; the Settings tab also offers a local nacho-server, the mock

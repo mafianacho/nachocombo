@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private var computerUseCard: ComputerUseCard?
     private var pet: NachoPetModule!
     private var petCard: PetSettingsCard?
+    private var desktop: PetDesktopActions!
     private let updater = UpdateController()
     private var mainItem: NSStatusItem!
     private var bentoWindow: BentoWindowController!
@@ -87,13 +88,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         pet.perform = { [weak self] command in
             self?.petPerform(command) ?? PetCommandOutcome(ok: false, message: "Nacho Combo is not ready.")
         }
+        desktop = PetDesktopActions(manager: manager, snap: snap, shelf: shelf)
+        desktop.applyDimIntensity = { [weak self] value in self?.applyDimIntensity(value) }
+        desktop.permissionGranted = { [weak self] permission in self?.gadgetPermissionGranted(permission) }
+        desktop.onChange = { [weak self] in
+            self?.petCard?.refresh()
+            self?.stateChanged()
+        }
+        pet.performLater = { [weak self] command, done in self?.desktop.run(command, done: done) ?? false }
         pet.openSettings = { [weak self] in self?.showSettings(.nachoPet) }
         pet.turnOff = { [weak self] in self?.manager.setEnabled(.nachoPet, false) }
         pet.onChange = { [weak self] in
             self?.petCard?.refresh()
             self?.stateChanged()
         }
-        petCard = PetSettingsCard(module: pet, width: GadgetDetailView.cardInner)
+        petCard = PetSettingsCard(module: pet, width: GadgetDetailView.cardInner, desktop: desktop)
+        petCard?.openAccessibility = { [weak self] in self?.openPermissionPane(.accessibility) }
         computerUse.currentSettings = { [weak self] in self?.manager.settings.computerUse ?? ComputerUseSettings() }
         computerUse.onActivity = { [weak self] in self?.stateChanged() }
         computerUse.onEmergencyStop = { [weak self] in self?.manager.setEnabled(.computerUse, false) }
@@ -634,6 +644,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         extra["bento"] = bentoWindow.diagnostics
         extra["bentoLayout"] = manager.settings.bentoLayout.items.map { "\($0.id):\($0.size.rawValue)\($0.hidden ? ":hidden" : "")" }
         if !lastA11y.isEmpty { extra["a11y"] = lastA11y }
+        if let desktop = desktop { extra["petDesktop"] = desktop.diagnostics }
         Diagnostics.write(manager: manager, extra: extra)
     }
 
@@ -1310,6 +1321,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             return PetCommandOutcome(ok: true, message: "\(on) of \(gadgets.count) gadgets are on. Names: "
                                      + ModuleID.allCases.map { "\($0.rawValue) (\($0.displayName))" }.joined(separator: ", "),
                                      gadgets: gadgets)
+        default:
+            // Apps, several windows, system, File Shelf / Focus Dim and workspaces run in `PetDesktopActions`.
+            return PetCommandOutcome(ok: false, message: "Nacho Combo is not ready.")
         }
     }
 
@@ -1665,6 +1679,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             }
         case "relaunch":
             relaunch()
+        case "pet" where parts.count >= 2:
+            // Debug only: `pet <capability> [json params]` runs a desktop action through the same checks as the chat
+            // (PetCommands.parse, then the pet's executor); the answer is in `ctl dump` under petDesktop.last.
+            let json = parts.dropFirst(2).joined(separator: " ")
+            let params = json.isEmpty ? nil : json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) }
+            switch PetCommands.parse(capability: parts[1], params: params) {
+            case let .failure(problem):
+                desktop.noteRefused(parts[1], problem.message)
+            case let .success(command):
+                pet.execute(command) { [weak self] outcome in
+                    if !(self?.desktop.handles(command) ?? true) { self?.desktop.noteOutcome(parts[1], outcome) }
+                    self?.stateChanged()
+                }
+            }
         case "combo" where parts.count >= 2:
             // Debug only: `combo select|order|edit <id>`, `combo new [preset]`, `combo save`, `combo undo`,
             // `combo welcome on|off`.
