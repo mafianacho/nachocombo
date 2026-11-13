@@ -137,6 +137,21 @@ public enum PetText {
         case PetCommands.arrangeWindow: return "창 배치"
         case PetCommands.setGadget: return "가젯 켜기·끄기"
         case PetCommands.listGadgets: return "가젯 목록 보기"
+        // Desktop actions (B lane, PetCommands.swift @ feat/pet-desktop-actions 1eef601): the wire names, as literals so
+        // this file does not wait for that branch.
+        case "combo_list_apps": return "앱 목록 보기"
+        case "combo_open_app": return "앱 열기"
+        case "combo_focus_app": return "앱 전환"
+        case "combo_hide_app": return "앱 숨기기"
+        case "combo_quit_app": return "앱 종료"
+        case "combo_list_windows": return "창 목록 보기"
+        case "combo_layout_windows": return "여러 창 배치"
+        case "combo_set_system": return "소리·밝기·방해금지"
+        case "combo_set_dim_strength": return "디밍 강도"
+        case "combo_clear_shelf": return "선반 비우기"
+        case "combo_workspace_save": return "작업 공간 저장"
+        case "combo_workspace_apply": return "작업 공간 적용"
+        case "combo_workspace_list": return "작업 공간 목록"
         default: return "도구"
         }
     }

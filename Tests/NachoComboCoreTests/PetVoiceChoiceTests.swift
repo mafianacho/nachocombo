@@ -155,6 +155,22 @@ final class PetCardRulesTests: XCTestCase {
     }
 }
 
+final class PetDesktopToolNameTests: XCTestCase {
+    /// B lane's combo_* tools (PetCommands.swift @ feat/pet-desktop-actions 1eef601) read in Korean, never "도구".
+    func testDesktopActionToolsHaveKoreanNames() {
+        let names = ["combo_list_apps": "앱 목록 보기", "combo_open_app": "앱 열기", "combo_focus_app": "앱 전환",
+                     "combo_hide_app": "앱 숨기기", "combo_quit_app": "앱 종료", "combo_list_windows": "창 목록 보기",
+                     "combo_layout_windows": "여러 창 배치", "combo_set_system": "소리·밝기·방해금지",
+                     "combo_set_dim_strength": "디밍 강도", "combo_clear_shelf": "선반 비우기",
+                     "combo_workspace_save": "작업 공간 저장", "combo_workspace_apply": "작업 공간 적용",
+                     "combo_workspace_list": "작업 공간 목록",
+                     "combo_arrange_window": "창 배치", "combo_set_gadget": "가젯 켜기·끄기", "combo_list_gadgets": "가젯 목록 보기"]
+        for (raw, korean) in names { XCTAssertEqual(PetText.toolName(raw), korean, raw) }
+        XCTAssertEqual(Set(names.values).count, names.count, "every tool reads differently")
+        XCTAssertEqual(PetText.toolName("combo_something_new"), "도구")
+    }
+}
+
 final class PetCardKeysTests: XCTestCase {
     func testNumberMarksEnterSendsEscClears() {
         let c = card("choice")
