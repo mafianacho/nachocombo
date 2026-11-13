@@ -157,7 +157,7 @@ final class PetDesktopLiveTests: XCTestCase {
         screenShot("desktop-3-layout-before", caption: "③ 여러 창 배치 전")
         let layout = ask(desktop, "combo_layout_windows", ["items": [["app": "Activity Monitor", "position": "left"],
                                                                      ["app": "Calculator", "position": "top-right"]]])
-        print("DESKTOP-LIVE layout ok=\(layout.ok)")
+        XCTAssertTrue(layout.ok, layout.message)
         settle(2)
         screenShot("desktop-4-layout-after", caption: "④ 여러 창 배치 후: 활성 상태 보기 왼쪽 반, 계산기 오른쪽 위 (combo_layout_windows)")
         let arranged = frames(desktop, bundleIDs: ids)
@@ -239,7 +239,10 @@ final class PetDesktopLiveTests: XCTestCase {
 
     private func allText(_ view: NSView) -> [String] {
         var out: [String] = []
-        if let f = view as? NSTextField, !f.isHidden { out.append(f.stringValue) }
+        // Labels carry invisible word joiners (U+2060) for Korean line breaking.
+        if let f = view as? NSTextField, !f.isHidden {
+            out.append(f.stringValue.replacingOccurrences(of: "\u{2060}", with: "").replacingOccurrences(of: "\u{200B}", with: ""))
+        }
         for v in view.subviews { out += allText(v) }
         return out
     }

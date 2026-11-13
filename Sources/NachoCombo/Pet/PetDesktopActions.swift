@@ -265,8 +265,14 @@ final class PetDesktopActions {
             }
             guard let app = running(entry.bundleID) else { return PetCommandOutcome(ok: false, message: "\(entry.displayName) is not running.") }
             if app.isHidden { return PetCommandOutcome(ok: true, message: "\(entry.displayName) was already hidden.") }
-            return app.hide() ? PetCommandOutcome(ok: true, message: "Hid \(entry.displayName) (it keeps running).")
-                : PetCommandOutcome(ok: false, message: "\(entry.displayName) could not be hidden.")
+            // macOS may refuse `hide()` from an app that is not active (Nacho Combo lives in the menu bar); the
+            // Accessibility attribute does the same as ⌘H.
+            if app.hide() || (isTrusted() && AXUIElementSetAttributeValue(AXUIElementCreateApplication(app.processIdentifier),
+                                                                          kAXHiddenAttribute as CFString, kCFBooleanTrue) == .success) {
+                return PetCommandOutcome(ok: true, message: "Hid \(entry.displayName) (it keeps running).")
+            }
+            return PetCommandOutcome(ok: false, message: "\(entry.displayName) could not be hidden"
+                                     + (isTrusted() ? "." : ". \(PetPermissionHelp.accessibility)"))
         }
     }
 
@@ -354,17 +360,41 @@ final class PetDesktopActions {
             }
             let target = WindowLayout.target(for: item.position, in: visible[screenIndex], current: current, gap: gap, cycle: false)
             let window = windows[item.window - 1]
-            do {
-                snap.memory.remember(window.element, before: current, applied: target)
-                try window.setFrame(target)
+            let where_ = "\(item.position.displayName) on display \(PetDisplays.number(forIndex: screenIndex, screens: full) ?? 1)"
+            snap.memory.remember(window.element, before: current, applied: target)
+            switch PetDesktopActions.move(window, to: target) {
+            case .placed:
                 if let landed = window.frame { snap.memory.updateApplied(window.element, landed) }
-                parts.append(PetPartResult(name: label, ok: true, message: "\(entry.displayName) moved to \(item.position.displayName)"
-                                           + " on display \(PetDisplays.number(forIndex: screenIndex, screens: full) ?? 1)"))
-            } catch {
-                parts.append(PetPartResult(name: label, ok: false, message: "\(entry.displayName) did not move (\(error))"))
+                parts.append(PetPartResult(name: label, ok: true, message: "\(entry.displayName) moved to \(where_)"))
+            case .movedOnly:
+                if let landed = window.frame { snap.memory.updateApplied(window.element, landed) }
+                parts.append(PetPartResult(name: label, ok: true, message: "\(entry.displayName) moved to the top-left of \(where_); "
+                                           + "the app does not let its window be resized"))
+            case let .failed(why):
+                snap.memory.forget(window.element)
+                parts.append(PetPartResult(name: label, ok: false, message: "\(entry.displayName) did not move (\(why))"))
             }
         }
         return PetPartResult.summary(parts)
+    }
+
+    enum MoveResult: Equatable { case placed, movedOnly, failed(String) }
+
+    /// Puts a window at `target`. A window whose size the app fixes (Calculator) still moves: it goes to the target's
+    /// top-left corner with its own size.
+    static func move(_ window: AXWindow, to target: CGRect) -> MoveResult {
+        do {
+            try window.setFrame(target)
+            return .placed
+        } catch {
+            guard let size = window.frame?.size else { return .failed("\(error)") }
+            let corner = CGRect(x: target.minX, y: target.maxY - size.height, width: size.width, height: size.height)
+            window.setPosition(ax: WindowLayout.accessibilityOrigin(forCocoa: corner, primaryScreenHeight: AXWindow.primaryHeight))
+            guard let landed = window.frame, abs(landed.minX - corner.minX) <= 4, abs(landed.maxY - corner.maxY) <= 4 else {
+                return .failed("\(error)")
+            }
+            return .movedOnly
+        }
     }
 
     // MARK: system
@@ -547,7 +577,8 @@ final class PetDesktopActions {
             let windows = WindowLayoutKeeper.windows(of: app)
             let current = windows.indices.map { (bundleID: bundleID, order: $0) }
             for (index, frame) in LayoutMatching.assign(saved: saved, current: current) {
-                if (try? windows[index].setFrame(WindowLayoutKeeper.fitted(frame))) != nil { placed.append("\(bundleID)#\(index)") }
+                if case .failed = PetDesktopActions.move(windows[index], to: WindowLayoutKeeper.fitted(frame)) { continue }
+                placed.append("\(bundleID)#\(index)")
             }
         }
         return placed
