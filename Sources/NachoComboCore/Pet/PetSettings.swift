@@ -39,6 +39,8 @@ public struct PetSettings: Codable, Equatable {
     public var customIssuerURL: String = ""
     /// Where the user dragged the pet (bottom-left corner of its window, screen coordinates). nil = bottom right.
     public var petPosition: PetPosition?
+    /// The chat bubble's size after the user dragged its edges. nil = the design's default (360 × 520).
+    public var chatSize: PetChatSize?
     /// Nacho may arrange windows and switch gadgets on or off when asked in the chat (connector tools).
     public var allowComboControl: Bool = true
     /// The selection bar (part of Nacho Pet, not a gadget). Off by default.
@@ -54,7 +56,7 @@ public struct PetSettings: Codable, Equatable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case serverMode, customServerURL, customIssuerURL, petPosition, allowComboControl, selectionBar
+        case serverMode, customServerURL, customIssuerURL, petPosition, chatSize, allowComboControl, selectionBar
     }
 
     /// Every field falls back on its own, so a file from an older or newer version still loads.
@@ -64,6 +66,7 @@ public struct PetSettings: Codable, Equatable {
         customServerURL = (try? c.decodeIfPresent(String.self, forKey: .customServerURL)) ?? ""
         customIssuerURL = (try? c.decodeIfPresent(String.self, forKey: .customIssuerURL)) ?? ""
         petPosition = try? c.decodeIfPresent(PetPosition.self, forKey: .petPosition)
+        chatSize = try? c.decodeIfPresent(PetChatSize.self, forKey: .chatSize)
         allowComboControl = (try? c.decodeIfPresent(Bool.self, forKey: .allowComboControl)) ?? true
         selectionBar = (try? c.decodeIfPresent(PetSelectionBarSettings.self, forKey: .selectionBar)) ?? PetSelectionBarSettings()
     }
@@ -253,6 +256,12 @@ public final class PetSettingsStore: PetSettingsStoring {
         }
         if let p = out.petPosition, !(p.x.isFinite && p.y.isFinite) || abs(p.x) > 100_000 || abs(p.y) > 100_000 {
             out.petPosition = nil
+        }
+        // Not a number or absurd: back to the default. Too small: the smallest usable size. The screen limit is
+        // applied when the chat is shown (it depends on the screen the pet is on).
+        if let c = out.chatSize {
+            if !(c.width.isFinite && c.height.isFinite) || c.width > 100_000 || c.height > 100_000 { out.chatSize = nil }
+            else { out.chatSize = PetChatLayout.clamp(c, screen: nil) }
         }
         out.selectionBar = PetSelectionBarSettings.sanitized(out.selectionBar)
         return out

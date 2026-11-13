@@ -203,6 +203,12 @@ struct PetItemViews {
     let onLink: (URL) -> Void
     let onExample: (String) -> Void
 
+    /// `.bubble { max-width }` at the design's width; a wider (resized) chat gives bubbles the same share of the log.
+    var bubbleMaxWidth: CGFloat {
+        let designLog = CGFloat(S.chatWidth - 2 * Sp.m)
+        return max(CGFloat(S.bubbleMaxWidth), (width * CGFloat(S.bubbleMaxWidth) / designLog).rounded(.down))
+    }
+
     func view(_ item: PetChatItem) -> NSView {
         switch item {
         case let .older(loading): return older(loading)
@@ -236,7 +242,7 @@ struct PetItemViews {
         box.corners = mine ? (tl: r, tr: r, br: tail, bl: r) : (tl: r, tr: r, br: r, bl: tail)
         box.alphaValue = past ? CGFloat(PetTokens.Opacity.past) : 1
         let textColor = PetTheme.color(mine ? \.mineText : \.nachoText)
-        let inner = CGFloat(S.bubbleMaxWidth - 2 * Sp.m)
+        let inner = bubbleMaxWidth - CGFloat(2 * Sp.m)
         let content = NSMutableAttributedString(attributedString: PetLinkText.plain(text, font: PetTheme.body, color: textColor))
         if streaming {
             content.append(NSAttributedString(string: text.isEmpty ? "…" : " ▍", attributes: [.font: PetTheme.body, .foregroundColor: PetTheme.accent]))

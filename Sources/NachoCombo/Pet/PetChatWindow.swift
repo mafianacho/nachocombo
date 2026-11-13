@@ -4,12 +4,19 @@ import NachoComboCore
 /// The chat bubble next to the pet, ported from the confirmed web mockup (design/web, `.chat`): header with the one
 /// status line, optional banner, the log (PetTranscript items, one view each), pending files, and the composer.
 /// A borderless key panel that does not activate the app, so the window the user was working in stays the "front
-/// window" that Nacho arranges. Its tail points at the pet.
+/// window" that Nacho arranges. Its tail points at the pet, and it follows the pet when the pet is dragged.
+/// The user can drag its free edges (left, the side away from the pet, their corner) to resize it; everything inside
+/// follows the window's width (PetChatLayout has the rules).
 final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private typealias S = PetTokens.Size
     private typealias Sp = PetTokens.Space
-    static var size: NSSize { NSSize(width: CGFloat(S.chatWidth), height: CGFloat(S.chatHeight + S.chatTail)) }
     private weak var module: NachoPetModule?
+    /// The size the user chose (or the default). Shown clamped to the pet's screen.
+    private(set) var bodySize: PetChatSize
+    /// The width the log, banner and sign-in texts are laid out for.
+    private var laidOutWidth = CGFloat(S.chatWidth)
+    private var handles: [PetChatResizeHandle] = []
+    private var resizeStart: (size: PetChatSize, limit: PetChatSize)?
 
     private let background = PetChatBackground()
     private let content = NSView()
@@ -28,7 +35,8 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private let pendingRow = NSStackView()
     private let composer = NSStackView()
     private let fieldBox = PetFieldBox()
-    private let input = PetInputField()
+    /// Internal (not private) so the off-screen capture tests can show typed text.
+    let input = PetInputField()
     private let wave = PetWave()
     private var attachButton: PetPill!
     private var micButton: PetPill!
@@ -44,11 +52,16 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private var shownViews: [NSView] = []
     private var tickScheduled = false
 
-    private var logWidth: CGFloat { CGFloat(S.chatWidth - 2 * Sp.m) }
+    private var logWidth: CGFloat { laidOutWidth - CGFloat(2 * Sp.m) }
 
-    init(module: NachoPetModule) {
+    /// `size` defaults to the one saved in the settings (nil there = the design's default).
+    init(module: NachoPetModule?, size: PetChatSize? = nil) {
         self.module = module
-        super.init(contentRect: NSRect(origin: .zero, size: PetChatWindow.size), styleMask: [.borderless, .nonactivatingPanel],
+        let body = PetChatLayout.clamp(size ?? module?.settings.chatSize, screen: nil)
+        bodySize = body
+        laidOutWidth = CGFloat(body.width)
+        let window = PetChatLayout.windowSize(body)
+        super.init(contentRect: NSRect(x: 0, y: 0, width: window.width, height: window.height), styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
         title = "나초"
         isFloatingPanel = true
@@ -76,7 +89,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     // MARK: layout
 
     private func build() {
-        background.frame = NSRect(origin: .zero, size: PetChatWindow.size)
+        background.frame = NSRect(origin: .zero, size: frame.size)
         background.autoresizingMask = [.width, .height]
         contentView = background
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -95,12 +108,20 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         NSLayoutConstraint.activate([column.topAnchor.constraint(equalTo: content.topAnchor), column.bottomAnchor.constraint(equalTo: content.bottomAnchor),
                                      column.leadingAnchor.constraint(equalTo: content.leadingAnchor), column.trailingAnchor.constraint(equalTo: content.trailingAnchor)])
 
-        column.addArrangedSubview(buildHeader())
-        column.addArrangedSubview(buildBanner())
-        column.addArrangedSubview(buildLog())
-        column.addArrangedSubview(buildSignIn())
-        column.addArrangedSubview(buildPending())
-        column.addArrangedSubview(buildComposer())
+        // Every row is as wide as the window, so they all grow and shrink with it.
+        for row in [buildHeader(), buildBanner(), buildLog(), buildSignIn(), buildPending(), buildComposer()] {
+            column.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        }
+        for edge in PetChatEdge.allCases {
+            let h = PetChatResizeHandle(edge: edge)
+            h.onBegin = { [weak self] in self?.beginResize() }
+            h.onDrag = { [weak self] e, dx, dy in self?.resize(edge: e, dx: dx, dy: dy) }
+            h.onEnd = { [weak self] in self?.endResize() }
+            background.addSubview(h)
+            handles.append(h)
+        }
+        layoutHandles()
     }
 
     private var contentTop: NSLayoutConstraint!
@@ -110,7 +131,6 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         let head = PetBox()
         head.translatesAutoresizingMaskIntoConstraints = false
         head.heightAnchor.constraint(equalToConstant: CGFloat(S.headerHeight)).isActive = true
-        head.widthAnchor.constraint(equalToConstant: CGFloat(S.chatWidth)).isActive = true
         avatar.image = PetArt.image(named: "idle")
         avatar.imageScaling = .scaleProportionallyUpOrDown
         avatar.wantsLayer = true
@@ -138,6 +158,9 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         who.alignment = .leading
         who.spacing = 0
         who.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // Extra width goes to the name/status column; the tabs keep their own size at the right. (Stack views take
+        // `setHuggingPriority`, not the content hugging of views with an intrinsic size.)
+        who.setHuggingPriority(NSLayoutConstraint.Priority(200), for: .horizontal)
 
         let seg = PetBox()
         seg.fill = PetTheme.color(\.surface)
@@ -157,6 +180,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         NSLayoutConstraint.activate([segRow.topAnchor.constraint(equalTo: seg.topAnchor, constant: 2), segRow.bottomAnchor.constraint(equalTo: seg.bottomAnchor, constant: -2),
                                      segRow.leadingAnchor.constraint(equalTo: seg.leadingAnchor, constant: 2), segRow.trailingAnchor.constraint(equalTo: seg.trailingAnchor, constant: -2)])
 
+        segRow.setHuggingPriority(.required, for: .horizontal)
         let row = NSStackView(views: [avatar, who, seg])
         row.spacing = CGFloat(Sp.s)
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -191,7 +215,6 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         row.translatesAutoresizingMaskIntoConstraints = false
         banner.addSubview(row)
         NSLayoutConstraint.activate([
-            banner.widthAnchor.constraint(equalToConstant: logWidth),
             row.topAnchor.constraint(equalTo: banner.topAnchor, constant: CGFloat(Sp.s)),
             row.bottomAnchor.constraint(equalTo: banner.bottomAnchor, constant: -CGFloat(Sp.s)),
             row.leadingAnchor.constraint(equalTo: banner.leadingAnchor, constant: CGFloat(Sp.m)),
@@ -220,7 +243,6 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         scroll.setAccessibilityIdentifier("nacho-pet-transcript")
         let clip = scroll.contentView
         NSLayoutConstraint.activate([
-            scroll.widthAnchor.constraint(equalToConstant: CGFloat(S.chatWidth)),
             doc.leadingAnchor.constraint(equalTo: clip.leadingAnchor), doc.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
             doc.topAnchor.constraint(equalTo: clip.topAnchor),
             doc.heightAnchor.constraint(greaterThanOrEqualTo: clip.heightAnchor),
@@ -228,7 +250,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
             logStack.topAnchor.constraint(greaterThanOrEqualTo: doc.topAnchor, constant: CGFloat(Sp.m)),
             logStack.bottomAnchor.constraint(equalTo: doc.bottomAnchor, constant: -CGFloat(Sp.m)),
             logStack.leadingAnchor.constraint(equalTo: doc.leadingAnchor, constant: CGFloat(Sp.m)),
-            logStack.widthAnchor.constraint(equalToConstant: logWidth),
+            logStack.trailingAnchor.constraint(equalTo: doc.trailingAnchor, constant: -CGFloat(Sp.m)),
         ])
         scroll.setContentHuggingPriority(.defaultLow, for: .vertical)
         scroll.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
@@ -240,24 +262,30 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         signInView.alignment = .centerX
         signInView.spacing = CGFloat(Sp.m)
         signInView.edgeInsets = NSEdgeInsets(top: CGFloat(Sp.xl), left: CGFloat(Sp.xl), bottom: CGFloat(Sp.xl), right: CGFloat(Sp.xl))
-        let art = NSImageView(image: PetArt.image(named: "happy") ?? NSImage())
-        art.translatesAutoresizingMaskIntoConstraints = false
-        art.widthAnchor.constraint(equalToConstant: CGFloat(S.signinArt)).isActive = true
-        art.heightAnchor.constraint(equalToConstant: CGFloat(S.signinArt)).isActive = true
-        let inner = CGFloat(S.chatWidth - 2 * Sp.xl)
-        let hi = PetLinkText(PetLinkText.plain("안녕하세요, 나초예요.", font: PetTheme.title, color: PetTheme.text, align: .center), maxWidth: inner)
-        let p = PetLinkText(PetLinkText.plain("나초 계정으로 로그인하면 여기서 대화할 수 있어요. 캡처나 선반의 파일을 건네거나, 창 배치나 가젯을 켜고 끄는 일도 부탁할 수 있어요.",
-                                              font: PetTheme.body, color: PetTheme.secondary, align: .center), maxWidth: inner)
         signInButton = PetPill(title: "나초 계정으로 로그인", symbol: "person", iconSize: 15, font: PetTheme.font(PetTokens.Font.body, PetTokens.Font.weightSemibold),
                                color: PetTheme.color(\.onAccent), fill: PetTheme.accent, height: S.control + 4, padding: Sp.l)
         signInButton.onClick = { [weak self] in self?.module?.signIn() }
         signInButton.setAccessibilityIdentifier("nacho-pet-sign-in")
-        let small = PetLinkText(PetLinkText.plain("로그인은 브라우저 창(auth.nachotown.com)에서 해요. 비밀번호는 콤보가 보지 않아요.",
-                                                  font: PetTheme.caption, color: PetTheme.tertiary, align: .center), maxWidth: inner)
-        for v in [art, hi, p, signInButton!, small] as [NSView] { signInView.addArrangedSubview(v) }
+        fillSignIn()
         signInView.isHidden = true
         signInView.setContentHuggingPriority(.defaultLow, for: .vertical)
         return signInView
+    }
+
+    /// The sign-in texts wrap at the window's width, so they are made again when it changes.
+    private func fillSignIn() {
+        signInView.arrangedSubviews.forEach { signInView.removeArrangedSubview($0); $0.removeFromSuperview() }
+        let art = NSImageView(image: PetArt.image(named: "happy") ?? NSImage())
+        art.translatesAutoresizingMaskIntoConstraints = false
+        art.widthAnchor.constraint(equalToConstant: CGFloat(S.signinArt)).isActive = true
+        art.heightAnchor.constraint(equalToConstant: CGFloat(S.signinArt)).isActive = true
+        let inner = laidOutWidth - CGFloat(2 * Sp.xl)
+        let hi = PetLinkText(PetLinkText.plain("안녕하세요, 나초예요.", font: PetTheme.title, color: PetTheme.text, align: .center), maxWidth: inner)
+        let p = PetLinkText(PetLinkText.plain("나초 계정으로 로그인하면 여기서 대화할 수 있어요. 캡처나 선반의 파일을 건네거나, 창 배치나 가젯을 켜고 끄는 일도 부탁할 수 있어요.",
+                                              font: PetTheme.body, color: PetTheme.secondary, align: .center), maxWidth: inner)
+        let small = PetLinkText(PetLinkText.plain("로그인은 브라우저 창(auth.nachotown.com)에서 해요. 비밀번호는 콤보가 보지 않아요.",
+                                                  font: PetTheme.caption, color: PetTheme.tertiary, align: .center), maxWidth: inner)
+        for v in [art, hi, p, signInButton!, small] as [NSView] { signInView.addArrangedSubview(v) }
     }
 
     private func buildPending() -> NSView {
@@ -265,7 +293,6 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         pendingRow.spacing = CGFloat(Sp.s)
         pendingRow.distribution = .fillEqually
         pendingRow.translatesAutoresizingMaskIntoConstraints = false
-        pendingRow.widthAnchor.constraint(equalToConstant: logWidth).isActive = true
         let wrap = PetRowInset(pendingRow, top: 0, bottom: Sp.s)
         wrap.isHidden = true
         return wrap
@@ -313,7 +340,6 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         composer.spacing = CGFloat(Sp.xs)
         composer.edgeInsets = NSEdgeInsets(top: CGFloat(Sp.s), left: CGFloat(Sp.m), bottom: CGFloat(Sp.m), right: CGFloat(Sp.m))
         composer.translatesAutoresizingMaskIntoConstraints = false
-        composer.widthAnchor.constraint(equalToConstant: CGFloat(S.chatWidth)).isActive = true
         fieldBox.setContentHuggingPriority(.defaultLow, for: .horizontal)
         return composer
     }
@@ -323,24 +349,108 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     }
 
     /// Above the pet with the tail on its head (or below it at the top of the screen), kept on the pet's screen.
+    /// Called when the chat opens, on every drag event of the pet, when it is dropped, and while resizing. Only the
+    /// frame changes: the typed text, the focus and a streaming answer stay as they are.
     func position(near pet: NSWindow?) {
-        guard let pet = pet else { center(); return }
+        guard let pet = pet else {
+            let body = PetChatLayout.clamp(bodySize, screen: nil)
+            apply(body: body, origin: frame.origin)
+            center()
+            return
+        }
         let screen = (pet.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let size = frame.size
-        let gap = CGFloat(S.chatGapToPet)
-        var x = pet.frame.maxX - size.width
-        var y = pet.frame.maxY + gap
-        let below = y + size.height > screen.maxY
-        if below { y = pet.frame.minY - size.height - gap }
-        x = min(max(x, screen.minX + CGFloat(Sp.s)), screen.maxX - size.width - CGFloat(Sp.s))
-        y = min(max(y, screen.minY + CGFloat(Sp.s)), screen.maxY - size.height - CGFloat(Sp.s))
-        setFrameOrigin(NSPoint(x: x, y: y))
-        background.tailOnTop = below
-        background.tailFromRight = min(max(x + size.width - pet.frame.midX, CGFloat(PetTokens.Radius.window) + PetChatBackground.tail),
-                                       size.width - CGFloat(PetTokens.Radius.window) - PetChatBackground.tail)
-        contentTop.constant = below ? PetChatBackground.tail : 0
-        contentBottom.constant = below ? 0 : -PetChatBackground.tail
+        place(petFrame: pet.frame, screen: screen)
+    }
+
+    /// The same rule for a pet frame and a screen's visible frame (also used by the off-screen capture tests).
+    func place(petFrame: NSRect, screen: NSRect) {
+        let screenRect = PetRect(screen)
+        let body = PetChatLayout.clamp(bodySize, screen: screenRect)
+        let at = PetChatLayout.place(body: body, pet: PetRect(petFrame), screen: screenRect)
+        background.tailOnTop = at.tailOnTop
+        background.tailFromRight = CGFloat(at.tailFromRight)
+        contentTop.constant = at.tailOnTop ? PetChatBackground.tail : 0
+        contentBottom.constant = at.tailOnTop ? 0 : -PetChatBackground.tail
+        apply(body: PetChatSize(width: body.width, height: at.bodyHeight), origin: NSPoint(x: at.x, y: at.y))
+    }
+
+    private func apply(body: PetChatSize, origin: NSPoint) {
+        let size = PetChatLayout.windowSize(body)
+        let rect = NSRect(x: origin.x, y: origin.y, width: CGFloat(size.width), height: CGFloat(size.height))
+        // Fixed-width rows are rebuilt before the window narrows and after it widens, so they always fit the log.
+        let width = CGFloat(body.width)
+        if width < laidOutWidth { widthChanged(width) }
+        if rect != frame { setFrame(rect, display: true) }
+        if width > laidOutWidth { widthChanged(width) }
+        layoutHandles()
         invalidateShadow()
+    }
+
+    /// Lays out what is built for a fixed width again (log items, banner, sign-in texts).
+    private func widthChanged(_ width: CGFloat) {
+        guard abs(width - laidOutWidth) >= 0.5 else { return }
+        laidOutWidth = width
+        bannerText.preferredMaxLayoutWidth = logWidth - CGFloat(2 * Sp.m + S.sendIcon + Sp.s)
+        fillSignIn()
+        let items = shownItems
+        shownItems = []
+        shownViews.forEach { logStack.removeArrangedSubview($0); $0.removeFromSuperview() }
+        shownViews = []
+        if selectedTab == 0 { show(items: items) }
+        render()
+    }
+
+    // MARK: resizing
+
+    /// The size the user chose; the window keeps following the pet with it.
+    func setBodySize(_ size: PetChatSize?) {
+        bodySize = PetChatLayout.clamp(size, screen: nil)
+        position(near: module?.petWindow)
+    }
+
+    /// The drag handles on the free edges (not the tail side, not the right edge lined up with the pet).
+    private func layoutHandles() {
+        let body = background.bodyRect
+        let t: CGFloat = 6, c = CGFloat(PetTokens.Radius.window)
+        let free = Set(PetChatLayout.resizableEdges(tailOnTop: background.tailOnTop))
+        for h in handles {
+            h.isHidden = !free.contains(h.edge)
+            switch h.edge {
+            case .left: h.frame = NSRect(x: body.minX, y: body.minY + c, width: t, height: max(0, body.height - 2 * c))
+            case .top: h.frame = NSRect(x: body.minX + c, y: body.maxY - t, width: max(0, body.width - 2 * c), height: t)
+            case .bottom: h.frame = NSRect(x: body.minX + c, y: body.minY, width: max(0, body.width - 2 * c), height: t)
+            case .topLeft: h.frame = NSRect(x: body.minX, y: body.maxY - c, width: c, height: c)
+            case .bottomLeft: h.frame = NSRect(x: body.minX, y: body.minY, width: c, height: c)
+            }
+        }
+        invalidateCursorRects(for: background)
+    }
+
+    private var petAndScreen: (pet: PetRect, screen: PetRect)? {
+        guard let pet = module?.petWindow else { return nil }
+        let screen = (pet.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        return (PetRect(pet.frame), PetRect(screen))
+    }
+
+    private func beginResize() {
+        let shown = PetChatSize(width: Double(frame.width), height: Double(frame.height) - PetTokens.Size.chatTail)
+        let limit = petAndScreen.map { PetChatLayout.dragLimit(pet: $0.pet, screen: $0.screen, tailOnTop: background.tailOnTop) }
+            ?? PetChatLayout.maximumSize(screen: PetRect((screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)))
+        resizeStart = (shown, limit)
+    }
+
+    private func resize(edge: PetChatEdge, dx: CGFloat, dy: CGFloat) {
+        guard let start = resizeStart else { return }
+        let next = PetChatLayout.resized(start.size, edge: edge, dx: Double(dx), dy: Double(dy), limit: start.limit)
+        guard next != bodySize else { return }
+        bodySize = next
+        if let pet = module?.petWindow { position(near: pet) } else { apply(body: next, origin: frame.origin) }
+    }
+
+    private func endResize() {
+        guard resizeStart != nil else { return }
+        resizeStart = nil
+        module?.chatResized(to: bodySize)
     }
 
     /// A short message at the end of the log for a few seconds (refused file, nothing to send…).
@@ -417,7 +527,19 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         var items = PetTranscript.items(st, undoSecondsLeft: { [weak self] id in self?.undoSecondsLeft(id, st) },
                                         selection: module?.selectionChatState ?? PetSelectionChatState())
         if let n = noticeLine(st) { items.append(n) }
-        guard items != shownItems else { return }
+        guard show(items: items) else { return }
+        // The undo countdown ("7초 안에 되돌리기") ticks every second while it lasts.
+        if st.chat.memoryNotes.contains(where: { undoSecondsLeft($0.updateID, st) != nil }), !tickScheduled {
+            tickScheduled = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.tickScheduled = false; self?.render() }
+        }
+    }
+
+    /// Lays the log out for these items at the current width and scrolls to the end; false when nothing changed.
+    /// Internal so the off-screen capture tests can show a conversation without a server.
+    @discardableResult
+    func show(items: [PetChatItem]) -> Bool {
+        guard items != shownItems else { return false }
         // Keep the views of the unchanged beginning (streaming only changes the end).
         var keep = 0
         while keep < min(items.count, shownItems.count), items[keep] == shownItems[keep] { keep += 1 }
@@ -436,11 +558,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
             doc.layoutSubtreeIfNeeded()
             doc.scroll(NSPoint(x: 0, y: max(0, doc.bounds.height - scroll.contentView.bounds.height)))
         }
-        // The undo countdown ("7초 안에 되돌리기") ticks every second while it lasts.
-        if st.chat.memoryNotes.contains(where: { undoSecondsLeft($0.updateID, st) != nil }), !tickScheduled {
-            tickScheduled = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.tickScheduled = false; self?.render() }
-        }
+        return true
     }
 
     private func undoSecondsLeft(_ updateID: String, _ st: PetSessionState) -> Int? {
@@ -630,7 +748,8 @@ final class PetFlippedView: NSView {
     override var isFlipped: Bool { true }
 }
 
-/// A view with token insets around one child, full chat width (`margin: var(--space-s) var(--space-m) 0`).
+/// A view with token insets around one child, full chat width (`margin: var(--space-s) var(--space-m) 0`). The
+/// row's width comes from the chat window; the child fills it less the side margins.
 final class PetRowInset: NSView {
     init(_ child: NSView, top: Double = 0, bottom: Double = 0) {
         super.init(frame: .zero)
@@ -638,11 +757,69 @@ final class PetRowInset: NSView {
         child.translatesAutoresizingMaskIntoConstraints = false
         addSubview(child)
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: CGFloat(PetTokens.Size.chatWidth)),
             child.topAnchor.constraint(equalTo: topAnchor, constant: CGFloat(top)),
             child.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -CGFloat(bottom)),
-            child.centerXAnchor.constraint(equalTo: centerXAnchor),
+            child.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(PetTokens.Space.m)),
+            child.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(PetTokens.Space.m)),
         ])
     }
     required init?(coder: NSCoder) { fatalError("not used") }
+}
+
+/// A thin invisible strip on a free edge (or corner) of the chat; dragging it resizes the chat.
+final class PetChatResizeHandle: NSView {
+    let edge: PetChatEdge
+    var onBegin: (() -> Void)?
+    var onDrag: ((PetChatEdge, CGFloat, CGFloat) -> Void)?
+    var onEnd: (() -> Void)?
+    private var start: NSPoint?
+
+    init(edge: PetChatEdge) {
+        self.edge = edge
+        super.init(frame: .zero)
+        setAccessibilityElement(false)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.cursorUpdate, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private var cursor: NSCursor {
+        switch edge {
+        case .left: return .resizeLeftRight
+        case .top, .bottom: return .resizeUpDown
+        case .topLeft, .bottomLeft:
+            #if compiler(>=6.0)
+            if #available(macOS 15.0, *) {
+                return NSCursor.frameResize(position: edge == .topLeft ? .topLeft : .bottomLeft, directions: .all)
+            }
+            #endif
+            return .crosshair
+        }
+    }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: cursor) }
+    override func cursorUpdate(with event: NSEvent) { cursor.set() }
+
+    override func mouseDown(with event: NSEvent) {
+        start = NSEvent.mouseLocation
+        onBegin?()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let s = start else { return }
+        let m = NSEvent.mouseLocation
+        onDrag?(edge, m.x - s.x, m.y - s.y)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard start != nil else { return }
+        start = nil
+        onEnd?()
+    }
+}
+
+extension PetRect {
+    init(_ r: NSRect) { self.init(x: Double(r.minX), y: Double(r.minY), width: Double(r.width), height: Double(r.height)) }
 }
