@@ -13,6 +13,8 @@ final class PetCharacterView: NSView {
     private let previousLayer = CALayer()
     private let currentLayer = CALayer()
     private let badge = PetBox()
+    /// The hold-to-talk ring (fills for 2 s, then the sound level while recording).
+    let holdRing = PetHoldRing()
     private let badgeIcon = NSImageView()
     private var motion: PetMotion
     private var timer: Timer?
@@ -70,6 +72,8 @@ final class PetCharacterView: NSView {
             figure.addSublayer(l)
         }
         layer?.addSublayer(figure)
+        holdRing.layout(in: bounds)
+        layer?.addSublayer(holdRing)
         buildBadge()
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
@@ -84,6 +88,7 @@ final class PetCharacterView: NSView {
 
     deinit {
         timer?.invalidate()
+        holdTimer?.invalidate()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
@@ -100,6 +105,9 @@ final class PetCharacterView: NSView {
     func stop() {
         timer?.invalidate()
         timer = nil
+        holdTimer?.invalidate()
+        holdTimer = nil
+        holdRing.show(progress: nil, recordingLevel: nil, appearance: effectiveAppearance)
     }
 
     @objc private func displayOptionsChanged() {
@@ -243,6 +251,42 @@ final class PetCharacterView: NSView {
         kick()
     }
 
+    // MARK: hold to talk (PetHoldGesture): press and keep still → the ring fills → recording until let go
+
+    private var holdTimer: Timer?
+    private static var seconds: Double { CACurrentMediaTime() }
+
+    private var mouseInsidePet: Bool { window.map { $0.frame.contains(NSEvent.mouseLocation) } ?? false }
+
+    /// Runs while the pet is held or recording: fills the ring, starts recording when it is full, shows the level.
+    private func startHoldTimer() {
+        holdTimer?.invalidate()
+        let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.holdStep() }
+        RunLoop.main.add(t, forMode: .common)
+        holdTimer = t
+        holdStep()
+    }
+
+    private func holdStep() {
+        guard let module = module else { return }
+        _ = module.holdTick(at: PetCharacterView.seconds)
+        let g = module.voice.gesture
+        if g.isFilling {
+            holdRing.show(progress: g.progress(at: PetCharacterView.seconds), recordingLevel: nil, appearance: effectiveAppearance)
+        } else if g.isRecording, module.voice.holdRecording {
+            holdRing.show(progress: nil, recordingLevel: module.serverRecorder.level, appearance: effectiveAppearance)
+        } else {
+            holdRing.show(progress: nil, recordingLevel: nil, appearance: effectiveAppearance)
+            holdTimer?.invalidate()
+            holdTimer = nil
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53, module?.holdEscape() == true { return }  // Esc
+        super.keyDown(with: event)
+    }
+
     override func mouseDown(with event: NSEvent) {
         dragStartMouse = NSEvent.mouseLocation
         dragStartOrigin = window?.frame.origin
@@ -251,13 +295,21 @@ final class PetCharacterView: NSView {
         motion.press(at: PetCharacterView.now)
         gate.interacting = true
         kick()
+        let m = NSEvent.mouseLocation
+        module?.holdDown(at: PetCharacterView.seconds, x: Double(m.x), y: Double(m.y))
+        startHoldTimer()
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let m0 = dragStartMouse, let o0 = dragStartOrigin, let w = window else { return }
         let m = NSEvent.mouseLocation
         let dx = m.x - m0.x, dy = m.y - m0.y
-        if !dragged && abs(dx) < 3 && abs(dy) < 3 { return }
+        if !dragged {
+            // Still a press: the gesture says whether it became a drag, keeps recording, or cancels (dragged out).
+            let e = module?.holdMove(at: PetCharacterView.seconds, x: Double(m.x), y: Double(m.y), insidePet: mouseInsidePet) ?? .dragStarted
+            holdStep()
+            if e != .dragStarted { return }
+        }
         if !dragged { module?.showNameTag(nil) }
         dragged = true
         w.setFrameOrigin(NSPoint(x: o0.x + dx, y: o0.y + dy))
@@ -274,9 +326,11 @@ final class PetCharacterView: NSView {
         let t = PetCharacterView.now
         if dragged { motion.drop(at: t) }
         motion.release(at: t)
+        let e = module?.holdUp(at: PetCharacterView.seconds) ?? .click
+        holdStep()
         if dragged {
             if let o = window?.frame.origin { module?.petMoved(to: o) }
-        } else {
+        } else if e == .click {
             module?.toggleChat()
         }
         dragged = false

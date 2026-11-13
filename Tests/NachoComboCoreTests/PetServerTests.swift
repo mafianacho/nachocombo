@@ -32,8 +32,9 @@ final class PetServerFrameTests: XCTestCase {
 
         let approval = PetCard.decode(["id": "x", "kind": "approval", "status": "pending", "version": 1,
                                        "payload": ["title": "예약", "amount": 30000, "merchant": "파스타집", "action_type": "payment"]])
-        XCTAssertFalse(approval.answerableHere, "approvals stay on the phone app")
-        XCTAssertEqual(approval.statusText, "휴대폰의 나초 앱에서 승인해 주세요")
+        // Approvals are answered here now (실행 / 거절, handoff A 1570802313768083457).
+        XCTAssertTrue(approval.answerableHere)
+        XCTAssertEqual(approval.statusText, "실행할지 답해 주세요")
         XCTAssertEqual(approval.detail, "파스타집 · 30,000원")
 
         let task = frame(#"{"type":"task_update","room_id":"r","task":{"id":"t1","state":"running","title":"파스타집 예약","current_step":{"text":"자리 찾는 중","index":2,"total":4}}}"#)
@@ -494,6 +495,33 @@ final class PetServerSessionTests: XCTestCase {
         s.sendMemoryFeedback(turnID: id, text: "   ") { reply = $0 }
         settle(s)
         XCTAssertEqual(http.sent("POST", "/api/v1/memory/feedback").count, 1, "empty text: no call")
+    }
+
+    /// Hold-to-talk before the chat was ever ready: the server's dictation settings are read first; the text then goes
+    /// out as a message marked as spoken (typed messages are not).
+    func testSpokenTurnIsMarkedAndDictationReadsTheConfigFirst() {
+        http.on("POST", "/api/v1/dictation", 200, #"{"text":"내일 날씨 알려 줘","language":"ko","duration_sec":2.5}"#)
+        let s = session()
+        s.signIn(); settle(s)
+        XCTAssertNil(s.snapshot.config, "no `ready` yet, so no config")
+        var got: Result<String, PetAPIError>?
+        s.dictate(audio: Data([1, 2, 3]), mime: "audio/mp4", fileName: "dictation.m4a", durationSec: 2.5) { got = $0 }
+        settle(s)
+        XCTAssertEqual(http.sent("GET", "/client/config").count, 1)
+        XCTAssertEqual(http.sent("POST", "/api/v1/dictation").count, 1)
+        XCTAssertEqual(try? got?.get(), "내일 날씨 알려 줘")
+
+        let chat = factory.with(path: "/ws/chat")[0]
+        chat.deliver(#"{"type":"ready","user_id":"u","agent_id":"\#(agent)","agent_name":"나초","room_id":"\#(room)"}"#)
+        settle(s)
+        s.send(text: "내일 날씨 알려 줘", voice: true); settle(s)
+        let spoken = s.snapshot.chat.turns[0].clientMsgID
+        XCTAssertEqual(s.snapshot.voiceTurns, [spoken])
+        XCTAssertEqual(s.snapshot.chat.turns[0].userText, "내일 날씨 알려 줘", "shown as the user's bubble")
+        chat.deliver(#"{"type":"done","room_id":"\#(room)","client_id":"\#(spoken)","message_id":"a1","stopped":false}"#)
+        settle(s)
+        s.send(text: "고마워"); settle(s)
+        XCTAssertEqual(s.snapshot.voiceTurns, [spoken], "a typed message is not spoken")
     }
 
     func testChoiceCardAnsweredHereAndConflictsRefresh() {
