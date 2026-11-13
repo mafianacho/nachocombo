@@ -118,6 +118,24 @@ public enum PetServerAPI {
         return .postJSON(url(e, "/api/v1/chat/requests/\(card.id)/answer"), bearer: bearer, json: json)
     }
 
+    /// `GET /api/v1/tasks/{id}` → Task (spec/tasks.tsp).
+    public static func taskRequest(_ e: ServerEndpoint, bearer: String?, taskID: String) -> PetHTTPRequest {
+        .get(url(e, "/api/v1/tasks/\(taskID)"), bearer: bearer)
+    }
+
+    /// `POST /api/v1/tasks/{id}/start {expected_estimate_id}` → Task, or 409 `estimate_changed` with the task
+    /// carrying the new estimate. Not planned → the current task (idempotent).
+    public static func startTaskRequest(_ e: ServerEndpoint, bearer: String?, taskID: String, expectedEstimateID: String?) -> PetHTTPRequest {
+        var json: [String: Any] = [:]
+        if let id = expectedEstimateID { json["expected_estimate_id"] = id }
+        return .postJSON(url(e, "/api/v1/tasks/\(taskID)/start"), bearer: bearer, json: json)
+    }
+
+    /// `POST /api/v1/tasks/{id}/cancel` → Task (canceled; already ended → the current task).
+    public static func cancelTaskRequest(_ e: ServerEndpoint, bearer: String?, taskID: String) -> PetHTTPRequest {
+        .postJSON(url(e, "/api/v1/tasks/\(taskID)/cancel"), bearer: bearer, json: [:])
+    }
+
     // MARK: decoding
 
     public static func decodeHistory(_ resp: PetHTTPResponse) -> PetHistoryPage? {
@@ -227,4 +245,38 @@ public struct PetServerCalls {
         run(PetServerAPI.answerCardRequest(endpoint, bearer: bearer, card: card, action: action, optionIDs: optionIDs),
             { PetServerAPI.decodeCard($0.body) }, completion)
     }
+
+    public func task(id: String, completion: @escaping (Result<PetTask, PetAPIError>) -> Void) {
+        run(PetServerAPI.taskRequest(endpoint, bearer: bearer, taskID: id), { PetTask.decode($0.body) }, completion)
+    }
+
+    /// Start a planned task. 409 `estimate_changed` is not an error here: it carries the task with the new estimate.
+    public func startTask(id: String, expectedEstimateID: String?, completion: @escaping (Result<PetTaskStart, PetAPIError>) -> Void) {
+        http.send(PetServerAPI.startTaskRequest(endpoint, bearer: bearer, taskID: id, expectedEstimateID: expectedEstimateID)) { r in
+            switch r {
+            case .failure: completion(.failure(.network))
+            case let .success(resp):
+                if (200...299).contains(resp.status) {
+                    completion(PetTask.decode(resp.body).map { .success(.started($0)) } ?? .failure(.badResponse))
+                } else if resp.status == 409, PetServerError.code(resp.body) == "estimate_changed",
+                          let o = (try? JSONSerialization.jsonObject(with: resp.body)) as? JSONObject, let t = o.obj("task") {
+                    completion(.success(.estimateChanged(PetTask.decode(t))))
+                } else {
+                    completion(.failure(.from(resp)))
+                }
+            }
+        }
+    }
+
+    public func cancelTask(id: String, completion: @escaping (Result<PetTask, PetAPIError>) -> Void) {
+        run(PetServerAPI.cancelTaskRequest(endpoint, bearer: bearer, taskID: id), { PetTask.decode($0.body) }, completion)
+    }
+}
+
+/// The answer to `POST /tasks/{id}/start`.
+public enum PetTaskStart: Equatable {
+    /// Started (running / queued), or the task's current state when it was not planned any more.
+    case started(PetTask)
+    /// Not started: the estimate changed since the user saw it; the task carries the new one.
+    case estimateChanged(PetTask)
 }

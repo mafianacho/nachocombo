@@ -315,6 +315,16 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         }
     }
 
+    /// [시작] / [취소] on a plan card (a task the server holds until it is confirmed). A refusal or a changed estimate
+    /// shows as the card's one line (ChatState.taskNotices), so nothing is flashed here.
+    func taskAction(_ id: String, action: String) {
+        switch action {
+        case "start": session.startTask(id: id)
+        case "cancel": session.cancelTask(id: id)
+        default: break
+        }
+    }
+
     /// "기억이 틀렸어요": asks what is wrong, then sends it as memory feedback for that answer.
     func askMemoryFeedback(turnID: String) {
         let alert = NSAlert()

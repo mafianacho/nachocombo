@@ -207,21 +207,57 @@ public struct PetTask: Equatable {
     public var waitReason: String?
     public var pendingRequestID: String?
     public var failure: String?
+    /// The estimate the server compares a start against (`POST /tasks/{id}/start {expected_estimate_id}`).
+    public var estimateID: String?
+    public var estimateMin: Int?
+    public var estimateMax: Int?
+    /// Server version of the task; a lower one never overwrites a higher one (0 = not given).
+    public var version: Int
+
+    public init(id: String, state: String, title: String, step: String? = nil, waitReason: String? = nil,
+                pendingRequestID: String? = nil, failure: String? = nil, estimateID: String? = nil, estimateMin: Int? = nil,
+                estimateMax: Int? = nil, version: Int = 0) {
+        self.id = id; self.state = state; self.title = title; self.step = step; self.waitReason = waitReason
+        self.pendingRequestID = pendingRequestID; self.failure = failure; self.estimateID = estimateID
+        self.estimateMin = estimateMin; self.estimateMax = estimateMax; self.version = version
+    }
 
     static func decode(_ o: JSONObject) -> PetTask {
         let step = o.obj("current_step")
         var stepText = step?.str("text")
         if let s = stepText, let i = step?.int("index"), let n = step?.int("total"), n > 0 { stepText = "\(s) (\(i)/\(n))" }
+        let credit = o.obj("credit") ?? [:]
+        let estimate = credit.obj("estimate") ?? [:]
         return PetTask(id: o.str("id") ?? "", state: o.str("state") ?? "", title: o.str("title") ?? "작업",
                        step: stepText, waitReason: o.str("wait_reason"), pendingRequestID: o.str("pending_request_id"),
-                       failure: o.obj("failure").map { ErrorText.userMessage(code: $0.str("code") ?? "", reason: nil, fallback: "") })
+                       failure: o.obj("failure").map { ErrorText.userMessage(code: $0.str("code") ?? "", reason: nil, fallback: "") },
+                       // The server compares the start against the task's `estimate_id`; `credit.estimate_id` is the same value.
+                       estimateID: o.str("estimate_id") ?? credit.str("estimate_id"),
+                       estimateMin: estimate.int("estimate_min"), estimateMax: estimate.int("estimate_max"),
+                       version: o.int("version") ?? 0)
+    }
+
+    public static func decode(_ data: Data) -> PetTask? {
+        guard let o = (try? JSONSerialization.jsonObject(with: data)) as? JSONObject, o.str("id") != nil else { return nil }
+        return decode(o)
     }
 
     public var isOpen: Bool { ["planned", "queued", "running", "waiting"].contains(state) }
 
+    /// A big task the server holds until the user starts it (plan_mode full): [시작] / [취소].
+    public var needsStartConfirm: Bool { state == "planned" }
+
+    /// "약 40~60크레딧" (nil without an estimate).
+    public var estimateText: String? {
+        guard let hi = estimateMax, hi > 0 else { return nil }
+        let lo = estimateMin ?? hi
+        return lo == hi ? "약 \(PetText.number(hi))크레딧" : "약 \(PetText.number(lo))~\(PetText.number(hi))크레딧"
+    }
+
     public var statusText: String {
         switch state {
-        case "planned", "queued": return "곧 시작해요"
+        case "planned": return "시작 확인 필요"
+        case "queued": return "곧 시작해요"
         case "running": return step ?? "하고 있어요"
         case "waiting":
             switch waitReason {

@@ -58,6 +58,10 @@ public final class PetSession {
     private var refreshTried = false
     private var nextPendingID = 1
     private var opened = false
+    /// Tasks whose [시작]/[취소] request is out (on `queue`): a second press sends nothing.
+    fileprivate var taskActionsInFlight: Set<String> = []
+    /// Plan-note tasks already looked up with `GET /tasks/{id}` (once each).
+    fileprivate var taskLookups: Set<String> = []
 
     public init(settings: PetSettings, http: PetHTTPClient, secrets: PetSecretStore, browser: PetAuthBrowser?,
                 makeTransport: @escaping () -> WebSocketTransport, executor: PetCommandExecuting?,
@@ -154,6 +158,8 @@ public final class PetSession {
             chat?.disconnect()
             chat = nil
             state.chat = ChatState()
+            taskActionsInFlight = []
+            taskLookups = []
         }
     }
 
@@ -307,6 +313,7 @@ public final class PetSession {
         default:
             break
         }
+        lookUpPlanTasks()
         publish()
     }
 
@@ -847,6 +854,111 @@ extension PetSession {
                             self.failed(e)
                             completion?(e.text)
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - tasks the server holds until the user starts them (plan notes)
+
+extension PetSession {
+    /// Changes the chat state: through the chat client when there is one (its state is the source), else directly.
+    private func updateChat(_ body: @escaping (inout ChatState) -> Void) {
+        if let c = chat { c.update(body) } else { body(&state.chat); publish() }
+    }
+
+    /// [시작] on a plan card: `POST /tasks/{id}/start {expected_estimate_id}` with the estimate shown on the card.
+    /// `completion` (on `queue`): nil when started, else the one line shown (also kept under the card).
+    public func startTask(id: String, completion: ((String?) -> Void)? = nil) {
+        queue.async {
+            guard self.beginTaskAction(id, "start", completion) else { return }
+            let expected = self.state.chat.tasks[id]?.estimateID
+            self.withCalls { calls in
+                guard let calls = calls else { self.endTaskAction(id, task: nil, notice: AuthProblem.signedOut.koreanMessage, completion); return }
+                calls.startTask(id: id, expectedEstimateID: expected) { r in
+                    self.queue.async {
+                        switch r {
+                        case let .success(.started(t)):
+                            self.endTaskAction(id, task: t, notice: nil, completion)
+                        case let .success(.estimateChanged(t)):
+                            let text = "예상 사용량이 바뀌었어요" + (t.estimateText.map { " (\($0))" } ?? "") + ". 확인하고 다시 눌러 주세요."
+                            self.endTaskAction(id, task: t, notice: text, completion)
+                        case let .failure(e):
+                            if e.isUnauthorized { self.state.auth = .signedOut }
+                            self.endTaskAction(id, task: nil, notice: Self.taskRefusal(e), completion)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// [취소] on a plan card: `POST /tasks/{id}/cancel`.
+    public func cancelTask(id: String, completion: ((String?) -> Void)? = nil) {
+        queue.async {
+            guard self.beginTaskAction(id, "cancel", completion) else { return }
+            self.withCalls { calls in
+                guard let calls = calls else { self.endTaskAction(id, task: nil, notice: AuthProblem.signedOut.koreanMessage, completion); return }
+                calls.cancelTask(id: id) { r in
+                    self.queue.async {
+                        switch r {
+                        case let .success(t): self.endTaskAction(id, task: t, notice: nil, completion)
+                        case let .failure(e):
+                            if e.isUnauthorized { self.state.auth = .signedOut }
+                            self.endTaskAction(id, task: nil, notice: Self.taskRefusal(e), completion)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// On `queue`. False (and nothing sent) while a start/cancel of this task is out.
+    private func beginTaskAction(_ id: String, _ action: String, _ completion: ((String?) -> Void)?) -> Bool {
+        guard !id.isEmpty else { completion?("이 작업을 찾지 못했어요."); return false }
+        guard !taskActionsInFlight.contains(id) else { completion?("처리하고 있어요. 잠시만요."); return false }
+        taskActionsInFlight.insert(id)
+        state.lastInteraction = now()
+        updateChat { s in
+            s.taskActions[id] = action
+            s.taskNotices[id] = nil
+        }
+        return true
+    }
+
+    private func endTaskAction(_ id: String, task: PetTask?, notice: String?, _ completion: ((String?) -> Void)?) {
+        taskActionsInFlight.remove(id)
+        updateChat { s in
+            s.taskActions[id] = nil
+            if let t = task { s.applyTask(t) }
+            s.taskNotices[id] = notice
+        }
+        completion?(notice)
+    }
+
+    /// The refusal of a start/cancel as one Korean line (`not_found` is about the task here, not an attachment).
+    static func taskRefusal(_ e: PetAPIError) -> String {
+        e.code == "not_found" ? "이 작업을 찾지 못했어요." : e.text
+    }
+
+    /// Plan notes in the record whose task this chat has not heard of (e.g. loaded with the history): read each once,
+    /// so the card shows its buttons only while the task is really waiting to be started.
+    fileprivate func lookUpPlanTasks() {
+        guard state.auth == .signedIn else { return }
+        let ids = state.chat.history.compactMap { m -> String? in
+            guard m.noteKind == "plan", let t = m.taskID, state.chat.tasks[t] == nil, !taskLookups.contains(t) else { return nil }
+            return t
+        }
+        guard !ids.isEmpty else { return }
+        for id in ids.suffix(10) {
+            taskLookups.insert(id)
+            withCalls { calls in
+                calls?.task(id: id) { r in
+                    self.queue.async {
+                        guard case let .success(t) = r else { return }
+                        self.updateChat { $0.applyTask(t) }
                     }
                 }
             }

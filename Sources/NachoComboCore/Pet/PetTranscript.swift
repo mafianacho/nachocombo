@@ -108,7 +108,7 @@ public struct PetCardItem: Equatable {
 }
 
 public enum PetLinks {
-    /// Links in the transcript: `nachopet://<action>?…` (older, forget, undo, memfb, card).
+    /// Links in the transcript: `nachopet://<action>?…` (older, forget, undo, memfb, card, task).
     public static func url(_ action: String, _ items: [String: String] = [:]) -> URL {
         var c = URLComponents()
         c.scheme = "nachopet"
@@ -212,7 +212,7 @@ public enum PetTranscript {
             return (ActivityText.label(st.chat.activity == .idle ? .typing : st.chat.activity, tool: st.chat.activeTool), .busy)
         }
         if let t = st.chat.task {
-            let waits = t.state == "waiting"
+            let waits = t.state == "waiting" || t.needsStartConfirm
             if t.isOpen || st.chat.turns.last?.taskID == t.id { return ("\(t.title) · \(t.statusText)", waits ? .wait : (t.isOpen ? .busy : .ok)) }
         }
         if st.config?.serviceNotice != nil { return ("연결됨", .wait) }
@@ -238,9 +238,17 @@ public enum PetTranscript {
         let chat = st.chat
         if st.loadingHistory { out.append(.older(loading: true)) } else if chat.hasMoreHistory { out.append(.older(loading: false)) }
 
+        // Plan cards (tasks held until the user starts them) show under the turn that asked, else where their note is.
+        let turnTaskIDs = Set(chat.turns.compactMap { $0.taskID })
+        var planShown: Set<String> = []
+
         // The room record: earlier talk, other devices, finished tasks.
         for m in chat.history {
             if let c = m.card { out.append(.card(card(chat.cards.first { $0.id == c.id } ?? c))); continue }
+            if m.noteKind == "plan", let t = m.taskID {
+                if turnTaskIDs.contains(t) { continue }
+                if let p = planCard(taskID: t, chat: chat) { out.append(.card(p)); planShown.insert(t); continue }
+            }
             if m.contentType == "system_note" { out.append(.note(m.text)); continue }
             let mine = m.role == "user"
             if !m.text.isEmpty { out.append(mine ? .mine(text: m.text, attachments: [], past: true) : .nacho(text: m.text, past: true, streaming: false)) }
@@ -272,7 +280,11 @@ public enum PetTranscript {
             switch turn.status {
             case .sending: break
             case .streaming: break
-            case .done: if answer.isEmpty, turn.taskID != nil { answer = "일로 맡았어요. 진행 상황은 여기에 보여 드릴게요." }
+            case .done:
+                if answer.isEmpty, let t = turn.taskID {
+                    answer = chat.tasks[t]?.needsStartConfirm == true ? "일로 맡았어요. 확인해 주시면 시작할게요."
+                        : "일로 맡았어요. 진행 상황은 여기에 보여 드릴게요."
+                }
             case .stopped: answer += answer.isEmpty ? "(멈췄어요)" : " (멈춤)"
             case let .failed(m): failure = m
             case .interrupted: failure = "연결이 끊겨 답이 끝나지 않았어요. 다시 연결되면 이어서 보여 드려요."
@@ -287,6 +299,10 @@ public enum PetTranscript {
                 if open { out.append(.sentContext(r.rows)) }
             }
             for id in turn.cardIDs { if let c = chat.cards.first(where: { $0.id == id }) { out.append(.card(card(c))) } }
+            if let t = turn.taskID, !planShown.contains(t), let p = planCard(taskID: t, chat: chat) {
+                out.append(.card(p))
+                planShown.insert(t)
+            }
             // Memory: first what this answer used, then what it changed (one line per change, updated in place).
             if !turn.usedMemoryIDs.isEmpty, turn.status == .done {
                 out.append(.line(PetChatLine(kind: .memory, symbol: "brain", parts: [
@@ -300,6 +316,10 @@ public enum PetTranscript {
         let inTurns = Set(chat.turns.flatMap { $0.cardIDs })
         let inHistory = Set(chat.history.compactMap { $0.card?.id })
         for c in chat.cards where c.isPending && !inTurns.contains(c.id) && !inHistory.contains(c.id) { out.append(.card(card(c))) }
+        // A task waiting to be started whose plan note is not on screen (e.g. it came from the phone): its card at the end.
+        if let t = chat.task, t.needsStartConfirm, !planShown.contains(t.id), let p = planCard(taskID: t.id, chat: chat) {
+            out.append(.card(p))
+        }
         if let n = chat.lastNotification { out.append(.line(PetChatLine(kind: .notification, symbol: "bell", parts: [PetTextPart(n)]))) }
         if let u = chat.usage, u.exhausted || u.lowBalance || u.blockReason != nil {
             out.append(.line(PetChatLine(kind: .usage, symbol: "creditcard", parts: [PetTextPart(u.summary)])))
@@ -326,6 +346,45 @@ public enum PetTranscript {
     static func chip(_ f: PetFileLink) -> PetFileChip {
         let url = f.deleted ? nil : f.url.flatMap { URL(string: $0) }.flatMap { ["https", "http"].contains($0.scheme ?? "") ? $0 : nil }
         return PetFileChip(name: f.name, isImage: f.kind == "image", url: url, byNacho: f.byNacho, deleted: f.deleted)
+    }
+
+    /// Id prefix of plan cards (not server cards: number keys and card answers never go to them).
+    public static let planCardPrefix = "plan-"
+
+    /// The card for a task the server holds until the user starts it (plan note `… · 약 N~M크레딧 · 확인 후 시작해 주세요`).
+    /// [시작]·[취소] only while the task is known to be planned and no press is out; afterwards the task's state.
+    /// Nil when there is neither a plan note nor a planned task.
+    public static func planCard(taskID: String, chat: ChatState) -> PetCardItem? {
+        let note = chat.planNote(taskID: taskID)
+        let task = chat.tasks[taskID] ?? (chat.task?.id == taskID ? chat.task : nil)
+        let action = chat.taskActions[taskID]
+        let notice = chat.taskNotices[taskID]
+        guard note != nil || task?.needsStartConfirm == true || action != nil || notice != nil else { return nil }
+        let parts = (note?.text ?? "").components(separatedBy: " · ")
+        let title = task?.title ?? (parts.first.flatMap { $0.isEmpty ? nil : $0 } ?? "작업")
+        let detail = task?.estimateText ?? parts.first { $0.contains("크레딧") }
+        var options: [PetCardItem.Option] = []
+        var status = notice
+        var waits = false
+        if let t = task, t.needsStartConfirm || action != nil {
+            let live = action == nil
+            options = [
+                PetCardItem.Option(label: action == "start" ? "시작하는 중…" : "시작",
+                                   link: live ? PetLinks.url("task", ["id": taskID, "action": "start"]) : nil, chosen: action == "start",
+                                   role: .primary),
+                PetCardItem.Option(label: action == "cancel" ? "취소하는 중…" : "취소",
+                                   link: live ? PetLinks.url("task", ["id": taskID, "action": "cancel"]) : nil, chosen: action == "cancel",
+                                   role: .quiet),
+            ]
+            if status == nil, live { status = "확인 후 시작해 주세요" }
+            waits = true
+        } else if let t = task {
+            status = status ?? t.statusText
+            waits = t.state == "waiting"
+        }
+        // Drawn like an approval (실행-style row above a quiet one); not a server card, so number keys never go to it.
+        return PetCardItem(id: planCardPrefix + taskID, symbol: "play.circle", title: title, detail: detail, options: options,
+                           status: status, statusWaits: waits, style: .approval)
     }
 
     /// One card as the chat shows it (also used by the dev CLI).
@@ -370,7 +429,7 @@ public enum PetTranscript {
     /// The newest card in the log that waits for an answer here: the number keys go to it.
     public static func activeCardID(_ items: [PetChatItem]) -> String? {
         for item in items.reversed() {
-            if case let .card(c) = item, c.style != .elsewhere, c.statusWaits || c.options.contains(where: { $0.link != nil }) { return c.id }
+            if case let .card(c) = item, c.style != .elsewhere, !c.id.hasPrefix(planCardPrefix), c.statusWaits || c.options.contains(where: { $0.link != nil }) { return c.id }
         }
         return nil
     }
