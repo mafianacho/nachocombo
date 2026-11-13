@@ -109,3 +109,23 @@ jobs:
             --verify-tag \
             --title "Nacho Combo $VERSION" \
             --notes-file notes.md
+
+  # Posts the release link and details to the deploy channel. Runs only after the release exists;
+  # without the DISCORD_DEPLOY_WEBHOOK secret it prints a notice and succeeds.
+  notify:
+    needs: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Post release to Discord
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # A secret, not a repository variable: variables are printed in this public repository's logs.
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+        run: scripts/notify-discord-release.sh

@@ -1,0 +1,38 @@
+name: Release notify (manual)
+
+# Re-sends the Discord deploy-channel message for an existing release, e.g. when the automatic
+# message from release.yml failed or the tag was pushed before release.yml had the notify job.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to announce (vMAJOR.MINOR.PATCH)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Check tag format
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "tag '$TAG' is not vMAJOR.MINOR.PATCH" >&2; exit 1 ;;
+          esac
+      - name: Post release to Discord
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+        run: scripts/notify-discord-release.sh
