@@ -157,6 +157,19 @@ final class PetChatFollowResizeCaptureTests: XCTestCase {
                 XCTAssertEqual(row.frame.width, chat.frame.width, accuracy: 0.5, "\(type(of: row)) follows the window width")
             }
         }
+        // The header's tabs keep their size at the right; the extra width goes to the name/status column.
+        func tabs(_ chat: PetChatWindow) throws -> NSRect {
+            let content = try XCTUnwrap(chat.contentView)
+            let column = try XCTUnwrap(content.subviews.first?.subviews.first as? NSStackView)
+            let head = try XCTUnwrap(column.arrangedSubviews.first)
+            let row = try XCTUnwrap(head.subviews.compactMap { $0 as? NSStackView }.first)
+            content.layoutSubtreeIfNeeded()
+            return row.convert(try XCTUnwrap(row.arrangedSubviews.last).frame, to: head)
+        }
+        let (bigTabs, smallTabs) = (try tabs(large), try tabs(small))
+        XCTAssertEqual(bigTabs.width, smallTabs.width, accuracy: 0.5, "tabs do not stretch with the window")
+        XCTAssertLessThan(smallTabs.width, 140, "tabs are sized to their two labels")
+        XCTAssertEqual(bigTabs.maxX, large.frame.width - CGFloat(PetTokens.Space.m), accuracy: 0.5, "tabs at the right")
         // Bigger than the screen: clamped to it, shown in the room above the pet without covering it.
         let huge = makeChat(size: PetChatSize(width: 5000, height: 5000))
         huge.place(petFrame: p, screen: screen)

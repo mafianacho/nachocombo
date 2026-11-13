@@ -158,8 +158,9 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         who.alignment = .leading
         who.spacing = 0
         who.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        // Extra width (a resized chat) goes to the name/status column; the tabs keep their size at the right.
-        who.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        // Extra width goes to the name/status column; the tabs keep their own size at the right. (Stack views take
+        // `setHuggingPriority`, not the content hugging of views with an intrinsic size.)
+        who.setHuggingPriority(NSLayoutConstraint.Priority(200), for: .horizontal)
 
         let seg = PetBox()
         seg.fill = PetTheme.color(\.surface)
@@ -179,8 +180,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         NSLayoutConstraint.activate([segRow.topAnchor.constraint(equalTo: seg.topAnchor, constant: 2), segRow.bottomAnchor.constraint(equalTo: seg.bottomAnchor, constant: -2),
                                      segRow.leadingAnchor.constraint(equalTo: seg.leadingAnchor, constant: 2), segRow.trailingAnchor.constraint(equalTo: seg.trailingAnchor, constant: -2)])
 
-        for v in [seg, segRow] as [NSView] { v.setContentHuggingPriority(.required, for: .horizontal) }
-        for b in tabButtons { b.setContentHuggingPriority(.required, for: .horizontal) }
+        segRow.setHuggingPriority(.required, for: .horizontal)
         let row = NSStackView(views: [avatar, who, seg])
         row.spacing = CGFloat(Sp.s)
         row.translatesAutoresizingMaskIntoConstraints = false
