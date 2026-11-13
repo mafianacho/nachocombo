@@ -261,6 +261,7 @@ final class PetCharacterView: NSView {
         if !dragged { module?.showNameTag(nil) }
         dragged = true
         w.setFrameOrigin(NSPoint(x: o0.x + dx, y: o0.y + dy))
+        module?.petDragged()
         let t = PetCharacterView.now
         if let last = lastDrag, t > last.t {
             motion.drag(velocityX: Double(m.x - last.x) / (t - last.t) * 1000, at: t)
@@ -297,6 +298,7 @@ final class PetCharacterView: NSView {
             menu.addItem(ClosureMenuItem(title: "나초 계정으로 로그인") { module.openChat(); module.signIn() })
         }
         menu.addItem(ClosureMenuItem(title: "오른쪽 아래로 돌려놓기") { module.resetPosition() })
+        menu.addItem(ClosureMenuItem(title: "대화창 크기 원래대로") { module.resetChatSize() })
         menu.addItem(ClosureMenuItem(title: "Nacho Pet 설정…") { module.openSettings?() })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(title: "나초 숨기기 (Nacho Pet 끄기)") { module.turnOff?() })

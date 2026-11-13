@@ -159,8 +159,29 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         onChange?()
     }
 
+    /// The pet was dropped somewhere: remember the place, and the open chat comes along.
     func petMoved(to origin: NSPoint) {
         update { $0.petPosition = PetPosition(x: Double(origin.x), y: Double(origin.y)) }
+        followPet()
+    }
+
+    /// On every drag event of the pet: the open chat follows it (text being typed, focus and a streaming answer stay).
+    func petDragged() { followPet() }
+
+    private func followPet() {
+        guard let chat = chatWindow, chat.isVisible else { return }
+        chat.position(near: petWindow)
+    }
+
+    /// The user finished dragging an edge of the chat: kept for the next time (nil = the design's default).
+    func chatResized(to size: PetChatSize) {
+        update { $0.chatSize = PetChatLayout.saved(size) }
+    }
+
+    /// The pet's menu "대화창 크기 원래대로".
+    func resetChatSize() {
+        update { $0.chatSize = nil }
+        chatWindow?.setBodySize(nil)
     }
 
     func resetPosition() {
