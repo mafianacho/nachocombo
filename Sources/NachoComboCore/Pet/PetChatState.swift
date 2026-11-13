@@ -73,6 +73,12 @@ public struct ChatState: Equatable {
     /// Cards by id, in arrival order.
     public var cards: [PetCard] = []
     public var task: PetTask?
+    /// Every task this chat has heard of (`task_update`, start/cancel answers, lookups for plan notes), by id.
+    public var tasks: [String: PetTask] = [:]
+    /// [시작] / [취소] pressed and not answered yet, by task id ("start" | "cancel"): the buttons are off meanwhile.
+    public var taskActions: [String: String] = [:]
+    /// One line under a plan card after a refused start/cancel or a changed estimate, by task id.
+    public var taskNotices: [String: String] = [:]
     public var usage: PetUsage?
     public var memoryNotes: [PetMemoryNote] = []
     /// Last notification worth a line (credits granted, connector events …).
@@ -216,7 +222,7 @@ public struct ChatState: Equatable {
                 turns[i].cardIDs.append(c.id)
             }
         case let .task(t):
-            task = t
+            applyTask(t, current: true)
             if let ci = frame.clientID, let i = turns.lastIndex(where: { $0.clientMsgID == ci }), turns[i].taskID == nil { turns[i].taskID = t.id }
         case var .memory(note):
             note.turnClientID = frame.clientID
@@ -245,6 +251,21 @@ public struct ChatState: Equatable {
             activity = .idle
             activeTool = nil
         }
+    }
+
+    /// A task's new state. `current` (a `task_update`) makes it the header's task; an answer to start/cancel or a
+    /// lookup only refreshes the header when it is already about that task. An older version never wins.
+    public mutating func applyTask(_ t: PetTask, current: Bool = false) {
+        guard !t.id.isEmpty else { return }
+        if let old = tasks[t.id], old.version > 0, t.version > 0, t.version < old.version { return }
+        tasks[t.id] = t
+        if current || task == nil || task?.id == t.id { task = t }
+        if !t.needsStartConfirm { taskNotices[t.id] = nil }
+    }
+
+    /// The plan note (`system_note` kind `plan`) the server posts for a task it holds until the user starts it.
+    public func planNote(taskID: String) -> ChatMessage? {
+        history.last { $0.noteKind == "plan" && $0.taskID == taskID }
     }
 
     /// A `memory_update`: new lines are added; the user's own forget/undo (echoed by the hub) updates its line.

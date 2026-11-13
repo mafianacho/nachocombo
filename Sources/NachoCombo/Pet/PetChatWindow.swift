@@ -605,6 +605,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         case "undo": if let u = q["u"] { module?.undoForget(u) }
         case "memfb": if let t = q["turn"] { module?.askMemoryFeedback(turnID: t) }
         case "card": if let id = q["id"], let a = q["action"] { module?.answerCard(id, action: a, options: q["option"].map { [$0] } ?? []) }
+        case "task": if let id = q["id"], let a = q["action"] { module?.taskAction(id, action: a) }
         case "cardrow": if let id = q["id"], let n = q["n"].flatMap(Int.init) { module?.cardRow(id, number: n) }
         case "cardconfirm": if let id = q["id"] { module?.cardConfirm(id) }
         case "cardretry": if let id = q["id"] { module?.cardRetry(id) }
