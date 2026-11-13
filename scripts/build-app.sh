@@ -3,12 +3,12 @@
 # BUILD_MODE=spm   (default) uses SwiftPM (needs a toolchain whose PackageDescription module is present)
 # BUILD_MODE=swiftc uses swiftc directly (works with a bare Command Line Tools install)
 # UNIVERSAL=1      (spm mode) builds a universal binary (arm64 + x86_64)
-# VERSION=x.y.z    sets CFBundleShortVersionString (default 0.8.0)
+# VERSION=x.y.z    sets CFBundleShortVersionString (default 0.8.1)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MODE="${BUILD_MODE:-spm}"
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.8.0}"
+VERSION="${VERSION:-0.8.1}"
 APP="build/NachoCombo.app"
 mkdir -p build
 if [ "$MODE" = "spm" ]; then
@@ -76,7 +76,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSLocalNetworkUsageDescription</key><string>Only when Computer Use's LAN mode is on: Nacho Combo opens its server to other computers on the same network (and, if you choose, announces it with Bonjour).</string>
 <key>NSBonjourServices</key><array><string>_nacho-mcp._tcp</string></array>
-<key>NSMicrophoneUsageDescription</key><string>Nacho Pet uses the microphone only while dictation is on (the mic button in the chat), to type what you say. Audio is not saved.</string>
+<key>NSMicrophoneUsageDescription</key><string>Nacho Pet uses the microphone only while you dictate (the mic button in the chat, or while you hold Nacho to talk), to type what you say. Audio is not saved.</string>
 <key>NSSpeechRecognitionUsageDescription</key><string>Nacho Pet turns what you dictate into text in the message box (macOS speech recognition, Korean). You send it yourself.</string>
 </dict></plist>
 PLIST

@@ -88,11 +88,15 @@ final class PetTranscriptTests: XCTestCase {
         XCTAssertEqual(header.text, "파스타집 예약 · 답을 기다려요")
         XCTAssertEqual(header.dot, .wait)
         XCTAssertNil(PetTranscript.headerCredits(st), "the task's state takes the space")
-        // An approval stays on the phone: no options, the note says where.
+        // An approval is answered here: 실행 above 거절, no note while it waits. A login stays on the phone.
         st.chat.cards[0].kind = "approval"
         guard case let .card(c)? = PetTranscript.items(st, undoSecondsLeft: { _ in nil }).last else { return XCTFail() }
-        XCTAssertEqual(c.status, "휴대폰의 나초 앱에서 승인해 주세요")
-        XCTAssertTrue(c.options.isEmpty)
+        XCTAssertNil(c.status)
+        XCTAssertEqual(c.options.map { "\($0.number) \($0.label)" }, ["1 실행", "2 거절"])
+        st.chat.cards[0].kind = "login"
+        guard case let .card(l)? = PetTranscript.items(st, undoSecondsLeft: { _ in nil }).last else { return XCTFail() }
+        XCTAssertEqual(l.status, "휴대폰의 나초 앱에서 이어서 해 주세요")
+        XCTAssertTrue(l.options.isEmpty)
         st.chat.task = nil
         XCTAssertEqual(PetTranscript.headerCredits(st), "크레딧 180")
     }

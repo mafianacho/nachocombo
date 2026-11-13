@@ -34,7 +34,8 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     private var displaysAsleep = false
     let dictation = PetDictationController()
     let serverRecorder = PetServerRecorder()
-    private(set) var dictationState = DictationState()
+    /// Settable from the voice extension (hold-to-talk drives the same listening state as the mic button).
+    var dictationState = DictationState()
     private(set) var commandsRun = 0
     // Selection bar (PetSelection*.swift): the flow, the event watch, the panel, opened "보낸 내용 보기" lists.
     private(set) var selection: PetSelectionFlow!
@@ -43,6 +44,10 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     var selectionExpanded: Set<String> = []
     var selectionTrustTimer: Timer?
     var selectionAnchor: NSRect?
+    // Cards answered here (ticks, number-key mark, sending, failure) and hold-to-talk with spoken replies
+    // (NachoPetModule+Voice.swift). Memory only.
+    var cardLocal: [String: PetCardLocal] = [:]
+    let voice = PetVoiceController()
 
     override init() {
         settings = settingsStore.load()
@@ -100,6 +105,8 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         nameTag?.orderOut(nil)
         petWindow?.characterView.stop()
         serverRecorder.cancel()
+        voice.holdRecording = false
+        voice.speaker.stop()
         dictation.stop()
         dictationState.stop()
         login.cancel()
@@ -222,13 +229,17 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     func signOut() { session.signOut() }
 
     func send(_ text: String, completion: @escaping (String?) -> Void) {
+        voiceInputStarted()
         serverRecorder.cancel()
         dictation.stop()
         dictationState.stop()
         session.send(text: text) { refusal in DispatchQueue.main.async { completion(refusal) } }
     }
 
-    func stopTurn() { session.stop() }
+    func stopTurn() {
+        voiceInputStarted()
+        session.stop()
+    }
 
     /// The server's dictation (ADR 0014) when it offers it (`/client/config` dictation.enabled), else on-device Speech.
     var usesServerDictation: Bool { state.config?.dictationEnabled == true && state.auth == .signedIn }
@@ -419,6 +430,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
 
     private func sessionChanged(_ st: PetSessionState) {
         state = st
+        voiceSessionChanged()
         refreshFace()
         chatWindow?.render()
         onChange?()

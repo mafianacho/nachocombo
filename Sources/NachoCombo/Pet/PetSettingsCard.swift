@@ -20,6 +20,8 @@ final class PetSettingsCard: NSObject {
     var openAccessibility: (() -> Void)?
     private let controlCheck = NSButton(checkboxWithTitle: "Let Nacho use apps, windows and gadgets on this Mac",
                                         target: nil, action: nil)
+    private let speakCheck = NSButton(checkboxWithTitle: "Read the first sentence of Nacho's answer aloud when I spoke",
+                                      target: nil, action: nil)
 
     init(module: NachoPetModule, width: CGFloat, desktop: PetDesktopActions? = nil) {
         self.module = module
@@ -84,6 +86,14 @@ final class PetSettingsCard: NSObject {
         let section = PetSelectionSettingsSection(host: module, width: width)
         selectionSection = section
         view.addArrangedSubview(section.view)
+        view.addArrangedSubview(UI.sectionTitle("Voice"))
+        speakCheck.target = self
+        speakCheck.action = #selector(speakChanged)
+        speakCheck.setAccessibilityIdentifier("pet-speak-replies")
+        view.addArrangedSubview(speakCheck)
+        view.addArrangedSubview(UI.wrapLabel("Hold Nacho still for 2 seconds until the ring is full, speak, then let go: the server writes it down "
+                                             + "and sends it. Esc or dragging off Nacho cancels. Answers are read with the Mac's built-in Korean voice.",
+                                             width: width, style: .caption1, color: UI.secondaryText))
         let reset = NSButton(title: "Put Nacho Back in the Corner", target: self, action: #selector(resetClicked))
         reset.setAccessibilityIdentifier("pet-reset-position")
         view.addArrangedSubview(reset)
@@ -119,6 +129,7 @@ final class PetSettingsCard: NSObject {
             serverNote.stringValue = "\(s.endpoint?.base.absoluteString ?? "-") · login \(s.oidc?.issuer.absoluteString ?? "-")"
         }
         controlCheck.state = s.allowComboControl ? .on : .off
+        speakCheck.state = s.speakVoiceReplies ? .on : .off
         selectionSection?.refresh()
         desktopSection?.refresh()
     }
@@ -142,6 +153,11 @@ final class PetSettingsCard: NSObject {
 
     @objc private func controlChanged() {
         module.update { $0.allowComboControl = self.controlCheck.state == .on }
+        refresh()
+    }
+
+    @objc private func speakChanged() {
+        module.update { $0.speakVoiceReplies = self.speakCheck.state == .on }
         refresh()
     }
 

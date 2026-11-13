@@ -32,6 +32,8 @@ public struct PetSessionState: Equatable {
     public var dictating = false
     /// Requests from the selection bar by the turn's client message id (chip, 다시, 보낸 내용 보기). Memory only.
     public var selectionTurns: [String: PetSelectionSent] = [:]
+    /// Turns the user spoke (hold the pet to talk), by client message id: their answer's first sentence may be read.
+    public var voiceTurns: Set<String> = []
     public init() {}
 }
 
@@ -334,7 +336,8 @@ public final class PetSession {
     // MARK: send / stop
 
     /// Uploads the waiting files, then sends one message. `completion` gets the refusal text (Korean) or nil.
-    public func send(text: String, completion: ((String?) -> Void)? = nil) {
+    /// `voice`: the text came from hold-to-talk (the turn is remembered in `voiceTurns`).
+    public func send(text: String, voice: Bool = false, completion: ((String?) -> Void)? = nil) {
         queue.async {
             let finish: (String?) -> Void = { msg in
                 if let m = msg { self.state.notice = m }
@@ -353,7 +356,13 @@ public final class PetSession {
             let files = self.state.pending
             if case let .failure(p) = OutgoingText.validate(text, allowEmpty: !files.isEmpty) { finish(p.koreanMessage); return }
             if files.isEmpty {
-                if case let .failure(r) = chat.send(text: text) { finish(r.koreanMessage) } else { self.state.notice = nil; finish(nil) }
+                switch chat.send(text: text) {
+                case let .failure(r): finish(r.koreanMessage)
+                case let .success(id):
+                    if voice { self.state.voiceTurns.insert(id) }
+                    self.state.notice = nil
+                    finish(nil)
+                }
                 return
             }
             self.state.uploading = true
@@ -368,7 +377,8 @@ public final class PetSession {
                     guard self.chat === chat else { finish(SendRefusal.notConnected.koreanMessage); return }
                     switch chat.send(text: text, attachments: attachments) {
                     case let .failure(r): finish(r.koreanMessage)
-                    case .success:
+                    case let .success(id):
+                        if voice { self.state.voiceTurns.insert(id) }
                         let sent = Set(files.map { $0.id })
                         self.state.pending.removeAll { sent.contains($0.id) }
                         self.state.notice = nil
@@ -651,6 +661,24 @@ extension PetSession {
     public func dictate(audio: Data, mime: String, fileName: String, durationSec: Double?,
                         completion: @escaping (Result<String, PetAPIError>) -> Void) {
         queue.async {
+            // Hold-to-talk can come before the chat was ever opened: read the server's dictation settings first.
+            guard self.state.config == nil, let endpoint = self.settings.endpoint else {
+                self.dictateNow(audio: audio, mime: mime, fileName: fileName, durationSec: durationSec, completion: completion)
+                return
+            }
+            PetServerCalls(endpoint: endpoint, http: self.http, bearer: nil).clientConfig { r in
+                self.queue.async {
+                    if case let .success(c) = r { self.state.config = c }
+                    self.dictateNow(audio: audio, mime: mime, fileName: fileName, durationSec: durationSec, completion: completion)
+                }
+            }
+        }
+    }
+
+    /// On `queue`.
+    private func dictateNow(audio: Data, mime: String, fileName: String, durationSec: Double?,
+                            completion: @escaping (Result<String, PetAPIError>) -> Void) {
+        do {
             let config = self.state.config ?? .fallback
             let refuse: (String) -> Void = { text in completion(.failure(PetAPIError(status: 0, code: "refused", text: text))) }
             guard config.dictationEnabled else { refuse("이 서버는 받아쓰기를 지원하지 않아요."); return }
