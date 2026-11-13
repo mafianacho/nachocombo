@@ -367,7 +367,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         background.tailFromRight = CGFloat(at.tailFromRight)
         contentTop.constant = at.tailOnTop ? PetChatBackground.tail : 0
         contentBottom.constant = at.tailOnTop ? 0 : -PetChatBackground.tail
-        apply(body: body, origin: NSPoint(x: at.x, y: at.y))
+        apply(body: PetChatSize(width: body.width, height: at.bodyHeight), origin: NSPoint(x: at.x, y: at.y))
     }
 
     private func apply(body: PetChatSize, origin: NSPoint) {

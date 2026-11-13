@@ -66,11 +66,25 @@ final class PetChatLayoutTests: XCTestCase {
         XCTAssertEqual(at.x, p.maxX - big.width)
         XCTAssertFalse(at.tailOnTop)
         XCTAssertEqual(at.x + big.width - at.tailFromRight, p.midX)
-        // Too tall to fit above a pet in the middle: below it, tail up, still pointing at it.
+        XCTAssertEqual(at.bodyHeight, big.height)
+        // Too tall for either side of a pet in the middle: the side with more room (below), shown as tall as that
+        // room, tail up, still pointing at it, and never covering the pet.
         let mid = petAt(1000, 500)
         let flipped = PetChatLayout.place(body: big, pet: mid, screen: screen)
         XCTAssertTrue(flipped.tailOnTop)
         XCTAssertEqual(flipped.x + big.width - flipped.tailFromRight, mid.midX)
+        XCTAssertEqual(flipped.bodyHeight, mid.minY - gap - margin - tail)
+        XCTAssertLessThanOrEqual(flipped.y + flipped.bodyHeight + tail, mid.minY)
+        XCTAssertEqual(flipped.y, screen.minY + margin)
+        // More room above (pet low): above, shortened to the room above.
+        let low = petAt(1200, 30)
+        let tall = PetChatSize(width: 400, height: 860)
+        let up = PetChatLayout.place(body: tall, pet: low, screen: screen)
+        XCTAssertFalse(up.tailOnTop)
+        XCTAssertEqual(up.y, low.maxY + gap)
+        XCTAssertEqual(up.y + up.bodyHeight + tail, screen.maxY - margin)
+        // A default chat that fits keeps the old rule exactly (no shortening).
+        XCTAssertEqual(PetChatLayout.place(body: def, pet: petAt(900, 700), screen: screen).bodyHeight, def.height)
     }
 
     // MARK: size

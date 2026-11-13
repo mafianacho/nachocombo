@@ -41,6 +41,8 @@ public struct PetChatPlacement: Equatable {
     /// The chat is below the pet (not enough room above it), so the tail points up.
     public var tailOnTop: Bool
     public var tailFromRight: Double
+    /// The body height shown here: the chosen height, or less when it fits neither above nor below the pet.
+    public var bodyHeight: Double
 }
 
 /// The parts of the chat's edge the user can drag to resize it. The right edge is lined up with the pet and the tail
@@ -91,16 +93,26 @@ public enum PetChatLayout {
 
     /// Above the pet with the tail on its head, right edges lined up; below the pet when it does not fit above;
     /// always inside the pet's screen. The same rule for opening the chat, following a dragged pet and resizing.
+    /// A (resized) chat taller than the room on both sides goes to the side with more room and is shown only as
+    /// tall as that room (never below the minimum), so it does not cover the pet; the chosen size is kept.
     public static func place(body: PetChatSize, pet: PetRect, screen: PetRect) -> PetChatPlacement {
-        let size = windowSize(body)
+        var size = windowSize(body)
         var x = pet.maxX - size.width
         var y = pet.maxY + gap
-        let below = y + size.height > screen.maxY
+        var below = y + size.height > screen.maxY
+        if below {
+            let roomBelow = pet.minY - gap - (screen.minY + screenMargin)
+            if size.height > roomBelow {
+                let roomAbove = screen.maxY - screenMargin - (pet.maxY + gap)
+                below = roomBelow > roomAbove
+                size.height = max(windowSize(minimumSize).height, min(size.height, below ? roomBelow : roomAbove))
+            }
+        }
         if below { y = pet.minY - size.height - gap }
         x = min(max(x, screen.minX + screenMargin), screen.maxX - size.width - screenMargin)
         y = min(max(y, screen.minY + screenMargin), screen.maxY - size.height - screenMargin)
         let tailFromRight = min(max(x + size.width - pet.midX, corner + tail), size.width - corner - tail)
-        return PetChatPlacement(x: x, y: y, tailOnTop: below, tailFromRight: tailFromRight)
+        return PetChatPlacement(x: x, y: y, tailOnTop: below, tailFromRight: tailFromRight, bodyHeight: size.height - tail)
     }
 
     /// The edges that can be dragged for the current side of the pet (the tail side never moves).

@@ -68,8 +68,12 @@ final class PetChatFollowResizeCaptureTests: XCTestCase {
                 NSBezierPath(ovalIn: petRect.insetBy(dx: 20, dy: 20)).fill()
             }
             let label = "\(caption)  ·  chat \(Int(chat.frame.width))×\(Int(chat.frame.height - PetChatBackground.tail)) at (\(Int(chat.frame.minX)), \(Int(chat.frame.minY)))  ·  AppKit off-screen render on macOS CI, not a real Mac"
-            (label as NSString).draw(at: NSPoint(x: 12, y: screen.height - 24),
-                                     withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.black])
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.black]
+            let text = label as NSString
+            let box = NSRect(x: 8, y: screen.height - 30, width: text.size(withAttributes: attrs).width + 16, height: 22)
+            NSColor.white.withAlphaComponent(0.85).setFill()
+            NSBezierPath(roundedRect: box, xRadius: 6, yRadius: 6).fill()
+            text.draw(at: NSPoint(x: 16, y: screen.height - 27), withAttributes: attrs)
         }
         NSGraphicsContext.restoreGraphicsState()
         let png = try XCTUnwrap(canvas.representation(using: .png, properties: [:]))
@@ -108,7 +112,7 @@ final class PetChatFollowResizeCaptureTests: XCTestCase {
         // The drag: the window follows every event of the pet, then the drop.
         var p = start
         for _ in 0..<20 {
-            p = p.offsetBy(dx: -24, dy: 6)
+            p = p.offsetBy(dx: -24, dy: 3)
             chat.place(petFrame: p, screen: screen)
             XCTAssertEqual(chat.frame.maxX, p.maxX, accuracy: 0.5)
             XCTAssertEqual(tailTipX(chat), p.midX, accuracy: 0.5)
@@ -134,11 +138,12 @@ final class PetChatFollowResizeCaptureTests: XCTestCase {
     /// ③ Resized large and small: rows follow the width, the chat still sits on the pet with the tail on it.
     func testLargeAndSmall() throws {
         let p = pet(1280 - petSize - 24, 24)
-        let large = makeChat(size: PetChatSize(width: 640, height: 680))
-        try shot("petchat-size-large", chat: large, pet: p, caption: "③ resized large (640 × 680)")
+        let large = makeChat(size: PetChatSize(width: 640, height: 600))
+        try shot("petchat-size-large", chat: large, pet: p, caption: "③ resized large (640 × 600)")
         XCTAssertEqual(large.frame.width, 640)
-        XCTAssertEqual(large.frame.height, 680 + PetChatBackground.tail)
+        XCTAssertEqual(large.frame.height, 600 + PetChatBackground.tail)
         XCTAssertEqual(tailTipX(large), p.midX, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(large.frame.minY, p.maxY, "above the pet, not over it")
         let small = makeChat(size: PetChatLayout.minimumSize)
         try shot("petchat-size-small", chat: small, pet: p, caption: "③ resized to the minimum (320 × 420)")
         XCTAssertEqual(small.frame.width, CGFloat(PetChatLayout.minimumSize.width))
@@ -152,11 +157,13 @@ final class PetChatFollowResizeCaptureTests: XCTestCase {
                 XCTAssertEqual(row.frame.width, chat.frame.width, accuracy: 0.5, "\(type(of: row)) follows the window width")
             }
         }
-        // Bigger than the screen: clamped to it.
+        // Bigger than the screen: clamped to it, shown in the room above the pet without covering it.
         let huge = makeChat(size: PetChatSize(width: 5000, height: 5000))
         huge.place(petFrame: p, screen: screen)
         XCTAssertLessThanOrEqual(huge.frame.width, screen.width - 2 * CGFloat(PetChatLayout.screenMargin))
         XCTAssertLessThanOrEqual(huge.frame.maxY, screen.maxY)
+        XCTAssertGreaterThanOrEqual(huge.frame.minY, p.maxY)
+        XCTAssertEqual(huge.bodySize, PetChatLayout.clamp(PetChatSize(width: 5000, height: 5000), screen: nil), "the chosen size is kept")
     }
 
     /// ④ Saved when the resize ends, read back by a new settings store (as after quitting and opening the app), and
