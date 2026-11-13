@@ -85,6 +85,10 @@ final class SimulatedMac: PetCommandExecuting {
             var g: [String: String] = [:]
             for id in ModuleID.allCases { g[id.rawValue] = on.contains(id) ? "on" : "off" }
             done(PetCommandOutcome(ok: true, message: "\(on.count) gadgets on.", gadgets: g))
+        default:
+            // The desktop actions (apps, several windows, system, workspaces) only print what Nacho asked for.
+            stamp("mac: \(command)")
+            done(PetCommandOutcome(ok: true, message: "Simulated: \(command)"))
         }
     }
 }

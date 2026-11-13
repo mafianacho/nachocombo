@@ -11,6 +11,9 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     /// Runs a command Nacho asked for on the Mac (window arrangement, gadget switches). Set by the app delegate;
     /// called on the main thread.
     var perform: ((PetCommand) -> PetCommandOutcome)?
+    /// Desktop actions that may answer later (an app opening, a workspace being put back). Returns false for a command
+    /// it does not run, which then goes to `perform`.
+    var performLater: ((PetCommand, @escaping (PetCommandOutcome) -> Void) -> Bool)?
     /// Opens Nacho Pet's page in the settings window.
     var openSettings: (() -> Void)?
     /// Switches the gadget off (the pet's "Hide Nacho").
@@ -417,6 +420,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     func execute(_ command: PetCommand, done: @escaping (PetCommandOutcome) -> Void) {
         DispatchQueue.main.async {
             self.commandsRun += 1
+            if let later = self.performLater, later(command, done) { return }
             let outcome = self.perform?(command) ?? PetCommandOutcome(ok: false, message: "Nacho Combo is not ready.")
             done(outcome)
         }

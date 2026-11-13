@@ -14,14 +14,19 @@ final class PetSettingsCard: NSObject {
     private let customRow = NSStackView()
     private let serverNote: NSTextField
     private var selectionSection: PetSelectionSettingsSection?
-    private let controlCheck = NSButton(checkboxWithTitle: "Let Nacho snap windows and switch gadgets on this Mac",
+    private var desktopSection: PetWorkspaceSettingsSection?
+    private let desktop: PetDesktopActions?
+    /// Opens Privacy & Security > Accessibility (the desktop actions need it to move windows).
+    var openAccessibility: (() -> Void)?
+    private let controlCheck = NSButton(checkboxWithTitle: "Let Nacho use apps, windows and gadgets on this Mac",
                                         target: nil, action: nil)
     private let speakCheck = NSButton(checkboxWithTitle: "Read the first sentence of Nacho's answer aloud when I spoke",
                                       target: nil, action: nil)
 
-    init(module: NachoPetModule, width: CGFloat) {
+    init(module: NachoPetModule, width: CGFloat, desktop: PetDesktopActions? = nil) {
         self.module = module
         self.width = width
+        self.desktop = desktop
         account = UI.wrapLabel("", width: width - 120, style: .callout, color: .labelColor)
         serverNote = UI.wrapLabel("", width: width, style: .caption1, color: UI.secondaryText)
         super.init()
@@ -67,9 +72,16 @@ final class PetSettingsCard: NSObject {
         controlCheck.action = #selector(controlChanged)
         controlCheck.setAccessibilityIdentifier("pet-allow-control")
         view.addArrangedSubview(controlCheck)
-        view.addArrangedSubview(UI.wrapLabel("Nacho can snap the front window (Window Snap's Accessibility permission) and switch other gadgets "
-                                             + "on or off. Never Computer Use, never Nacho Pet itself, and never a gadget that still needs a permission.",
+        view.addArrangedSubview(UI.wrapLabel("Nacho can open, switch and hide apps, arrange several windows, set the volume and the built-in "
+                                             + "display's brightness, switch other gadgets on or off, and save and put back workspaces. Nacho never "
+                                             + "quits apps, never switches Computer Use or Nacho Pet itself, and never a gadget that still needs a permission.",
                                              width: width, style: .caption1, color: UI.secondaryText))
+        if let desktop = desktop {
+            let section = PetWorkspaceSettingsSection(desktop: desktop, width: width)
+            section.openAccessibility = { [weak self] in self?.openAccessibility?() }
+            desktopSection = section
+            view.addArrangedSubview(section.view)
+        }
         // The selection bar is part of Nacho Pet (not a gadget of its own).
         let section = PetSelectionSettingsSection(host: module, width: width)
         selectionSection = section
@@ -119,6 +131,7 @@ final class PetSettingsCard: NSObject {
         controlCheck.state = s.allowComboControl ? .on : .off
         speakCheck.state = s.speakVoiceReplies ? .on : .off
         selectionSection?.refresh()
+        desktopSection?.refresh()
     }
 
     @objc private func accountClicked() {
