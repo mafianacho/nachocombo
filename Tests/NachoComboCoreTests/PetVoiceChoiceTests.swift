@@ -78,6 +78,69 @@ final class PetCardRulesTests: XCTestCase {
         XCTAssertNil(item.hint, "chips need no key hint")
     }
 
+    // NACHO-36: an approval with `rule_options` offers 이번만 실행 / 실행하고 항상 허용 / 거절.
+    private func ruleApproval(_ extra: [String: Any] = [:]) -> PetCard {
+        var payload: [String: Any] = ["title": "배달앱 12,000원 결제할까요?", "action_type": "payment", "merchant": "배달앱", "amount": 12000,
+                                      "rule_options": [["id": "pay_day", "summary": "하루 30,000원까지 묻지 않고 결제", "action_type": "payment"],
+                                                       ["id": "pay_week", "summary": "배달앱 건당 20,000원 · 일주일 60,000원", "action_type": "payment"]]]
+        for (k, v) in extra { payload[k] = v }
+        return PetCard.decode(["id": "ra", "kind": "approval", "status": "pending", "version": 1, "task_id": "t1", "payload": payload])
+    }
+
+    func testApprovalWithRuleOptionsShowsOnceOrAlwaysChoices() {
+        let c = ruleApproval()
+        XCTAssertEqual(c.ruleOptions.map { $0.id }, ["pay_day", "pay_week"])
+        let rows = PetCardRules.rows(c)
+        XCTAssertEqual(rows.map { "\($0.number) \($0.label)" }, ["1 이번만 실행", "2 실행하고 항상 허용", "3 실행하고 항상 허용", "4 거절"])
+        XCTAssertEqual(rows.map { $0.detail }, [nil, "하루 30,000원까지 묻지 않고 결제", "배달앱 건당 20,000원 · 일주일 60,000원", nil])
+        XCTAssertEqual(rows.map { $0.answer }, [PetCardAnswer(action: "approve"), PetCardAnswer(action: "approve", allowRuleID: "pay_day"),
+                                                PetCardAnswer(action: "approve", allowRuleID: "pay_week"), PetCardAnswer(action: "deny")])
+        // the number keys reach the rule rows too (3 + Enter = the weekly rule)
+        var local = PetCardLocal()
+        XCTAssertEqual(PetCardKeys.handle(.digit(3), card: c, local: local), .highlight(3))
+        local.highlighted = 3
+        XCTAssertEqual(PetCardKeys.handle(.enter, card: c, local: local), .answer(PetCardAnswer(action: "approve", allowRuleID: "pay_week")))
+    }
+
+    func testApprovalWithoutRuleOptionsIsUnchanged() {
+        for extra in [["rule_options": []], ["rule_options": [["id": "x", "summary": ""]]]] as [[String: Any]] {
+            let c = ruleApproval(extra)
+            XCTAssertEqual(PetCardRules.rows(c).map { "\($0.number) \($0.label)" }, ["1 실행", "2 거절"])
+        }
+        let plain = PetCard.decode(["id": "pa", "kind": "approval", "status": "pending", "version": 1, "payload": ["title": "t"]])
+        XCTAssertEqual(PetCardRules.rows(plain).map { $0.answer }, [PetCardAnswer(action: "approve"), PetCardAnswer(action: "deny")])
+        // rule_options on other kinds of card is not read as approval rules
+        XCTAssertTrue(card("choice").ruleOptions.isEmpty)
+    }
+
+    func testAnsweredApprovalMarksTheChosenRule() {
+        var c = ruleApproval()
+        c.status = "answered"
+        c.answeredAction = "approve"
+        c.answeredRuleID = "pay_week"
+        XCTAssertEqual(PetCardRules.chosenNumbers(c), [3])
+        c.answeredRuleID = nil
+        XCTAssertEqual(PetCardRules.chosenNumbers(c), [1], "이번만 실행")
+        c.answeredAction = "deny"
+        XCTAssertEqual(PetCardRules.chosenNumbers(c), [4])
+        let decoded = PetCard.decode(["id": "ra", "kind": "approval", "status": "answered", "version": 2, "answered_action": "approve",
+                                      "answer": ["action": "approve", "allow_rule": ["rule_option_id": "pay_day"]],
+                                      "payload": ["rule_options": [["id": "pay_day", "summary": "하루 30,000원"]]]])
+        XCTAssertEqual(decoded.answeredRuleID, "pay_day")
+        XCTAssertEqual(PetCardRules.chosenNumbers(decoded), [2])
+    }
+
+    func testAnswerRequestCarriesAllowRuleOnlyWithApprove() {
+        let e = ServerEndpoint(base: URL(string: "https://api.example.com")!)
+        let c = ruleApproval()
+        let j = PetStubHTTP.json(PetServerAPI.answerCardRequest(e, bearer: "t", card: c, action: "approve", allowRuleID: "pay_week"))
+        XCTAssertEqual(j["action"] as? String, "approve")
+        XCTAssertEqual((j["allow_rule"] as? [String: Any])?["rule_option_id"] as? String, "pay_week")
+        XCTAssertEqual(j["expected_version"] as? Int, 1)
+        XCTAssertNil(PetStubHTTP.json(PetServerAPI.answerCardRequest(e, bearer: "t", card: c, action: "approve"))["allow_rule"], "이번만 실행: no rule")
+        XCTAssertNil(PetStubHTTP.json(PetServerAPI.answerCardRequest(e, bearer: "t", card: c, action: "deny", allowRuleID: "pay_week"))["allow_rule"])
+    }
+
     func testRuleProposalApplyOrNo() {
         let one = PetCard.decode(["id": "r1", "kind": "rule_proposal", "status": "pending", "version": 1,
                                   "payload": ["said_text": "3만 원까지 괜찮아", "rule_options": [["id": "o1", "summary": "배달앱에서 건당 30,000원 이하"]]]])

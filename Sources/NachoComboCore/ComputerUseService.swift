@@ -38,19 +38,30 @@ public final class CallLog {
     }
 }
 
+/// The NachoCombo MCP server (formerly the Computer Use MCP server).
+public typealias NachoComboMCPService = ComputerUseService
+
 /// The MCP endpoint without any networking: `handle` turns one parsed HTTP request into one HTTP response.
 /// Order of checks (every step fails closed): running -> path -> peer address -> Host/Origin -> client lockout -> key ->
-/// client rate -> key rate -> method -> JSON-RPC -> emergency stop -> tool group switch -> backend.
+/// client rate -> key rate -> method -> JSON-RPC -> emergency stop -> tool group / gadget switch -> backend / runner.
+/// Tools come from the gadget registry (Computer Use tools under the tool group switches, every other gadget under its
+/// own switch), resources are the gadget guides (`nachocombo://gadgets/<id>/guide`), prompts are the gadgets' flows.
 public final class ComputerUseService {
     public static let supportedProtocolVersions = ["2025-06-18", "2025-03-26", "2024-11-05"]
     public static let endpointPath = "/mcp"
-    public static let serverName = "nacho-combo-computer-use"
-    public static let serverVersion = "0.1.0"
+    public static let serverName = "NachoCombo MCP"
+    public static let serverVersion = "0.2.0"
+    /// MCP "resource not found".
+    public static let resourceNotFound = -32002
 
     public let callLog: CallLog
     private let settings: () -> ComputerUseSettings
     private let keys: APIKeyStore
     private let backend: ComputerUseBackend
+    private let gadgets: GadgetToolDispatcher
+    private let registry: [GadgetTool]
+    private let guides: [GadgetGuide]
+    private let prompts: [GadgetPrompt]
     private let failures: AuthFailureLimiter
     private let requests: RequestRateLimiter
     private let clientRequests: RequestRateLimiter
@@ -65,8 +76,14 @@ public final class ComputerUseService {
 
     public init(settings: @escaping () -> ComputerUseSettings, keys: APIKeyStore, backend: ComputerUseBackend,
                 failures: AuthFailureLimiter? = nil, requests: RequestRateLimiter? = nil, clientRequests: RequestRateLimiter? = nil, callLog: CallLog = CallLog(),
-                now: @escaping () -> Date = Date.init) {
+                now: @escaping () -> Date = Date.init, gadgets: GadgetToolDispatcher = .shared,
+                registry: [GadgetTool] = GadgetToolRegistry.all, guides: [GadgetGuide] = GadgetToolRegistry.guides,
+                prompts: [GadgetPrompt] = GadgetToolRegistry.prompts) {
         self.settings = settings
+        self.gadgets = gadgets
+        self.registry = registry
+        self.guides = guides
+        self.prompts = prompts
         self.keys = keys
         self.backend = backend
         self.failures = failures ?? AuthFailureLimiter(now: now)
@@ -182,22 +199,91 @@ public final class ComputerUseService {
                     ?? ComputerUseService.supportedProtocolVersions[0]
                 return JSONRPCCodec.encodeResult(id: id, result: .object([
                     "protocolVersion": .string(version),
-                    "capabilities": .object(["tools": .object(["listChanged": .bool(false)])]),
+                    "capabilities": .object(["tools": .object(["listChanged": .bool(false)]),
+                                             "resources": .object(["listChanged": .bool(false), "subscribe": .bool(false)]),
+                                             "prompts": .object(["listChanged": .bool(false)])]),
                     "serverInfo": .object(["name": .string(ComputerUseService.serverName),
                                            "version": .string(ComputerUseService.serverVersion)]),
-                    "instructions": .string("Nacho Combo Computer Use: only tools from the groups the user turned on are listed. Coordinates are screen coordinates (in points)."),
+                    "instructions": .string("NachoCombo MCP: tools of the Nacho Combo gadgets on this Mac. Only tools of the gadgets and Computer Use groups the user turned on are listed. "
+                                            + "Read a gadget's guide (resources/read nachocombo://gadgets/<id>/guide) before using it. Coordinates are screen coordinates (in points)."),
                 ]))
             case "ping":
                 return JSONRPCCodec.encodeResult(id: id, result: .object([:]))
             case "tools/list":
-                let tools = isEmergencyStopped ? [] : ToolCatalog.all.filter { config.isEnabled($0.group) }
-                return JSONRPCCodec.encodeResult(id: id, result: .object(["tools": .array(tools.map { $0.json })]))
+                let tools = isEmergencyStopped ? [] : registry.filter { config.offers($0) }
+                return JSONRPCCodec.encodeResult(id: id, result: .object(["tools": .array(tools.map { ComputerUseService.json($0) })]))
             case "tools/call":
                 return callTool(id: id, params: params, key: key, config: config)
+            case "resources/list":
+                return JSONRPCCodec.encodeResult(id: id, result: .object(["resources": .array(guides.map { g in
+                    .object(["uri": .string(g.gadget.guideURI), "name": .string("\(g.gadget.rawValue)_guide"),
+                             "title": .string("\(g.gadget.displayName) guide"),
+                             "description": .string("How to use the \(g.gadget.displayName) tools: what they do, order of calls, examples, limits."),
+                             "mimeType": .string(GadgetGuide.mimeType)])
+                })]))
+            case "resources/templates/list":
+                return JSONRPCCodec.encodeResult(id: id, result: .object(["resourceTemplates": .array([])]))
+            case "resources/read":
+                guard let uri = params?.objectValue?["uri"]?.stringValue else {
+                    return JSONRPCCodec.encodeError(id: id, error: .invalidParams("uri is required"))
+                }
+                guard let guide = guides.first(where: { $0.gadget.guideURI == uri }) else {
+                    return JSONRPCCodec.encodeError(id: id, error: JSONRPCError(code: ComputerUseService.resourceNotFound,
+                                                                                 message: "Resource not found: \(uri.prefix(100))"))
+                }
+                return JSONRPCCodec.encodeResult(id: id, result: .object(["contents": .array([.object([
+                    "uri": .string(uri), "mimeType": .string(GadgetGuide.mimeType),
+                    "text": .string(guide.render(for: .mcp, tools: registry)),
+                ])])]))
+            case "prompts/list":
+                return JSONRPCCodec.encodeResult(id: id, result: .object(["prompts": .array(prompts.map { p in
+                    .object(["name": .string(p.name), "description": .string(p.description),
+                             "arguments": .array(p.arguments.map { a in
+                                 .object(["name": .string(a.name), "description": .string(a.description), "required": .bool(a.required)])
+                             })])
+                })]))
+            case "prompts/get":
+                return getPrompt(id: id, params: params)
             default:
                 return JSONRPCCodec.encodeError(id: id, error: .methodNotFound(method))
             }
         }
+    }
+
+    static func json(_ t: GadgetTool) -> JSONValue {
+        .object(["name": .string(t.mcpName), "description": .string(t.englishDescription), "inputSchema": t.inputSchema])
+    }
+
+    private func getPrompt(id: JSONValue, params: JSONValue?) -> Data {
+        guard let object = params?.objectValue, let name = object["name"]?.stringValue else {
+            return JSONRPCCodec.encodeError(id: id, error: .invalidParams("name is required"))
+        }
+        guard let prompt = prompts.first(where: { $0.name == name }) else {
+            return JSONRPCCodec.encodeError(id: id, error: .invalidParams("Unknown prompt: \(name.prefix(64))"))
+        }
+        var values: [String: String] = [:]
+        switch object["arguments"] {
+        case .none, .some(.null): break
+        case .some(.object(let o)):
+            for (k, v) in o {
+                guard prompt.arguments.contains(where: { $0.name == k }) else {
+                    return JSONRPCCodec.encodeError(id: id, error: .invalidParams("Unknown argument: \(k.prefix(64))"))
+                }
+                guard case .string(let s) = v, s.count <= 200 else {
+                    return JSONRPCCodec.encodeError(id: id, error: .invalidParams("'\(k.prefix(64))' must be a string of at most 200 characters"))
+                }
+                values[k] = s
+            }
+        default: return JSONRPCCodec.encodeError(id: id, error: .invalidParams("arguments must be an object"))
+        }
+        for a in prompt.arguments where a.required && (values[a.name] ?? "").isEmpty {
+            return JSONRPCCodec.encodeError(id: id, error: .invalidParams("Missing required argument '\(a.name)'"))
+        }
+        return JSONRPCCodec.encodeResult(id: id, result: .object([
+            "description": .string(prompt.description),
+            "messages": .array([.object(["role": .string("user"),
+                                         "content": .object(["type": .string("text"), "text": .string(prompt.render(values))])])]),
+        ]))
     }
 
     private func callTool(id: JSONValue, params: JSONValue?, key: APIKeyRecord, config: ComputerUseSettings) -> Data {
@@ -210,12 +296,15 @@ public final class ComputerUseService {
         case .some(.object(let o)): arguments = o
         default: return JSONRPCCodec.encodeError(id: id, error: .invalidParams("arguments must be an object"))
         }
-        guard let tool = ToolCatalog.definition(named: name) else {
+        // New names (`computer_screen_capture`, `window_arrange`) and old Computer Use names (`screen_capture`).
+        guard let tool = GadgetToolRegistry.mcpTool(named: name, in: registry) else {
             return JSONRPCCodec.encodeError(id: id, error: .invalidParams("Unknown tool: \(name.prefix(64))"))
         }
+        let highRisk = tool.mcpGroup?.isHighRisk ?? (tool.risk == .destructive)
 
+        // The log keeps the name the client used (no arguments, no results).
         func record(_ outcome: CallLogEntry.Outcome) {
-            callLog.append(CallLogEntry(time: now(), tool: tool.name, keyLabel: key.label, outcome: outcome, highRisk: tool.group.isHighRisk))
+            callLog.append(CallLogEntry(time: now(), tool: name, keyLabel: key.label, outcome: outcome, highRisk: highRisk))
         }
         stateLock.lock(); callCount += 1; stateLock.unlock()
 
@@ -223,14 +312,22 @@ public final class ComputerUseService {
             record(.denied)
             return JSONRPCCodec.encodeResult(id: id, result: ToolResult.error("Emergency stop is active. Turn Computer Use back on in the app.").json)
         }
-        guard config.isEnabled(tool.group) else {
+        guard config.offers(tool) else {
             record(.denied)
-            return JSONRPCCodec.encodeResult(id: id, result: ToolResult.error("'\(tool.name)' tool is turned off. Turn on that tool group in Nacho Combo on the Mac.").json)
+            let which = tool.mcpGroup != nil ? "that tool group" : "the \(tool.gadget.displayName) gadget for NachoCombo MCP"
+            return JSONRPCCodec.encodeResult(id: id, result: ToolResult.error("'\(name.prefix(64))' tool is turned off. Turn on \(which) in Nacho Combo on the Mac.").json)
         }
-        executionLock.lock()
-        let result = backend.execute(tool: tool.name, arguments: arguments)
-        executionLock.unlock()
-        record(result.isError ? .error : .ok)
+        if let legacy = tool.legacyMCPName {
+            executionLock.lock()
+            let result = backend.execute(tool: legacy, arguments: arguments)
+            executionLock.unlock()
+            record(result.isError ? .error : .ok)
+            return JSONRPCCodec.encodeResult(id: id, result: result.json)
+        }
+        let outcome = gadgets.runAndWait(tool, arguments: arguments, exit: .mcp)
+        record(outcome.ok ? .ok : .error)
+        let data = (try? JSONSerialization.data(withJSONObject: outcome.resultJSON, options: [.sortedKeys])) ?? Data("{}".utf8)
+        let result = ToolResult(content: [.text(String(decoding: data, as: UTF8.self))], isError: !outcome.ok)
         return JSONRPCCodec.encodeResult(id: id, result: result.json)
     }
 }

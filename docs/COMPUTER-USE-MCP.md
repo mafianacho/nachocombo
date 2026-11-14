@@ -1,5 +1,7 @@
 # Computer Use: MCP server
 
+> **NachoCombo MCP:** this server is now the NachoCombo MCP server: its tools come from the gadget registry, the tools below are listed as `computer_<old name>` (the old names are still accepted), and it also serves the gadgets' tools, guides (resources) and prompts. See [NACHOCOMBO-MCP.md](NACHOCOMBO-MCP.md) for the structure, the rename table and the approval rules.
+
 **Status:** Experimental. Not yet run on a real Mac. Off by default; LAN mode needs TLS and a key.
 
 The Core (everything that does not touch macOS) is covered by `swift test`, which runs in CI on Linux and macOS. The macOS layer (sockets, TLS, permissions, screenshots, input, settings page) has only been compiled in CI, never run on a real Mac. Read [Not verified yet](#not-verified-yet) before relying on any of it.

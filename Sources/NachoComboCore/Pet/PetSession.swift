@@ -830,13 +830,13 @@ extension PetSession {
     // MARK: cards
 
     /// Answers an approval / choice card: approve | deny | choose (+ options) | dismiss.
-    public func answerCard(id: String, action: String, optionIDs: [String] = [], completion: ((String?) -> Void)? = nil) {
+    public func answerCard(id: String, action: String, optionIDs: [String] = [], allowRuleID: String? = nil, completion: ((String?) -> Void)? = nil) {
         queue.async {
             guard let card = self.state.chat.cards.first(where: { $0.id == id }) else { completion?("이 요청을 찾지 못했어요."); return }
             guard card.isPending else { completion?(card.statusText); return }
             self.withCalls { calls in
                 guard let calls = calls else { completion?(AuthProblem.signedOut.koreanMessage); return }
-                calls.answer(card: card, action: action, optionIDs: optionIDs) { r in
+                calls.answer(card: card, action: action, optionIDs: optionIDs, allowRuleID: allowRuleID) { r in
                     self.queue.async {
                         switch r {
                         case let .success(updated):
