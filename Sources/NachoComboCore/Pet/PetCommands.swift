@@ -132,7 +132,7 @@ public enum PetCommands {
         SnapAction.allCases.filter { ![.restore, .nextDisplay, .previousDisplay, .smaller, .larger].contains($0) }
     }
 
-    public static let maxLayoutItems = 8
+    public static let maxLayoutItems = WindowTiling.maxWindows   // technical limit of one call, not a layout limit (NACHO-146)
     public static let maxAppNameLength = 100
 
     /// Gadgets Nacho may switch: the combo gadgets (Computer Use is never one), without the pet itself.
