@@ -78,7 +78,7 @@ The approval card on the server has no "always allow" choice for connector actio
 
 ### "Always allow" and the revoke race
 
-- Store: `GadgetTrust.shared`, per gadget, default off, `~/Library/Application Support/NachoCombo/gadget-trust.json` (next to `settings.json`, like the workspaces file). Only gadgets with a `content_out` / `input_inject` connector tool can be switched (none ship yet; the computer use / data gadget lanes add them).
+- Store: `GadgetTrust.shared`, per gadget, default off, `~/Library/Application Support/NachoCombo/gadget-trust.json` (next to `settings.json`, like the workspaces file). Only gadgets with a `content_out` / `input_inject` connector tool can be switched (since NACHO-149: `clipboard`, `shelf`, `capture`; the computer use lane adds `computer`).
 - A change notifies the connector, which sends `{"type":"capabilities","capabilities":[…]}` at once, followed by a ping.
 - The app remembers what the server believes (`confirmedAllowed`): the hello, or the last `capabilities` frame once the pong behind it arrived (frames on one socket are handled in order).
 - **Race:** after "always allow" is switched off, the server may still forward a call under the old declaration (no card). Until the pong arrives, such a `content_out` / `input_inject` request is refused with `ok:false, reason:"approval_revoked"` and a hint to call again (then the card shows). No pong within 10 s: the connection is reopened and hello declares fresh.
@@ -102,7 +102,8 @@ All are `ok:false` with `reason`, an English `hint` for the model and Korean `gu
 - MCP: `resources/list` lists `nachocombo://gadgets/<id>/guide` (`text/markdown`) for every gadget with a guide; `resources/read` renders it with MCP names; an unknown URI is JSON-RPC error `-32002`.
 - Nacho: `combo_gadget_guide {"gadget":"<id>"}` (connector only, `read`) answers `{ok, gadget, guide}` with connector names. A gadget without a guide answers its tool names.
 - Prompts: `GadgetPrompt` (name `<gadget>_<flow>`, arguments, template). `prompts/list`, `prompts/get` (unknown or missing required argument → `-32602`). Example: `window_side_by_side`.
-- Guides so far: `combo`, `window` (format examples). Every gadget lane writes its own.
+- Guides so far: `combo`, `window` (format examples), `monitor`, `disk`, `clipboard`, `shelf`, `capture` (NACHO-149). Every gadget lane writes its own.
+- Prompts so far: `window_side_by_side`, `monitor_why_slow` (monitor + disk), `disk_find_space`.
 
 ## MCP request handling
 
@@ -130,7 +131,7 @@ nacho-server already knows these names (allow rules saved on the server use them
 | `combo_set_gadget` | `combo_set_gadget` | `combo_set_gadget` | change |
 | `combo_list_gadgets` | `combo_list_gadgets` | `combo_list_gadgets` | read |
 | `combo_set_dim_strength` | `combo_dim_set_strength` | `dim_set_strength` | change |
-| `combo_clear_shelf` | `combo_shelf_clear` | `shelf_clear` | change |
+| `combo_clear_shelf` | `combo_shelf_clear` | `shelf_clear` | destructive (NACHO-149; was change, so Nacho now asks every time) |
 | `combo_workspace_save` | `combo_workspace_save` | `combo_workspace_save` | change |
 | `combo_workspace_apply` | `combo_workspace_apply` | `combo_workspace_apply` | change |
 | `combo_workspace_list` | `combo_workspace_list` | `combo_workspace_list` | read |
@@ -170,6 +171,32 @@ On the MCP exit these run through `PetCommandToolRunner` → `PetCommands.parse`
 | `file_read` | `computer_file_read` | fileAccess | content_out |
 | `file_write` | `computer_file_write` | fileAccess | destructive |
 | `process_kill` | `computer_process_kill` | processControl | destructive |
+
+## Data gadgets (NACHO-149)
+
+Monitor, Disk Map, Clipboard History, File Shelf and Capture Float share one runner: `DataGadgetRunner` (Core, all checks and results, tested with a fake host) over `AppDataGadgetHost` (app, main thread). `shelf_clear` keeps its old `combo_clear_shelf` executor.
+
+| MCP name | Connector name | Risk | Exits | Notes |
+|---|---|---|---|---|
+| `monitor_stats` | `combo_monitor_stats` | read | both | CPU, memory (pressure, swap), network, disk %, battery, temperatures (null when unknown), busiest apps only when already sampled |
+| `disk_top_items` | `combo_disk_top_items` | read | both | last scan, `count` 1–50 (default 10), `kind` both/folders/files; folders two levels deep, files anywhere; `scanned_at` |
+| `disk_scan` | `combo_disk_scan` | change | both | opens Disk Map, scans `~` or a folder inside home (`outside_home`, `not_a_folder` otherwise). **No delete tool** |
+| `clipboard_list` | `combo_clipboard_list` | read | both | index, id, kind, length + unit, time, pinned — **no preview, no source app** |
+| `clipboard_get_item` | `combo_clipboard_get_item` | content_out | both | text / link / file paths, cut at 4000 characters; pictures → `not_text` |
+| `clipboard_copy_again` | `combo_clipboard_copy_again` | change | both | puts item N on the clipboard again |
+| `clipboard_clear` | `combo_clipboard_clear` | destructive | both | pins stay; cannot be undone |
+| `shelf_list` | `combo_shelf_list` | read | both | index, id, name, kind, bytes / characters; snippets and links are named `text snippet` / `web link` (their titles are content) |
+| `shelf_give` | `combo_shelf_give` | content_out | connector | attaches item N to the user's next chat message |
+| `shelf_forget` | `combo_shelf_forget` | change | both | original untouched, shelf undo |
+| `shelf_clear` | `combo_clear_shelf` (declared) | destructive | both | see the rename table |
+| `capture_ask` | `combo_capture_ask` | content_out | connector | `mode` area (default) / screen; screen recording permission |
+| `capture_list_pinned` | `combo_capture_list_pinned` | read | both | pixel sizes only |
+| `capture_close_all` | `combo_capture_close_all` | change | both | |
+
+- **Numbers and ids.** Index tools take `index` (1-based, ≤ 200) and an optional `id` (8 hex digits from the list). With `id`, a list that moved in between answers `list_changed` instead of acting on another item — an approval is for one item.
+- **Files and pictures to Nacho.** A connector result is text only (nacho-server `call_connector` turns `result` into a string; checked on a local nacho-server checkout `076a975`), so `shelf_give` and `capture_ask` put the file on the user's **next chat message** (`PetHandoff`, the same path as the shelf's "Give to Nacho" and the capture's "Ask Nacho About This…") and answer `{attached: true, delivery: "chat_attachment"}`. The user presses send. On the MCP exit these two are not offered.
+- **Area capture timing.** nacho-server waits 60 s for a connector answer; `capture_ask` with `area` answers `pending: true` after 45 s if the user is still dragging and attaches when they finish (cancel → nothing).
+- Results of these tools never go to a log; the MCP call log and the connector's `handled` list keep names and ok/failed only.
 
 ## Adding tools (gadget lane checklist)
 

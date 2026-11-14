@@ -185,8 +185,10 @@ final class GadgetApprovalTests: XCTestCase {
         XCTAssertEqual(GadgetTrust(url: url, trustable: { [.clipboard] }).alwaysAllowed, [])
         trust.disabled = ["combo_open_app"]
         XCTAssertEqual(changes, 3)
-        XCTAssertEqual(GadgetToolRegistry.trustableGadgets(), [], "no content tool is offered to Nacho yet")
-        XCTAssertEqual(GadgetToolRegistry.trustableGadgets(in: testTools), [.clipboard, .computer])
+        // NACHO-149 offers content tools of clipboard, shelf and capture to Nacho; other lanes may add more.
+        XCTAssertTrue(GadgetToolRegistry.trustableGadgets().isSuperset(of: [.clipboard, .shelf, .capture]))
+        XCTAssertFalse(GadgetToolRegistry.trustableGadgets().contains(.window), "no content tool, no always allow")
+        XCTAssertTrue(GadgetToolRegistry.trustableGadgets(in: testTools).isSuperset(of: [.clipboard, .computer]))
     }
 }
 

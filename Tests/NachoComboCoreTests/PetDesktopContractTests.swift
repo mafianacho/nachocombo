@@ -37,7 +37,11 @@ final class PetDesktopContractTests: XCTestCase {
             let schema = c["input_schema"] as? [String: Any]
             XCTAssertEqual(schema?["type"] as? String, "object", name)
             XCTAssertNotNil(schema?["properties"] as? [String: Any], name)
-            XCTAssertEqual(c["approval"] as? String, name == "combo_quit_app" ? "required" : nil, "\(name): only quit asks for approval")
+            // Risky = destructive / content out (NACHO-144 registry risk); NACHO-149 made combo_clear_shelf destructive.
+            let risky = GadgetToolRegistry.connectorTool(named: name)?.connectorApproval(alwaysAllowed: false) == true
+            XCTAssertEqual(c["approval"] as? String, risky ? "required" : nil, "\(name): approval follows the risk")
+            if ["combo_quit_app", "combo_clear_shelf"].contains(name) { XCTAssertTrue(risky, name) }
+            if ["combo_list_apps", "combo_open_app", "combo_list_windows"].contains(name) { XCTAssertFalse(risky, name) }
             XCTAssertTrue(JSONSerialization.isValidJSONObject(c), name)
         }
     }
