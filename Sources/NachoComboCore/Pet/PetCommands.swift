@@ -8,9 +8,9 @@ import Foundation
 // Contract with nacho-server (fixed by the consigliere; change it there first):
 // - names are `combo_*`; descriptions are Korean, at most 200 characters, saying what the tool does and when to use it
 //   (the server's tool picker chooses by these descriptions);
-// - a risky capability carries `"approval": "required"` in hello and the server shows an approval card before it runs.
-//   Until the server does that in production the app does not declare risky capabilities at all
-//   (`PetCommands.declaresQuitApp` is off) and refuses such a call if one arrives anyway.
+// - a risky capability carries `"approval": "required"` in hello and the server shows an approval card before it runs
+//   (nacho-server production cf88369, #57). `combo_quit_app` is declared with it (`PetCommands.declaresQuitApp`);
+//   with the switch off the app would neither declare nor accept such a call.
 
 public enum PetCommand: Equatable {
     /// Snap the front window (or the front window of the named running app) to a position.
@@ -100,9 +100,9 @@ public enum PetCommands {
     public static let applyWorkspace = "combo_workspace_apply"
     public static let listWorkspaces = "combo_workspace_list"
 
-    /// Off until nacho-server shows an approval card for `"approval": "required"` in production (lane C).
+    /// On: nacho-server production (cf88369, #57) shows an approval card for `"approval": "required"` before a call runs.
     /// While off, `combo_quit_app` is neither declared nor accepted.
-    public static let declaresQuitApp = false
+    public static let declaresQuitApp = true
 
     /// Capabilities that need the user's approval card on the server before they run.
     public static let approvalRequired: Set<String> = [quitApp]
