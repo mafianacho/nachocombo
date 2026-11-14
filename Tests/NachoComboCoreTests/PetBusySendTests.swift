@@ -13,18 +13,20 @@ final class PetBusySendTests: XCTestCase {
     let agent = "0193aaaa-0000-7000-8000-000000000002"
     var http: PetStubHTTP!
     var factory: PetTransportFactory!
+    var browser: PetFakeBrowser!  // PetSession holds it weakly
     var session: PetSession!
     var chat: PetFakeTransport!
 
     override func setUp() {
         http = PetStubHTTP()
         factory = PetTransportFactory()
+        browser = PetFakeBrowser()
         http.on("POST", "/realms/nachotown/protocol/openid-connect/token", 200, petTokenJSON)
         http.on("POST", "/api/v1/agents/\(agent)/connector-binding", 200, #"{"token":"nct_feed","endpoint":"/ws/connector"}"#)
         var s = PetSettings()
         s.serverMode = .mock
         s.allowComboControl = false
-        session = PetSession(settings: s, http: http, secrets: MemorySecretStore(), browser: PetFakeBrowser(),
+        session = PetSession(settings: s, http: http, secrets: MemorySecretStore(), browser: browser,
                              makeTransport: factory.make, executor: PetRecordingExecutor(), random: PetFixedRandom())
         session.signIn(); settle()
         chat = factory.with(path: "/ws/chat")[0]
