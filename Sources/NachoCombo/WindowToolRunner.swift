@@ -9,6 +9,7 @@ import NachoComboCore
 /// only cap is `WindowTiling.maxWindows` per call (payload size).
 final class WindowToolRunner: GadgetToolRunning {
     private struct Target { let window: AXWindow; let label: String }
+    private struct Failure: Error { let outcome: PetCommandOutcome }
     private struct Move { let target: Target; let before: CGRect; let goal: CGRect; let note: String? }
 
     private let fallback: GadgetToolRunning
@@ -45,7 +46,7 @@ final class WindowToolRunner: GadgetToolRunning {
         case let .place(items, unit): return place(items, unit: unit)
         case let .split(_, _, windows, display): return fitOneDisplay(request, windows: windows, display: display)
         case let .ratio(_, _, windows, display): return fitOneDisplay(request, windows: windows, display: display)
-        case let .arrangeApps(apps, _, display): return fitOneDisplay(request, windows: apps.map { WindowRef(app: $0, window: 1) }, display: display)
+        case let .arrangeApps(apps, _, display): return fitOneDisplay(request, windows: apps.map { WindowSelector(app: $0, window: 1) }, display: display)
         case let .moveDisplay(windows, display): return moveToDisplay(windows, display: display)
         case let .undo(steps): return restore(steps: steps)
         }
@@ -67,11 +68,12 @@ final class WindowToolRunner: GadgetToolRunning {
 
     private func displays() -> PetCommandOutcome {
         let (full, visible) = screens
-        let list: [[String: Any]] = PetDisplays.ordered(full).enumerated().map { n, index in
+        var list: [[String: Any]] = []
+        for (n, index) in PetDisplays.ordered(full).enumerated() {
             var item: [String: Any] = ["display": n + 1, "name": NSScreen.screens[index].localizedName, "main": index == 0]
-            item.merge(report(full[index], on: full[index])) { a, _ in a }
+            for (key, value) in report(full[index], on: full[index]) { item[key] = value }
             item["usable"] = report(visible[index], on: full[index])
-            return item
+            list.append(item)
         }
         return PetCommandOutcome(ok: true, message: "\(list.count) display\(list.count == 1 ? "" : "s").", details: ["displays": list])
     }
@@ -81,7 +83,7 @@ final class WindowToolRunner: GadgetToolRunning {
     private func entries() -> [PetAppEntry] {
         NSWorkspace.shared.runningApplications.filter {
             $0.activationPolicy == .regular && $0.processIdentifier != getpid() && $0.bundleIdentifier != nil
-        }.map { app in
+        }.map { (app: NSRunningApplication) -> PetAppEntry in
             var names: [String] = []
             if let n = app.localizedName { names.append(n) }
             if let base = app.bundleURL?.deletingPathExtension().lastPathComponent, !names.contains(base) { names.append(base) }
@@ -94,7 +96,7 @@ final class WindowToolRunner: GadgetToolRunning {
         case missing(String)
     }
 
-    private func resolve(_ ref: WindowRef, matching all: [PetAppEntry]) -> Resolved {
+    private func resolve(_ ref: WindowSelector, matching all: [PetAppEntry]) -> Resolved {
         let label = "\(ref.app) #\(ref.window)"
         switch PetAppMatcher.match(ref.app, in: all) {
         case .ambiguous(let list):
@@ -102,9 +104,12 @@ final class WindowToolRunner: GadgetToolRunning {
         case .none:
             return .missing("no running app with that name")
         case .found(let entry):
-            guard let app = NSWorkspace.shared.runningApplications.first(where: {
-                $0.bundleIdentifier?.caseInsensitiveCompare(entry.bundleID) == .orderedSame && $0.activationPolicy == .regular
-            }) else { return .missing("not running") }
+            let candidates: [NSRunningApplication] = NSWorkspace.shared.runningApplications
+            var running: NSRunningApplication?
+            for candidate in candidates where candidate.activationPolicy == .regular {
+                if let id = candidate.bundleIdentifier, id.caseInsensitiveCompare(entry.bundleID) == .orderedSame { running = candidate; break }
+            }
+            guard let app = running else { return .missing("not running") }
             if app.isHidden { app.unhide() }
             let windows = WindowLayoutKeeper.windows(of: app)
             guard windows.indices.contains(ref.window - 1), let frame = windows[ref.window - 1].frame else {
@@ -117,9 +122,9 @@ final class WindowToolRunner: GadgetToolRunning {
     private struct Found { let index: Int; let label: String; let target: Target?; let frame: CGRect?; let problem: String? }
 
     /// Every ref, in order; refs that cannot be found carry the reason (they never stop the others).
-    private func resolveAll(_ refs: [WindowRef]) -> [Found] {
+    private func resolveAll(_ refs: [WindowSelector]) -> [Found] {
         let all = entries()
-        return refs.enumerated().map { index, ref in
+        return refs.enumerated().map { (index: Int, ref: WindowSelector) -> Found in
             switch resolve(ref, matching: all) {
             case let .found(target, frame): return Found(index: index, label: target.label, target: target, frame: frame, problem: nil)
             case let .missing(text): return Found(index: index, label: "\(ref.app) #\(ref.window)", target: nil, frame: nil, problem: text)
@@ -140,12 +145,12 @@ final class WindowToolRunner: GadgetToolRunning {
         return found
     }
 
-    private func visibleFrames(for numbers: [Int]) -> Result<[CGRect], PetCommandOutcome> {
+    private func visibleFrames(for numbers: [Int]) -> Result<[CGRect], Failure> {
         let (full, visible) = screens
         var areas: [CGRect] = []
         for number in numbers {
             guard let frame = WindowTiling.visibleFrame(display: number, full: full, visible: visible) else {
-                return .failure(PetCommandOutcome(ok: false, message: "there is no display \(number) (this Mac has \(full.count)); see window_displays"))
+                return .failure(Failure(outcome: PetCommandOutcome(ok: false, message: "there is no display \(number) (this Mac has \(full.count)); see window_displays")))
             }
             areas.append(frame)
         }
@@ -201,11 +206,19 @@ final class WindowToolRunner: GadgetToolRunning {
         if notPlaced + problems.count > 0 { text += "; \(notPlaced + problems.count) not placed" }
         if tight > 0 { text += "; \(tight) cell\(tight == 1 ? " is" : "s are") under \(Int(WindowTiling.comfortableSide)) points on a side, apps may refuse that size" }
         if !snapshot.isEmpty { text += ". window_undo restores them." }
-        return PetCommandOutcome(ok: !snapshot.isEmpty, message: text, details: ["windows": rows, "missing": problems.map { "\($0.label): \($0.why)" }])
+        let missingText: [String] = problems.map { "\($0.label): \($0.why)" }
+        let details: [String: Any] = ["windows": rows, "missing": missingText]
+        return PetCommandOutcome(ok: !snapshot.isEmpty, message: text, details: details)
+    }
+
+    private func problemList(_ found: [Found]) -> [(label: String, why: String)] {
+        var list: [(label: String, why: String)] = []
+        for f in found { if let why = f.problem { list.append((label: f.label, why: why)) } }
+        return list
     }
 
     private func nothingFound(_ found: [Found]) -> PetCommandOutcome {
-        let missing = found.compactMap { f in f.problem.map { "\(f.label): \($0)" } }
+        let missing = problemList(found).map { "\($0.label): \($0.why)" }
         return PetCommandOutcome(ok: false, message: "No window could be found: " + missing.joined(separator: "; "), details: ["missing": missing])
     }
 
@@ -217,15 +230,18 @@ final class WindowToolRunner: GadgetToolRunning {
         }
         let areas: [CGRect]
         switch visibleFrames(for: spec.displays ?? []) {
-        case .failure(let outcome): return outcome
+        case .failure(let failure): return failure.outcome
         case .success(let list): areas = list.isEmpty ? [usableFrame(of: usable[0].frame ?? .zero)] : list
         }
         let gap = CGFloat(spec.gap ?? snap?.optionsProvider().snapGap ?? 0)
         switch WindowTiling.tile(count: usable.count, rows: spec.rows, cols: spec.cols, fill: spec.fill, span: spec.span, areas: areas, gap: gap) {
         case .failure(let error): return PetCommandOutcome(ok: false, message: error.message)
         case .success(let cells):
-            let moves = zip(usable, cells).map { Move(target: $0.target!, before: $0.frame!, goal: $1, note: nil) }
-            let problems = found.compactMap { f in f.problem.map { (label: f.label, why: $0) } }
+            var moves: [Move] = []
+            for (item, cell) in zip(usable, cells) {
+                if let target = item.target, let frame = item.frame { moves.append(Move(target: target, before: frame, goal: cell, note: nil)) }
+            }
+            let problems = problemList(found)
             return apply(moves, problems: problems, what: spec.windows == nil ? "All windows tiled" : "Tile", tight: WindowTiling.tightCells(cells))
         }
     }
@@ -242,7 +258,7 @@ final class WindowToolRunner: GadgetToolRunning {
             let area: CGRect
             if let number = item.display {
                 switch visibleFrames(for: [number]) {
-                case .failure(let outcome): problems.append((f.label, outcome.message)); continue
+                case .failure(let failure): problems.append((f.label, failure.outcome.message)); continue
                 case .success(let list): area = list[0]
                 }
             } else {
@@ -253,49 +269,53 @@ final class WindowToolRunner: GadgetToolRunning {
             keptItems.append(item)
         }
         guard !moves.isEmpty else {
-            return PetCommandOutcome(ok: false, message: "No window could be placed: " + problems.map { "\($0.label): \($0.why)" }.joined(separator: "; "),
-                                     details: ["missing": problems.map { "\($0.label): \($0.why)" }])
+            let why: [String] = problems.map { "\($0.label): \($0.why)" }
+            return PetCommandOutcome(ok: false, message: "No window could be placed: " + why.joined(separator: "; "), details: ["missing": why])
         }
         return apply(moves, problems: problems, what: "Place", raise: WindowPlacement.raiseOrder(keptItems))
     }
 
-    private func fitOneDisplay(_ request: WindowToolRequest, windows refs: [WindowRef], display: Int?) -> PetCommandOutcome {
+    private func fitOneDisplay(_ request: WindowToolRequest, windows refs: [WindowSelector], display: Int?) -> PetCommandOutcome {
         let found = resolveAll(refs)
         guard let first = found.first(where: { $0.target != nil }) else { return nothingFound(found) }
-        let visible: CGRect
-        switch display.map({ visibleFrames(for: [$0]) }) ?? .success([usableFrame(of: first.frame ?? .zero)]) {
-        case .failure(let outcome): return outcome
-        case .success(let list): visible = list[0]
+        var visible = usableFrame(of: first.frame ?? .zero)
+        if let number = display {
+            switch visibleFrames(for: [number]) {
+            case .failure(let failure): return failure.outcome
+            case .success(let list): visible = list[0]
+            }
         }
         let gap = CGFloat(snap?.optionsProvider().snapGap ?? 0)
         guard let result = request.cells(in: visible, gap: gap) else { return PetCommandOutcome(ok: false, message: "This request does not place windows.") }
         switch result {
         case .failure(let error): return PetCommandOutcome(ok: false, message: error.message)
         case .success(let cells):
-            let moves: [Move] = found.compactMap { f in
-                guard let target = f.target, let frame = f.frame, cells.indices.contains(f.index) else { return nil }
-                return Move(target: target, before: frame, goal: cells[f.index], note: nil)
+            var moves: [Move] = []
+            for f in found {
+                guard let target = f.target, let frame = f.frame, cells.indices.contains(f.index) else { continue }
+                moves.append(Move(target: target, before: frame, goal: cells[f.index], note: nil))
             }
-            let problems = found.compactMap { f in f.problem.map { (label: f.label, why: $0) } }
+            let problems = problemList(found)
             return apply(moves, problems: problems, what: "Placement", tight: WindowTiling.tightCells(cells))
         }
     }
 
-    private func moveToDisplay(_ refs: [WindowRef], display: Int) -> PetCommandOutcome {
+    private func moveToDisplay(_ refs: [WindowSelector], display: Int) -> PetCommandOutcome {
         let destination: CGRect
         switch visibleFrames(for: [display]) {
-        case .failure(let outcome): return outcome
+        case .failure(let failure): return failure.outcome
         case .success(let list): destination = list[0]
         }
         let found = resolveAll(refs)
         let visible = screens.visible
-        let moves: [Move] = found.compactMap { f in
-            guard let target = f.target, let frame = f.frame else { return nil }
+        var moves: [Move] = []
+        for f in found {
+            guard let target = f.target, let frame = f.frame else { continue }
             let source = visible[WindowLayout.screenIndex(for: frame, screens: visible) ?? 0]
-            return Move(target: target, before: frame, goal: WindowLayout.move(frame, from: source, to: destination), note: nil)
+            moves.append(Move(target: target, before: frame, goal: WindowLayout.move(frame, from: source, to: destination), note: nil))
         }
         guard !moves.isEmpty else { return nothingFound(found) }
-        return apply(moves, problems: found.compactMap { f in f.problem.map { (label: f.label, why: $0) } }, what: "Move to display \(display)")
+        return apply(moves, problems: problemList(found), what: "Move to display \(display)")
     }
 
     private func restore(steps: Int) -> PetCommandOutcome {

@@ -10,7 +10,7 @@ import CoreGraphics
 
 /// One window as a tool caller names it: an app (display name, English name or bundle ID, as in `window_layout`) and the
 /// window's order in that app, front to back, from 1. `id` is the same thing as one string, `"<app>#<n>"`.
-public struct WindowRef: Equatable {
+public struct WindowSelector: Equatable {
     public var app: String
     public var window: Int
     public init(app: String, window: Int = 1) { self.app = app; self.window = window }
@@ -245,11 +245,11 @@ public enum WindowTiling {
 
 /// One window of `window_place`: where it goes inside a display's usable area, top-left origin.
 public struct WindowPlacementItem: Equatable {
-    public var ref: WindowRef
+    public var ref: WindowSelector
     public var display: Int?
     public var x: Double, y: Double, w: Double, h: Double
     public var z: Int?
-    public init(ref: WindowRef, display: Int? = nil, x: Double, y: Double, w: Double, h: Double, z: Int? = nil) {
+    public init(ref: WindowSelector, display: Int? = nil, x: Double, y: Double, w: Double, h: Double, z: Int? = nil) {
         self.ref = ref; self.display = display; self.x = x; self.y = y; self.w = w; self.h = h; self.z = z
     }
 }
@@ -282,7 +282,7 @@ public enum WindowPlacement {
 
 public struct WindowTileSpec: Equatable {
     /// nil = every open window of every app (the "whole checkerboard").
-    public var windows: [WindowRef]?
+    public var windows: [WindowSelector]?
     public var rows: Int?
     public var cols: Int?
     public var displays: [Int]?
@@ -295,9 +295,9 @@ public enum WindowToolRequest: Equatable {
     case displays
     case tile(WindowTileSpec)
     case place(items: [WindowPlacementItem], unit: WindowCoordinateUnit)
-    case split(parts: Int, direction: WindowSplitDirection, windows: [WindowRef], display: Int?)
-    case ratio(weights: [Int], direction: WindowSplitDirection, windows: [WindowRef], display: Int?)
-    case moveDisplay(windows: [WindowRef], display: Int)
+    case split(parts: Int, direction: WindowSplitDirection, windows: [WindowSelector], display: Int?)
+    case ratio(weights: [Int], direction: WindowSplitDirection, windows: [WindowSelector], display: Int?)
+    case moveDisplay(windows: [WindowSelector], display: Int)
     case arrangeApps(apps: [String], arrangement: WindowArrangement, display: Int?)
     case undo(steps: Int)
 
@@ -369,7 +369,7 @@ public enum WindowToolArguments {
         return found
     }
 
-    private static func ref(_ o: [String: JSONValue]) throws -> WindowRef {
+    private static func ref(_ o: [String: JSONValue]) throws -> WindowSelector {
         var app: String?
         var order = try int(o["window"], "window", 1...20)
         if case .string(let id)? = o["id"] {
@@ -381,10 +381,10 @@ public enum WindowToolArguments {
         guard let name = app?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, name.count <= PetCommands.maxAppNameLength else {
             throw WindowToolProblem("each window needs an app (or id) of 1 to \(PetCommands.maxAppNameLength) characters")
         }
-        return WindowRef(app: name, window: order ?? 1)
+        return WindowSelector(app: name, window: order ?? 1)
     }
 
-    private static func windows(_ value: JSONValue?, max: Int) throws -> [WindowRef] {
+    private static func windows(_ value: JSONValue?, max: Int) throws -> [WindowSelector] {
         guard case .array(let list)? = value else { throw WindowToolProblem("windows must be a list of {app, window}") }
         guard !list.isEmpty, list.count <= max else { throw WindowToolProblem("windows needs 1 to \(max) items") }
         var seen = Set<String>()

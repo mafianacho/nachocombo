@@ -199,7 +199,7 @@ final class WindowPlacementTests: XCTestCase {
     private let visible = CGRect(x: 100, y: 50, width: 1000, height: 600)   // another display: not at the origin
 
     private func item(_ x: Double, _ y: Double, _ w: Double, _ h: Double, z: Int? = nil) -> WindowPlacementItem {
-        WindowPlacementItem(ref: WindowRef(app: "A"), x: x, y: y, w: w, h: h, z: z)
+        WindowPlacementItem(ref: WindowSelector(app: "A"), x: x, y: y, w: w, h: h, z: z)
     }
 
     func testRatioRectangleUsesTopLeftOrigin() {
@@ -313,20 +313,20 @@ final class WindowToolArgumentsTests: XCTestCase {
     func testValidRequests() {
         XCTAssertEqual(try? parse("displays", "{}").get(), .displays)
         XCTAssertEqual(try? parse("tile", #"{"windows":[{"app":"Safari"},{"app":"Notes","window":2}],"display":2}"#).get(),
-                       .tile(WindowTileSpec(windows: [WindowRef(app: "Safari"), WindowRef(app: "Notes", window: 2)], rows: nil, cols: nil,
+                       .tile(WindowTileSpec(windows: [WindowSelector(app: "Safari"), WindowSelector(app: "Notes", window: 2)], rows: nil, cols: nil,
                                            displays: [2], span: .perDisplay, fill: .rowMajor, gap: nil)))
         XCTAssertEqual(try? parse("tile", #"{"all_windows":true,"rows":10,"cols":2,"displays":[1,2],"span":"across","fill":"column_major","gap":8}"#).get(),
                        .tile(WindowTileSpec(windows: nil, rows: 10, cols: 2, displays: [1, 2], span: .across, fill: .columnMajor, gap: 8)))
         XCTAssertEqual(try? parse("place", #"{"items":[{"app":"Safari","x":0.1,"y":0,"w":0.5,"h":1,"z":3},{"id":"Notes#2","display":2,"x":0,"y":0,"w":1,"h":1}]}"#).get(),
-                       .place(items: [WindowPlacementItem(ref: WindowRef(app: "Safari"), x: 0.1, y: 0, w: 0.5, h: 1, z: 3),
-                                      WindowPlacementItem(ref: WindowRef(app: "Notes", window: 2), display: 2, x: 0, y: 0, w: 1, h: 1)], unit: .ratio))
+                       .place(items: [WindowPlacementItem(ref: WindowSelector(app: "Safari"), x: 0.1, y: 0, w: 0.5, h: 1, z: 3),
+                                      WindowPlacementItem(ref: WindowSelector(app: "Notes", window: 2), display: 2, x: 0, y: 0, w: 1, h: 1)], unit: .ratio))
         XCTAssertEqual(try? parse("place", #"{"unit":"pixel","items":[{"app":"A","x":10,"y":20,"w":300,"h":200}]}"#).get(),
-                       .place(items: [WindowPlacementItem(ref: WindowRef(app: "A"), x: 10, y: 20, w: 300, h: 200)], unit: .pixel))
+                       .place(items: [WindowPlacementItem(ref: WindowSelector(app: "A"), x: 10, y: 20, w: 300, h: 200)], unit: .pixel))
         XCTAssertEqual(try? parse("split", #"{"parts":4,"direction":"quadrant","windows":[{"app":"A"}]}"#).get(),
-                       .split(parts: 4, direction: .quadrant, windows: [WindowRef(app: "A")], display: nil))
+                       .split(parts: 4, direction: .quadrant, windows: [WindowSelector(app: "A")], display: nil))
         XCTAssertEqual(try? parse("ratio", #"{"ratios":[70,30],"windows":[{"app":"A"},{"app":"B"}]}"#).get(),
-                       .ratio(weights: [70, 30], direction: .horizontal, windows: [WindowRef(app: "A"), WindowRef(app: "B")], display: nil))
-        XCTAssertEqual(try? parse("move_display", #"{"windows":[{"app":"Slack"}],"display":2}"#).get(), .moveDisplay(windows: [WindowRef(app: "Slack")], display: 2))
+                       .ratio(weights: [70, 30], direction: .horizontal, windows: [WindowSelector(app: "A"), WindowSelector(app: "B")], display: nil))
+        XCTAssertEqual(try? parse("move_display", #"{"windows":[{"app":"Slack"}],"display":2}"#).get(), .moveDisplay(windows: [WindowSelector(app: "Slack")], display: 2))
         XCTAssertEqual(try? parse("arrange_apps", #"{"apps":["Safari","Notes"],"arrangement":"columns"}"#).get(),
                        .arrangeApps(apps: ["Safari", "Notes"], arrangement: .columns, display: nil))
         XCTAssertEqual(try? parse("undo", "{}").get(), .undo(steps: 1))
