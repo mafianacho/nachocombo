@@ -47,6 +47,25 @@ final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
 
     var isRunning: Bool { server != nil }
 
+    /// Set by the emergency stop, cleared when the module starts again. Read from any thread: Nacho's calls
+    /// (`ComputerGadgetRunner`) check it before they run and again when their turn in the queue comes (NACHO-147).
+    private let emergencyLock = NSLock()
+    private var emergencyLatched = false
+    var isEmergencyStopped: Bool {
+        emergencyLock.lock(); defer { emergencyLock.unlock() }
+        return emergencyLatched
+    }
+    private func setEmergency(_ on: Bool) { emergencyLock.lock(); emergencyLatched = on; emergencyLock.unlock() }
+
+    /// The runner of the `computer` gadget for the dispatcher (Nacho's path, and the tree tools on the MCP path).
+    /// `attach` puts a screenshot into the chat (the pet's pending files); it is called on the main thread.
+    func makeGadgetRunner(attach: @escaping (ComputerImageAttachment) -> String?) -> ComputerGadgetRunner {
+        ComputerGadgetRunner(backend: backend, elements: MacUIElementAccess(),
+                             emergencyStopped: { [weak self] in self?.isEmergencyStopped ?? true },
+                             attach: { file in Thread.isMainThread ? attach(file) : DispatchQueue.main.sync { attach(file) } },
+                             selfGuard: MacComputerSelfGuard())
+    }
+
     override init() {
         super.init()
         callLog.onEntry = { [weak self] _ in DispatchQueue.main.async { self?.onActivity?() } }
@@ -120,6 +139,7 @@ final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
     /// Idempotent: every call first tears everything down and then rebuilds from the saved settings.
     func start() -> ModuleState {
         tearDown()
+        setEmergency(false)
         let config = currentSettings()
         snapshotLock.lock(); snapshot = config; snapshotLock.unlock()
 
@@ -193,6 +213,7 @@ final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
 
     /// Refuses every further tool call at once and tells the owner to switch the module OFF.
     func emergencyStop() {
+        setEmergency(true)
         service?.emergencyStop()
         backend.shutdown()
         DispatchQueue.main.async { [weak self] in self?.onEmergencyStop?() }
