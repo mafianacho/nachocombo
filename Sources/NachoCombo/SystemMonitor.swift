@@ -45,6 +45,11 @@ final class SystemMonitorModule: NSObject, FeatureModule {
         return Reading(cpuBusy: s.cpu?.busy, memPercent: s.memory?.usedPercent, memUsed: s.memory?.used ?? 0,
                        memTotal: s.memory?.total ?? 0, rx: s.netDown, tx: s.netUp, diskPercent: s.volume?.usedPercent)
     }
+    /// The engine's last sample for the monitor tool (NACHO-149); nil while off or before the first sample.
+    var toolSnapshot: MonitorSnapshot? {
+        guard let engine = engine, engine.sampleCount > 0 else { return nil }
+        return engine.snapshot
+    }
     private var shownOrder: [MonitorItem] { MonitorItem.allCases.filter { statusItems[$0] != nil } }
 
     override init() {
