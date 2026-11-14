@@ -114,6 +114,9 @@ public struct ComputerUseSettings: Codable, Equatable {
     public var allowedHosts: [String]
     /// Default `localOnly`. Files written before LAN mode existed, and unknown values, load as `localOnly`.
     public var listenMode: ComputerUseListenMode
+    /// NachoCombo MCP gadget switches (`GadgetID` raw value → on), all off by default. A gadget's MCP tools are listed
+    /// and callable only while its switch is on. Computer Use tools keep the tool group switches above instead.
+    public var enabledGadgets: [String: Bool]
 
     /// Address the server binds to in LAN mode (every interface; the peer address check keeps public peers out).
     public static let lanBindAddress = "0.0.0.0"
@@ -125,15 +128,16 @@ public struct ComputerUseSettings: Codable, Equatable {
     public var requiresTLS: Bool { listenMode == .lan }
 
     public init(port: Int = ComputerUseSettings.defaultPort, enabledGroups: [String: Bool] = [:], allowedHosts: [String] = [],
-                listenMode: ComputerUseListenMode = .localOnly) {
+                listenMode: ComputerUseListenMode = .localOnly, enabledGadgets: [String: Bool] = [:]) {
         self.listenMode = listenMode
+        self.enabledGadgets = enabledGadgets
         self.port = ComputerUseSettings.isValidPort(port) ? port : ComputerUseSettings.defaultPort
         self.bindAddress = "127.0.0.1"
         self.enabledGroups = enabledGroups
         self.allowedHosts = allowedHosts
     }
 
-    private enum CodingKeys: String, CodingKey { case port, bindAddress, enabledGroups, allowedHosts, listenMode }
+    private enum CodingKeys: String, CodingKey { case port, bindAddress, enabledGroups, allowedHosts, listenMode, enabledGadgets }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -145,6 +149,8 @@ public struct ComputerUseSettings: Codable, Equatable {
         allowedHosts = try c.decodeIfPresent([String].self, forKey: .allowedHosts) ?? []
         // Missing, null or any unknown / wrongly typed value: stay local. Never fail the whole settings file over it.
         listenMode = (try? c.decodeIfPresent(ComputerUseListenMode.self, forKey: .listenMode)) ?? .localOnly
+        // Files from before NachoCombo MCP, and wrongly typed values: every gadget switch off.
+        enabledGadgets = (try? c.decodeIfPresent([String: Bool].self, forKey: .enabledGadgets)) ?? [:]
     }
 
     public static func isValidPort(_ port: Int) -> Bool { (1024...65535).contains(port) }
@@ -158,6 +164,23 @@ public struct ComputerUseSettings: Codable, Equatable {
     }
 
     public var enabledToolGroups: [ToolGroup] { ToolGroup.allCases.filter { isEnabled($0) } }
+
+    /// The NachoCombo MCP switch of one gadget (off by default). `computer` has no switch of its own: its tools sit
+    /// under the tool groups.
+    public func isGadgetEnabled(_ gadget: GadgetID) -> Bool { gadget != .computer && (enabledGadgets[gadget.rawValue] ?? false) }
+
+    public mutating func setGadgetEnabled(_ gadget: GadgetID, _ enabled: Bool) {
+        guard gadget != .computer else { return }
+        enabledGadgets[gadget.rawValue] = enabled
+    }
+
+    /// Whether the MCP exit offers this registry tool right now: its tool group switch (Computer Use tools) or its
+    /// gadget switch (every other gadget).
+    public func offers(_ tool: GadgetTool) -> Bool {
+        guard tool.exits.contains(.mcp) else { return false }
+        if let group = tool.mcpGroup { return isEnabled(group) }
+        return isGadgetEnabled(tool.gadget)
+    }
 
     /// OS permissions needed by the groups that are switched on right now (and only those).
     public var requiredPermissions: [OSPermission] {
