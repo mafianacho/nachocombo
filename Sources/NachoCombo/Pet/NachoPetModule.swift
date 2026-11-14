@@ -89,10 +89,13 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         RunLoop.main.add(t, forMode: .common)
         faceTimer = t
         refreshSelectionWatcher()
+        PetServerArt.shared.start(endpoint: { [weak self] in self?.settings.endpoint },
+                                  onChange: { [weak self] in self?.petWindow?.characterView.artChanged() })
         return .running
     }
 
     func stop() {
+        PetServerArt.shared.stop()
         faceTimer?.invalidate()
         faceTimer = nil
         selectionWatcher.stop()

@@ -184,7 +184,15 @@ enum PetArt {
 
     static func image(_ face: PetFace) -> NSImage? { image(named: face.assetName) }
 
+    /// The server picture for a state (flavor `original`), set while the pet runs; nil → the bundled picture.
+    static var serverImage: ((String) -> NSImage?)?
+
     static func image(named name: String) -> NSImage? {
+        if let server = serverImage?(name) { return server }
+        return bundledImage(named: name)
+    }
+
+    static func bundledImage(named name: String) -> NSImage? {
         if let cached = cache[name] { return cached }
         // calling-eyeless (the listening blink) is a webp original; the others are png.
         let file = name == "calling-eyeless" ? "\(name).webp" : "\(name).png"
@@ -198,6 +206,61 @@ enum PetArt {
             }
         }
         return nil
+    }
+}
+
+/// Server character pictures (NACHO-158 contract v1) on top of the bundled art: catalog + files cached on disk by
+/// sha256, refreshed at start and when the app comes to the foreground. Every failure keeps the bundled picture.
+final class PetServerArt {
+    static let shared = PetServerArt()
+    /// The combo has no flavor choice yet: it shows `original`.
+    static let flavor = PetArtResolver.originalFlavor
+
+    private var sync: PetCharacterAssetSync?
+    private var images: [String: NSImage] = [:]  // sha256 → decoded picture (main thread)
+    private var observer: NSObjectProtocol?
+    private var onChange: (() -> Void)?
+
+    func start(endpoint: @escaping () -> ServerEndpoint?, onChange: @escaping () -> Void) {
+        self.onChange = onChange
+        if sync == nil {
+            let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? FileManager.default.temporaryDirectory
+            let dir = base.appendingPathComponent("NachoCombo/CharacterAssets", isDirectory: true)
+            sync = PetCharacterAssetSync(http: URLSessionPetHTTP(timeout: 15), cache: PetCharacterAssetCache(directory: dir),
+                                         endpoint: endpoint, wantedFlavors: { [PetServerArt.flavor, PetArtResolver.originalFlavor] })
+        }
+        PetArt.serverImage = { [weak self] state in self?.image(state: state) }
+        if observer == nil {
+            observer = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil,
+                                                              queue: .main) { [weak self] _ in self?.refresh() }
+        }
+        refresh()
+    }
+
+    func stop() {
+        if let o = observer { NotificationCenter.default.removeObserver(o) }
+        observer = nil
+        PetArt.serverImage = nil
+        onChange = nil
+    }
+
+    private func refresh() {
+        sync?.refresh { [weak self] changed in
+            guard changed else { return }
+            DispatchQueue.main.async { self?.onChange?() }
+        }
+    }
+
+    private func image(state: String) -> NSImage? {
+        guard let sync = sync else { return nil }
+        // Bundled flavors: only `original` ships, so any other flavor falls to it (resolver rule 2).
+        guard case let .server(file) = sync.source(flavor: PetServerArt.flavor, state: state, bundledFlavors: [PetArtResolver.originalFlavor])
+        else { return nil }
+        if let hit = images[file.sha256] { return hit }
+        guard let data = sync.cache.read(file), let img = NSImage(data: data) else { return nil }  // undecodable → bundle
+        images[file.sha256] = img
+        return img
     }
 }
 
