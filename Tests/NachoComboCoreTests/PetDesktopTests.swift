@@ -43,9 +43,11 @@ final class PetDesktopParseTests: XCTestCase {
         XCTAssertEqual(PetCommands.parse(capability: "combo_list_gadgets", params: ["verbose": true]), .success(.listGadgets))
     }
 
-    func testQuitIsDeclaredWithApprovalOnlyWhenSwitchedOn() {
-        XCTAssertFalse(PetCommands.declaresQuitApp)
-        XCTAssertFalse(PetCommands.names.contains(PetCommands.quitApp))
+    func testQuitIsDeclaredWithApproval() {
+        XCTAssertTrue(PetCommands.declaresQuitApp)
+        XCTAssertTrue(PetCommands.names.contains(PetCommands.quitApp))
+        XCTAssertFalse(PetCommands.names(allowQuit: false).contains(PetCommands.quitApp))
+        XCTAssertEqual(PetCommands.capabilities.filter { $0["approval"] != nil }.map { $0["name"] as? String }, [PetCommands.quitApp])
         let on = PetCommands.capabilities(allowQuit: true)
         let quit = on.first { $0["name"] as? String == PetCommands.quitApp }
         XCTAssertEqual(quit?["approval"] as? String, "required")
@@ -61,8 +63,9 @@ final class PetDesktopParseTests: XCTestCase {
         let o = try! JSONSerialization.jsonObject(with: Data(hello.utf8)) as! [String: Any]
         let names = (o["capabilities"] as! [[String: Any]]).map { $0["name"] as! String }
         XCTAssertEqual(names, PetCommands.names)
-        XCTAssertFalse(hello.contains("combo_quit_app"))
-        XCTAssertFalse(hello.contains("\"approval\""))
+        XCTAssertTrue(names.contains("combo_quit_app"))
+        let caps = o["capabilities"] as! [[String: Any]]
+        XCTAssertEqual(caps.filter { $0["approval"] as? String == "required" }.map { $0["name"] as? String }, ["combo_quit_app"])
     }
 
     func testOutcomeDetailsGoIntoTheResultButNeverOverrideOkOrMessage() {
