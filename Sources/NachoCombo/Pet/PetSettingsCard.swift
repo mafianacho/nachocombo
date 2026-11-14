@@ -73,8 +73,9 @@ final class PetSettingsCard: NSObject {
         controlCheck.setAccessibilityIdentifier("pet-allow-control")
         view.addArrangedSubview(controlCheck)
         view.addArrangedSubview(UI.wrapLabel("Nacho can open, switch and hide apps, arrange several windows, set the volume and the built-in "
-                                             + "display's brightness, switch other gadgets on or off, and save and put back workspaces. Nacho never "
-                                             + "quits apps, never switches Computer Use or Nacho Pet itself, and never a gadget that still needs a permission.",
+                                             + "display's brightness, switch other gadgets on or off, and save and put back workspaces. Nacho quits "
+                                             + "an app only after you approve it on a card, never forced and never Finder or Nacho Combo. Nacho never "
+                                             + "switches Computer Use or Nacho Pet itself, and never a gadget that still needs a permission.",
                                              width: width, style: .caption1, color: UI.secondaryText))
         if let desktop = desktop {
             let section = PetWorkspaceSettingsSection(desktop: desktop, width: width)
