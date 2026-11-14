@@ -236,6 +236,17 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         session.send(text: text) { refusal in DispatchQueue.main.async { completion(refusal) } }
     }
 
+    /// Send while Nacho is answering: the text waits and goes out when the answer ends.
+    func queueSend(_ text: String, completion: @escaping (String?) -> Void) {
+        voiceInputStarted()
+        serverRecorder.cancel()
+        dictation.stop()
+        dictationState.stop()
+        session.sendOrQueue(text: text) { refusal in DispatchQueue.main.async { completion(refusal) } }
+    }
+
+    func cancelQueued() { session.cancelQueued() }
+
     func stopTurn() {
         voiceInputStarted()
         session.stop()

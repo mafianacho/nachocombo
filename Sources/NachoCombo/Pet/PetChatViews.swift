@@ -75,6 +75,22 @@ final class PetLinkText: NSTextView, NSTextViewDelegate {
         return out
     }
 
+    /// Nacho's answer: inline markdown (bold, italic, code, links) in the bubble font; line breaks stay.
+    static func markdown(_ s: String, font: NSFont, color: NSColor) -> NSAttributedString {
+        let out = NSMutableAttributedString()
+        let manager = NSFontManager.shared
+        for span in PetMarkdown.spans(s) {
+            var f = font
+            if span.code { f = NSFont.monospacedSystemFont(ofSize: font.pointSize * 0.95, weight: .regular) }
+            if span.bold { f = manager.convert(f, toHaveTrait: .boldFontMask) }
+            if span.italic { f = manager.convert(f, toHaveTrait: .italicFontMask) }
+            var a: [NSAttributedString.Key: Any] = [.font: f, .paragraphStyle: PetTheme.paragraph(font), .foregroundColor: color]
+            if let l = span.link { a[.link] = l }
+            out.append(NSAttributedString(string: span.text, attributes: a))
+        }
+        return out
+    }
+
     static func plain(_ s: String, font: NSFont, color: NSColor, align: NSTextAlignment = .natural) -> NSAttributedString {
         text([PetTextPart(s)], font: font, color: color, align: align)
     }
@@ -243,7 +259,9 @@ struct PetItemViews {
         box.alphaValue = past ? CGFloat(PetTokens.Opacity.past) : 1
         let textColor = PetTheme.color(mine ? \.mineText : \.nachoText)
         let inner = bubbleMaxWidth - CGFloat(2 * Sp.m)
-        let content = NSMutableAttributedString(attributedString: PetLinkText.plain(text, font: PetTheme.body, color: textColor))
+        let content = NSMutableAttributedString(attributedString: mine
+            ? PetLinkText.plain(text, font: PetTheme.body, color: textColor)
+            : PetLinkText.markdown(text, font: PetTheme.body, color: textColor))
         if streaming {
             content.append(NSAttributedString(string: text.isEmpty ? "…" : " ▍", attributes: [.font: PetTheme.body, .foregroundColor: PetTheme.accent]))
         }
