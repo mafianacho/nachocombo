@@ -198,6 +198,27 @@ final class PetVoiceChoiceCaptureTests: XCTestCase {
         }
     }
 
+    /// NACHO-36: approval with the server's rule_options: 이번만 실행 / 실행하고 항상 허용 (one per rule) / 거절.
+    func testApprovalWithRuleOptions() throws {
+        let c = decode(["id": "ar", "kind": "approval", "status": "pending", "version": 1, "task_id": "t1", "expires_at": "2026-11-13T06:20:00Z",
+                        "payload": ["title": "배달앱에서 12,000원 결제할까요?", "action_type": "payment", "merchant": "배달앱", "amount": 12000,
+                                    "reversibility": "cannot_cancel",
+                                    "rule_options": [["id": "pay_day", "summary": "하루 30,000원까지 묻지 않고 결제", "action_type": "payment"],
+                                                     ["id": "pay_week", "summary": "배달앱 건당 20,000원 · 일주일 60,000원", "action_type": "payment"]]]])
+        var picked = PetCardLocal()
+        picked.highlighted = 3
+        for dark in [false, true] {
+            _ = try render("rule-options-approval", st: state("저녁 시켜 줘", answer: "배달앱에서 찾았어요. 결제 전에 확인해 주세요.", cards: [c]),
+                           dark: dark, caption: "승인 + 허용 규칙: 이번만 / 항상 허용 / 거절")
+            _ = try render("rule-options-picked", st: state("저녁 시켜 줘", answer: "배달앱에서 찾았어요. 결제 전에 확인해 주세요.", cards: [c]),
+                           local: ["ar": picked], dark: dark, caption: "규칙 행을 숫자키로 고른 상태")
+            var done = c
+            done.status = "answered"; done.answeredAction = "approve"; done.answeredRuleID = "pay_week"
+            _ = try render("rule-options-answered", st: state("저녁 시켜 줘", answer: "배달앱에서 찾았어요.", cards: [done]),
+                           dark: dark, caption: "답함: 고른 규칙 표시")
+        }
+    }
+
     func testRuleProposal() throws {
         let r = decode(["id": "rp", "kind": "rule_proposal", "status": "pending", "version": 1, "expires_at": "2026-11-13T07:00:00Z",
                         "payload": ["said_text": "배달은 3만 원까지 괜찮아",

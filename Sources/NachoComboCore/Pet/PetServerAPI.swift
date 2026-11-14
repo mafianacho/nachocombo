@@ -112,8 +112,10 @@ public enum PetServerAPI {
 
     /// approval: approve | deny · choice/suggestions: choose (+ option_id / option_ids) · any: dismiss.
     public static func answerCardRequest(_ e: ServerEndpoint, bearer: String?, card: PetCard, action: String,
-                                         optionIDs: [String] = []) -> PetHTTPRequest {
+                                         optionIDs: [String] = [], allowRuleID: String? = nil) -> PetHTTPRequest {
         var json: [String: Any] = ["action": action, "expected_version": card.version]
+        // `allow_rule` only with approve (the server answers 400 otherwise); the server adds this Nacho itself.
+        if action == "approve", let rule = allowRuleID, !rule.isEmpty { json["allow_rule"] = ["rule_option_id": rule] }
         if card.multiple, !optionIDs.isEmpty { json["option_ids"] = optionIDs } else if let o = optionIDs.first { json["option_id"] = o }
         return .postJSON(url(e, "/api/v1/chat/requests/\(card.id)/answer"), bearer: bearer, json: json)
     }
@@ -241,8 +243,8 @@ public struct PetServerCalls {
         run(PetServerAPI.restoreRequest(endpoint, bearer: bearer, memoryID: memoryID), { _ in () }, completion)
     }
 
-    public func answer(card: PetCard, action: String, optionIDs: [String], completion: @escaping (Result<PetCard, PetAPIError>) -> Void) {
-        run(PetServerAPI.answerCardRequest(endpoint, bearer: bearer, card: card, action: action, optionIDs: optionIDs),
+    public func answer(card: PetCard, action: String, optionIDs: [String], allowRuleID: String? = nil, completion: @escaping (Result<PetCard, PetAPIError>) -> Void) {
+        run(PetServerAPI.answerCardRequest(endpoint, bearer: bearer, card: card, action: action, optionIDs: optionIDs, allowRuleID: allowRuleID),
             { PetServerAPI.decodeCard($0.body) }, completion)
     }
 
