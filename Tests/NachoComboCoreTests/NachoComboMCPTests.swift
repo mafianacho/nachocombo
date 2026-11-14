@@ -74,10 +74,11 @@ final class GadgetRegistryTests: XCTestCase {
     func testGadgetIDTable() {
         XCTAssertEqual(GadgetID.allCases.filter { $0 != .combo }.map { $0.rawValue },
                        ["window", "menubar", "monitor", "disk", "clipboard", "shelf", "capture", "dim", "awake", "device",
-                        "mouse", "appswitch", "calendar", "computer"])
-        for id in GadgetID.allCases where id != .combo {
+                        "mouse", "appswitch", "calendar", "computer", "desktop"])
+        for id in GadgetID.allCases where id != .combo && id != .desktop {
             XCTAssertEqual(GadgetID(module: id.moduleID!), id)
         }
+        XCTAssertNil(GadgetID.desktop.moduleID, "desktop tidy has no module: always available")
         XCTAssertNil(GadgetID(module: .nachoPet), "the pet is not a gadget of the MCP")
         XCTAssertEqual(GadgetID(named: "windowSnap"), .window)
         XCTAssertEqual(GadgetID(named: "Window Snap"), .window)
