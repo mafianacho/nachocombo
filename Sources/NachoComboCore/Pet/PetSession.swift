@@ -34,6 +34,10 @@ public struct PetSessionState: Equatable {
     public var selectionTurns: [String: PetSelectionSent] = [:]
     /// Turns the user spoke (hold the pet to talk), by client message id: their answer's first sentence may be read.
     public var voiceTurns: Set<String> = []
+    /// Text sent while Nacho was answering: waits here and goes out when the answer ends (one slot; more text is appended).
+    public var queuedText: String?
+    /// A queued text the automatic send could not deliver: the window moves it back into the input field.
+    public var returnedText: String?
     public init() {}
 }
 
@@ -120,6 +124,7 @@ public final class PetSession {
             self.opened = false
             self.dropClients(keepChat: false)
             self.state.pending = []
+            self.state.queuedText = nil
             self.state.selectionTurns = [:]
             self.state.uploading = false
         }
@@ -224,6 +229,7 @@ public final class PetSession {
             self.secrets.delete(ConnectorBinding.agentKey(scope: scope))
             self.dropClients(keepChat: false)
             self.state.pending = []
+            self.state.queuedText = nil
             self.state.selectionTurns = [:]
             self.state.auth = .signedOut
             self.state.notice = "로그아웃했어요."
@@ -274,7 +280,9 @@ public final class PetSession {
     private func chatChanged(_ st: ChatState) {
         let wasDone = state.chat.lastFinishedAt
         let wasConnected = state.chat.phase == .connected
+        let wasBusy = state.chat.isBusy
         state.chat = st
+        if wasBusy, !st.isBusy { flushQueued() }
         if st.phase == .connected, !wasConnected { afterConnected() }
         if st.lastFinishedAt != wasDone, st.lastFinishedAt != nil { markRead() }
         if st.lastFinishedAt != wasDone { state.lastInteraction = now() }
@@ -460,6 +468,64 @@ public final class PetSession {
 
     public func stop() {
         queue.async { self.chat?.stop() }
+    }
+
+    /// Send while Nacho is answering: the text waits (never stops the answer) and goes out when the turn ends.
+    /// Not busy: a plain `send`. `completion` gets the refusal text (Korean) or nil.
+    public func sendOrQueue(text: String, completion: ((String?) -> Void)? = nil) {
+        queue.async {
+            guard self.state.auth == .signedIn, self.state.chat.isBusy else {
+                self.send(text: text, completion: completion)
+                return
+            }
+            self.state.lastInteraction = self.now()
+            if case let .failure(p) = OutgoingText.validate(text, allowEmpty: !self.state.pending.isEmpty) {
+                self.state.notice = p.koreanMessage
+                self.publish()
+                completion?(p.koreanMessage)
+                return
+            }
+            if let held = self.state.queuedText, !held.isEmpty {
+                self.state.queuedText = text.isEmpty ? held : held + "\n" + text
+            } else {
+                self.state.queuedText = text
+            }
+            self.state.notice = nil
+            self.publish()
+            completion?(nil)
+        }
+    }
+
+    /// Drops the waiting text: it is not sent.
+    public func cancelQueued() {
+        queue.async {
+            guard self.state.queuedText != nil else { return }
+            self.state.queuedText = nil
+            self.publish()
+        }
+    }
+
+    /// The window took back the text the automatic send could not deliver.
+    public func clearReturned() {
+        queue.async {
+            guard self.state.returnedText != nil else { return }
+            self.state.returnedText = nil
+            self.publish()
+        }
+    }
+
+    /// The answer ended (done, error or stopped): the waiting text goes out now. A refusal hands it back to the user.
+    private func flushQueued() {
+        guard let text = state.queuedText else { return }
+        state.queuedText = nil
+        send(text: text) { [weak self] refusal in
+            guard let self = self, let msg = refusal else { return }
+            self.queue.async {
+                self.state.returnedText = text
+                self.state.notice = "대기하던 글을 보내지 못했어요. 입력창에 돌려놨어요. \(msg)"
+                self.publish()
+            }
+        }
     }
 
     // MARK: connector (window arrangement, gadget switches)
