@@ -37,7 +37,8 @@ final class PetDesktopContractTests: XCTestCase {
             let schema = c["input_schema"] as? [String: Any]
             XCTAssertEqual(schema?["type"] as? String, "object", name)
             XCTAssertNotNil(schema?["properties"] as? [String: Any], name)
-            // Risky = destructive / content out (NACHO-144 registry risk); NACHO-149 made combo_clear_shelf destructive.
+            // Risky = destructive / content out / input inject (registry risk): quit, Computer Use's content and input
+            // tools (NACHO-147), and since NACHO-149 combo_clear_shelf and the data gadgets' content / destructive tools.
             let risky = GadgetToolRegistry.connectorTool(named: name)?.connectorApproval(alwaysAllowed: false) == true
             XCTAssertEqual(c["approval"] as? String, risky ? "required" : nil, "\(name): approval follows the risk")
             if ["combo_quit_app", "combo_clear_shelf"].contains(name) { XCTAssertTrue(risky, name) }

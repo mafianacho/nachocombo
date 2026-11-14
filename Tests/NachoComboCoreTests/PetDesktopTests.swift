@@ -47,12 +47,14 @@ final class PetDesktopParseTests: XCTestCase {
         XCTAssertTrue(PetCommands.declaresQuitApp)
         XCTAssertTrue(PetCommands.names.contains(PetCommands.quitApp))
         XCTAssertFalse(PetCommands.names(allowQuit: false).contains(PetCommands.quitApp))
-        // Approval follows the registry risk (NACHO-144): quit, and since NACHO-149 the destructive / content tools.
+        // Approval follows the registry risk (NACHO-144): quit, Computer Use's content / input tools (NACHO-147),
+        // and since NACHO-149 the destructive / content tools of the data gadgets (combo_clear_shelf among them).
         let asking = PetCommands.capabilities.filter { $0["approval"] != nil }.compactMap { $0["name"] as? String }
         XCTAssertEqual(asking, PetCommands.capabilities.compactMap { $0["name"] as? String }
             .filter { GadgetToolRegistry.connectorTool(named: $0)?.connectorApproval(alwaysAllowed: false) == true })
-        XCTAssertTrue(asking.contains(PetCommands.quitApp))
-        XCTAssertTrue(asking.contains(PetCommands.clearShelf), "NACHO-149: emptying the shelf is destructive")
+        let legacy = Set(PetCommands.legacyNames)
+        XCTAssertEqual(asking.filter { legacy.contains($0) }, [PetCommands.quitApp, PetCommands.clearShelf],
+                       "among the 16 first capabilities: quit, and the shelf since NACHO-149")
         XCTAssertFalse(asking.contains(PetCommands.listApps))
         let on = PetCommands.capabilities(allowQuit: true)
         let quit = on.first { $0["name"] as? String == PetCommands.quitApp }

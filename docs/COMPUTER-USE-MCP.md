@@ -63,6 +63,23 @@ macOS permissions are requested **only when a tool group that needs them is swit
 ## Emergency stop
 `⌃⌥⌘.` or the button on the page: every call is refused at once, a running shell command is ended and the gadget is switched off (and saved as off). If the shortcut cannot be registered (a conflict), the server is not opened.
 
+## Nacho (connector) path and the accessibility tree (NACHO-147)
+Nacho in the chat gets part of Computer Use through the NachoCombo MCP registry (`Gadgets/Tools/ComputerTools.swift`, guide `nachocombo://gadgets/computer/guide`, `combo_gadget_guide {"gadget":"computer"}`):
+
+| Connector name | Risk | Approval on Nacho's path |
+|---|---|---|
+| `combo_computer_screen_list_displays` | read | none |
+| `combo_computer_screen_capture`, `combo_computer_ui_tree`, `combo_computer_find_element` | content_out | card every time; none while Computer Use is "always allowed" (`ctl trust computer on`, off by default) |
+| `combo_computer_mouse_move` / `_click` / `_drag` / `_scroll`, `combo_computer_key_press`, `combo_computer_type_text`, `combo_computer_click_element` | input_inject | same |
+
+- **Never offered to Nacho:** AppleScript, shell, file read/write, process kill, app quit, clipboard, open URL/file, system info. They stay MCP only, under their own (high-risk) switches.
+- **New on both exits:** `computer_ui_tree` (front window or `scope: app`, bounded: depth 1–25 (8), elements 1–500 (200), text 10–200 characters (80), breadth first, secure fields never read out), `computer_find_element` (role and/or title, up to 30 matches out of at most 1500 elements), `computer_click_element` (id `t<read>.<n>` of one of the last 5 reads, re-checked against the live element: role and title must be unchanged; or x/y; `press` runs AXPress). On MCP they sit under Apps & Windows (tree, find) and Input (click).
+- **Order on Nacho's path:** connector (disabled action, revoke race) → dispatcher (gadget on = the Computer Use module is running, macOS permission) → `ComputerGadgetRunner`: emergency stop → only Nacho's tools → closed argument check (unknown keys, types, bounds, choices) → one call at a time on its queue → emergency stop again → run.
+- **Emergency stop** `⌃⌥⌘.` latches at once (`ComputerUseModule.isEmergencyStopped`, any thread) and also refuses Nacho's calls waiting in the queue (`reason: emergency_stop`); turning the module on again clears it. The module itself goes off as before.
+- **Own windows:** clicks, drags and scrolls on a Nacho Combo window (chat, approval cards, pet, panels) and keys while a Nacho Combo window has the keyboard are refused (`reason: own_window`); before keys the app tries to hand the keyboard to the frontmost other app. The tree tools never read Nacho Combo itself.
+- **Screenshots:** nacho-server turns a connector result into text for the model (`call_connector` → `Value::to_string`; docs/ws-protocol.md §3 has no image result), so the PNG is attached to the chat as a pending file of the next message (the "capture → Nacho" path) and the result tells the model so. It sees the picture once the user sends it. For an image inside the same turn the server would need an image part in connector results (`result.content[{type:image}]` → tool result image for the model); not changed here (server is out of scope).
+- Nacho cannot switch Computer Use on (`combo_set_gadget` refuses it); the guide tells it to ask the user. MCP tool groups do not gate Nacho's path; the approval does.
+
 ## Call log
 The last 200 calls are kept in memory: tool name, time, key label, whether the tool is high risk and the outcome (ok, error or denied). Input text, arguments, screens and results are not recorded. Keys are not recorded anywhere.
 

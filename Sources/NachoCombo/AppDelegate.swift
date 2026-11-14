@@ -1082,6 +1082,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         GadgetToolDispatcher.shared.register(DataGadgetRunner(host: AppDataGadgetHost(monitor: monitor, disk: disk, clipboard: clipboard, shelf: shelf, capture: capture), fallback: PetCommandToolRunner(executor: pet)), for: DataGadgetRunner.gadgets)
         // NACHO-146: Window Snap's new tools; its older tools still go through the pet's executor (fallback).
         GadgetToolDispatcher.shared.register(WindowToolRunner(fallback: PetCommandToolRunner(executor: pet), snap: snap), for: [.window])
+        GadgetToolDispatcher.shared.register(computerUse.makeGadgetRunner { [weak self] f in self?.pet.attach(name: f.name, data: f.data, mime: f.mime) ?? "나초콤보가 닫히는 중이에요." }, for: [.computer])
         menuBarTools = MenuBarToolController(
             organizer: { [weak self] in self?.organizer }, options: { [weak self] in self?.manager.settings.options ?? .defaults },
             accessibilityGranted: { WindowSnapModule.isTrusted(prompt: false) })
