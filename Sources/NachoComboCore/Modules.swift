@@ -122,6 +122,8 @@ public final class ModuleManager {
     @discardableResult
     public func setEnabled(_ id: ModuleID, _ enabled: Bool, userInitiated: Bool = true) -> ModuleState {
         settings.setEnabled(id, enabled)
+        // The Computer Use gadget switch is the only switch: it brings the tool groups Nacho uses (NACHO-195).
+        if enabled && id == .computerUse { settings.computerUse = settings.computerUse.applyingGadgetDefaults() }
         try? store.save(settings)
         if enabled {
             startModule(id, userInitiated: userInitiated)
