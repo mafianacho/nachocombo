@@ -37,7 +37,12 @@ final class FileSecretStore: PetSecretStore {
     private func file(_ key: String) -> URL {
         dir.appendingPathComponent(SHA256.hash(Data(key.utf8)).map { String(format: "%02x", $0) }.joined())
     }
-    func read(_ key: String) -> Data? { try? Data(contentsOf: file(key)) }
+    func lookup(_ key: String) -> PetSecretLookup {
+        let f = file(key)
+        guard FileManager.default.fileExists(atPath: f.path) else { return .missing }
+        guard let data = try? Data(contentsOf: f) else { return .unavailable(-1) }
+        return .found(data)
+    }
     func write(_ key: String, _ value: Data) throws {
         let f = file(key)
         FileManager.default.createFile(atPath: f.path, contents: nil, attributes: [.posixPermissions: 0o600])

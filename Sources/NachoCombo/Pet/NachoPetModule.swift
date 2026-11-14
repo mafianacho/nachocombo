@@ -22,7 +22,8 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
 
     private let settingsStore = PetSettingsStore(url: PetSettingsStore.defaultURL())
     private(set) var settings: PetSettings
-    private let secrets = KeychainSecretStore()
+    /// One Keychain item for every pet secret, read once per launch (NACHO-156).
+    private let secrets = PetSecretBundle(backing: KeychainSecretStore())
     private let login = PetWebLogin()
     private(set) var session: PetSession!
     private(set) var state = PetSessionState()
@@ -136,7 +137,8 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         switch state.auth {
         case .signedOut: return "Click Nacho to sign in"
         case .signingIn: return "Signing in…"
-        case .failed: return "Sign-in failed"
+        case let .failed(why):
+            return why == AuthProblem.secretsUnavailable.koreanMessage ? "Keychain access denied · click Nacho to retry" : "Sign-in failed"
         case .signedIn:
             var text: String
             switch state.chat.phase {

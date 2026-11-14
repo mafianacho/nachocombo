@@ -79,8 +79,30 @@ public final class PetSession {
         self.random = random
         self.now = now
         auth = PetAuth(config: settings.oidc, scope: settings.accountScope, http: http, secrets: secrets, random: random, now: now)
-        state.auth = auth.isSignedIn ? .signedIn : .signedOut
+        restoreAuthPhase()
         state.lastInteraction = now()
+    }
+
+    /// The phase of the stored login. A refused Keychain is not "signed out": it shows why and keeps the login.
+    private func restoreAuthPhase() {
+        if auth.isSignedIn {
+            state.auth = .signedIn
+        } else if auth.secretsUnavailable {
+            state.auth = .failed(AuthProblem.secretsUnavailable.koreanMessage)
+            state.notice = AuthProblem.secretsUnavailable.koreanMessage
+        } else {
+            state.auth = .signedOut
+        }
+    }
+
+    /// The next access after a refused Keychain read asks again. True when the stored login is back.
+    private func retryRefusedLogin() -> Bool {
+        guard auth.secretsUnavailable else { return false }
+        guard auth.retryStoredTokens() else { return false }
+        state.auth = .signedIn
+        state.notice = nil
+        refreshTried = false
+        return true
     }
 
     /// Test helper: waits until queued work ran.
@@ -97,6 +119,7 @@ public final class PetSession {
         queue.async {
             self.state.lastInteraction = self.now()
             self.opened = true
+            _ = self.retryRefusedLogin()
             if self.state.auth == .signedIn, self.chat == nil { self.connectChat() }
             self.publish()
         }
@@ -113,7 +136,14 @@ public final class PetSession {
         queue.async {
             self.refreshTried = false
             self.dropClients(keepChat: false)
-            if self.state.auth == .signedIn { self.connectChat() } else { self.state.notice = AuthProblem.signedOut.koreanMessage }
+            _ = self.retryRefusedLogin()
+            if self.state.auth == .signedIn {
+                self.connectChat()
+            } else if self.auth.secretsUnavailable {
+                self.state.notice = AuthProblem.secretsUnavailable.koreanMessage
+            } else {
+                self.state.notice = AuthProblem.signedOut.koreanMessage
+            }
             self.publish()
         }
     }
@@ -140,7 +170,7 @@ public final class PetSession {
                 self.auth = PetAuth(config: new.oidc, scope: new.accountScope, http: self.http, secrets: self.secrets,
                                     random: self.random, now: self.now)
                 self.state = PetSessionState()
-                self.state.auth = self.auth.isSignedIn ? .signedIn : .signedOut
+                self.restoreAuthPhase()
                 if self.opened, self.state.auth == .signedIn { self.connectChat() }
             } else if !new.allowComboControl {
                 self.connector?.disconnect()
@@ -173,6 +203,12 @@ public final class PetSession {
     public func signIn() {
         queue.async {
             guard self.state.auth != .signingIn else { return }
+            if self.retryRefusedLogin() {  // the Keychain allowed it this time: no login page
+                self.opened = true
+                if self.chat == nil { self.connectChat() }
+                self.publish()
+                return
+            }
             guard let browser = self.browser else { self.state.notice = AuthProblem.notConfigured.koreanMessage; self.publish(); return }
             switch self.auth.begin() {
             case let .failure(p):
@@ -267,6 +303,10 @@ public final class PetSession {
                     c.connect()
                 case .failure(.network):
                     self.state.notice = AuthProblem.network.koreanMessage
+                    self.publish()
+                case .failure(.secretsUnavailable):
+                    self.state.auth = .failed(AuthProblem.secretsUnavailable.koreanMessage)
+                    self.state.notice = AuthProblem.secretsUnavailable.koreanMessage
                     self.publish()
                 case let .failure(p):
                     self.state.auth = .signedOut
@@ -538,9 +578,19 @@ public final class PetSession {
         connector = nil
         connectorAgent = agentID
         let key = ConnectorBinding.secretKey(scope: settings.accountScope, agentID: agentID)
-        if let data = secrets.read(key), let token = String(data: data, encoding: .utf8), !token.isEmpty {
-            startConnector(token: token, endpoint: endpoint, executor: executor, agentID: agentID)
+        switch secrets.lookup(key) {
+        case let .found(data):
+            if let token = String(data: data, encoding: .utf8), !token.isEmpty {
+                startConnector(token: token, endpoint: endpoint, executor: executor, agentID: agentID)
+                return
+            }
+        case .unavailable:
+            // The stored binding is there but the Keychain refused it: a new one would replace it on the server for
+            // nothing. Tried again on the next reconnect.
+            state.connector = .failed("키체인 접근이 거부돼 커넥터 연결 정보를 읽지 못했어요. 다시 연결하면 다시 물어봐요.")
             return
+        case .missing:
+            break
         }
         state.connector = .connecting
         let auth = self.auth

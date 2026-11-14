@@ -10,6 +10,8 @@ import Speech
 // sheet are new (the gadget app had no login yet).
 
 /// Pet secrets (tokens, connector binding) in the login Keychain, this Mac only, readable after first unlock.
+/// The app wraps it in `PetSecretBundle` (one item `pet-secrets.v1` for all of them: one Keychain read per launch);
+/// items of earlier versions (one per key) are moved into it on first use.
 final class KeychainSecretStore: PetSecretStore {
     static let service = "com.mafianacho.nachocombo.pet"
 
@@ -19,13 +21,24 @@ final class KeychainSecretStore: PetSecretStore {
          kSecAttrAccount as String: key]
     }
 
-    func read(_ key: String) -> Data? {
+    /// `errSecItemNotFound` is "missing"; every other failure (거부 = errSecAuthFailed, the prompt closed =
+    /// errSecUserCanceled, a locked Keychain or no UI = errSecInteractionNotAllowed, …) is "unavailable", which the
+    /// pet never treats as signed out.
+    func lookup(_ key: String) -> PetSecretLookup {
         var q = query(key)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
-        return out as? Data
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        switch status {
+        case errSecSuccess:
+            guard let data = out as? Data else { return .unavailable(errSecDecode) }
+            return .found(data)
+        case errSecItemNotFound:
+            return .missing
+        default:
+            return .unavailable(status)
+        }
     }
 
     func write(_ key: String, _ value: Data) throws {

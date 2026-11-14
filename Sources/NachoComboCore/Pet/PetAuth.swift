@@ -66,6 +66,8 @@ public enum AuthProblem: Error, Equatable {
     case rejected(String)
     case badResponse
     case signedOut
+    /// The Keychain did not hand out the stored login (거부, canceled, locked). The login is kept; asked again later.
+    case secretsUnavailable
 
     public var koreanMessage: String {
         switch self {
@@ -77,6 +79,8 @@ public enum AuthProblem: Error, Equatable {
         case .rejected: return "로그인이 만료됐어요. 다시 로그인해 주세요."
         case .badResponse: return "로그인 서버 응답을 읽지 못했어요."
         case .signedOut: return "로그인이 필요해요."
+        case .secretsUnavailable:
+            return "키체인 접근이 거부돼 저장된 로그인을 읽지 못했어요. 나초를 다시 열면 키체인 창이 다시 떠요. '항상 허용'을 누르면 다음부터 묻지 않아요."
         }
     }
 }
@@ -194,23 +198,6 @@ public struct TokenSet: Codable, Equatable {
     }
 }
 
-/// Where secrets live: the Keychain in the app, a 0600 file in the dev CLI, memory in tests.
-public protocol PetSecretStore: AnyObject {
-    func read(_ key: String) -> Data?
-    func write(_ key: String, _ value: Data) throws
-    func delete(_ key: String)
-}
-
-public final class MemorySecretStore: PetSecretStore {
-    private var values: [String: Data] = [:]
-    private let lock = NSLock()
-    public init() {}
-    public func read(_ key: String) -> Data? { lock.lock(); defer { lock.unlock() }; return values[key] }
-    public func write(_ key: String, _ value: Data) throws { lock.lock(); values[key] = value; lock.unlock() }
-    public func delete(_ key: String) { lock.lock(); values[key] = nil; lock.unlock() }
-    public var keys: [String] { lock.lock(); defer { lock.unlock() }; return Array(values.keys) }
-}
-
 /// Opens the login page and returns the redirect URL (the app: ASWebAuthenticationSession; the CLI: plain HTTP
 /// against the mock server's stand-in login page).
 public protocol PetAuthBrowser: AnyObject {
@@ -227,6 +214,8 @@ public final class PetAuth {
     private let now: () -> Date
     private let queue = DispatchQueue(label: "nacho.combo.pet.auth")
     private var tokens: TokenSet?
+    /// Set while the secret store refused to hand out the stored login (Keychain 거부, canceled, locked).
+    private var storeProblem: Int32?
     private var refreshWaiters: [(Result<String, AuthProblem>) -> Void] = []
 
     public init(config: OIDCConfig?, scope: String, http: PetHTTPClient, secrets: PetSecretStore,
@@ -237,14 +226,38 @@ public final class PetAuth {
         self.secrets = secrets
         self.random = random
         self.now = now
-        if let data = secrets.read(PetAuth.key(scope)), let t = try? JSONDecoder().decode(TokenSet.self, from: data) {
-            tokens = t
+        loadStoredLocked()
+    }
+
+    /// Reads the stored login. A refused or canceled Keychain prompt (or a locked Keychain) is remembered as
+    /// `storeProblem`, not as "signed out": the stored tokens stay where they are and are asked for again later.
+    private func loadStoredLocked() {
+        switch secrets.lookup(PetAuth.key(scope)) {
+        case let .found(data):
+            tokens = try? JSONDecoder().decode(TokenSet.self, from: data)
+            storeProblem = nil
+        case .missing:
+            storeProblem = nil
+        case let .unavailable(status):
+            storeProblem = status
         }
     }
 
     static func key(_ scope: String) -> String { "tokens|" + scope }
 
     public var isSignedIn: Bool { queue.sync { tokens != nil } }
+
+    /// No login in memory because the Keychain refused to hand out the stored one (not "signed out").
+    public var secretsUnavailable: Bool { queue.sync { tokens == nil && storeProblem != nil } }
+
+    /// After a refused read: asks the secret store again (the Keychain shows its prompt again). True when signed in.
+    @discardableResult
+    public func retryStoredTokens() -> Bool {
+        queue.sync {
+            if tokens == nil, storeProblem != nil { loadStoredLocked() }
+            return tokens != nil
+        }
+    }
 
     /// Current access token without any network call (may be stale; the server answers 401 then).
     public var currentAccessToken: String? { queue.sync { tokens?.accessToken } }
@@ -269,7 +282,10 @@ public final class PetAuth {
     /// A usable access token: the stored one while fresh, otherwise one refresh (concurrent callers share it).
     public func validAccessToken(completion: @escaping (Result<String, AuthProblem>) -> Void) {
         queue.async {
-            guard let t = self.tokens else { completion(.failure(.signedOut)); return }
+            guard let t = self.tokens else {
+                completion(.failure(self.storeProblem != nil ? .secretsUnavailable : .signedOut))
+                return
+            }
             if t.accessIsFresh(now: self.now()) { completion(.success(t.accessToken)); return }
             self.refreshLocked(completion)
         }
@@ -278,7 +294,10 @@ public final class PetAuth {
     /// Forces a refresh (the server said 401 although the token looked fresh).
     public func forceRefresh(completion: @escaping (Result<String, AuthProblem>) -> Void) {
         queue.async {
-            guard self.tokens != nil else { completion(.failure(.signedOut)); return }
+            guard self.tokens != nil else {
+                completion(.failure(self.storeProblem != nil ? .secretsUnavailable : .signedOut))
+                return
+            }
             self.refreshLocked(completion)
         }
     }
@@ -324,7 +343,10 @@ public final class PetAuth {
                 var t = t
                 if t.refreshToken == nil { t.refreshToken = tokens?.refreshToken }  // Keycloak may omit it on refresh
                 tokens = t
-                if let data = try? JSONEncoder().encode(t) { try? secrets.write(PetAuth.key(scope), data) }
+                // A store that refuses keeps these in memory only (never written over what it holds); asked again next time.
+                if let data = try? JSONEncoder().encode(t) {
+                    do { try secrets.write(PetAuth.key(scope), data); storeProblem = nil } catch {}
+                }
                 return .success(())
             }
         }
