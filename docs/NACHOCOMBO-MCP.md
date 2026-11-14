@@ -102,7 +102,7 @@ All are `ok:false` with `reason`, an English `hint` for the model and Korean `gu
 - MCP: `resources/list` lists `nachocombo://gadgets/<id>/guide` (`text/markdown`) for every gadget with a guide; `resources/read` renders it with MCP names; an unknown URI is JSON-RPC error `-32002`.
 - Nacho: `combo_gadget_guide {"gadget":"<id>"}` (connector only, `read`) answers `{ok, gadget, guide}` with connector names. A gadget without a guide answers its tool names.
 - Prompts: `GadgetPrompt` (name `<gadget>_<flow>`, arguments, template). `prompts/list`, `prompts/get` (unknown or missing required argument → `-32602`). Example: `window_side_by_side`.
-- Guides so far: `combo`, `window` (format examples), `monitor`, `disk`, `clipboard`, `shelf`, `capture` (NACHO-149). Every gadget lane writes its own.
+- Guides so far: `combo`, `window` (format examples), `menubar`, `monitor`, `disk`, `clipboard`, `shelf`, `capture` (NACHO-149). Every gadget lane writes its own.
 - Prompts so far: `window_side_by_side`, `monitor_why_slow` (monitor + disk), `disk_find_space`.
 
 ## MCP request handling

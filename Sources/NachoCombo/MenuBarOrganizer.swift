@@ -33,6 +33,27 @@ final class MenuBarOrganizerModule: NSObject, FeatureModule {
     init(initiallyCollapsed: Bool) { collapsed = initiallyCollapsed }
 
     var isRunning: Bool { toggleItem != nil }
+
+    /// Screen x of the dividers' middles (for the menu bar tools). nil while the gadget is off.
+    var dividerPositions: MenuBarDividers {
+        func mid(_ item: NSStatusItem?) -> Double? {
+            guard let frame = item?.button?.window?.frame else { return nil }
+            return Double(frame.midX)
+        }
+        return MenuBarDividers(divider: mid(dividerItem), alwaysDivider: mid(alwaysItem))
+    }
+
+    /// Items of this organizer itself, so `menubar_list_items` can mark them `own`.
+    var ownItemFrames: [CGRect] {
+        [toggleItem, dividerItem, alwaysItem].compactMap { $0?.button?.window?.frame }
+    }
+
+    /// Folds now and returns to the plain folded state (the always-hidden view is dropped too).
+    func tidyNow() {
+        guard isRunning else { return }
+        showingAlwaysHidden = false
+        if collapsed { render(); onStateChange?() } else { setCollapsed(true) }
+    }
     var hasAlwaysHiddenSection: Bool { alwaysItem != nil }
 
     /// Wide enough to push everything off the widest screen, within the 10,000 pt cap macOS puts on a status item.

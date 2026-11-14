@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private let store = SettingsStore(url: SettingsStore.defaultURL())
     private var manager: ModuleManager!
     private var organizer: MenuBarOrganizerModule!
+    private var menuBarTools: MenuBarToolController?
     private var monitor: SystemMonitorModule!
     private var snap: WindowSnapModule!
     private var shelf: ShelfModule!
@@ -1078,6 +1079,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private func wireNachoComboMCP() {
         GadgetToolDispatcher.shared.register(PetCommandToolRunner(executor: pet), for: PetCommandToolRunner.gadgets)
         GadgetToolDispatcher.shared.register(DataGadgetRunner(host: AppDataGadgetHost(monitor: monitor, disk: disk, clipboard: clipboard, shelf: shelf, capture: capture), fallback: PetCommandToolRunner(executor: pet)), for: DataGadgetRunner.gadgets)
+        menuBarTools = MenuBarToolController(
+            organizer: { [weak self] in self?.organizer }, options: { [weak self] in self?.manager.settings.options ?? .defaults },
+            accessibilityGranted: { WindowSnapModule.isTrusted(prompt: false) })
+        GadgetToolDispatcher.shared.register(MenuBarToolRunner(controller: menuBarTools!), for: [.menubar])
         GadgetToolDispatcher.shared.setState(
             gadgetIsOn: { [weak self] gadget in
                 AppDelegate.onMain { () -> Bool in gadget.moduleID.map { self?.manager.states[$0] == .running } ?? true }
