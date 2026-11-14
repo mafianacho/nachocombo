@@ -47,11 +47,16 @@ final class PetDesktopParseTests: XCTestCase {
         XCTAssertTrue(PetCommands.declaresQuitApp)
         XCTAssertTrue(PetCommands.names.contains(PetCommands.quitApp))
         XCTAssertFalse(PetCommands.names(allowQuit: false).contains(PetCommands.quitApp))
-        XCTAssertEqual(PetCommands.capabilities.filter { $0["approval"] != nil }.map { $0["name"] as? String }, [PetCommands.quitApp])
+        // Among the 16 first capabilities only quit asks; Computer Use (NACHO-147) asks for its content_out / input_inject tools.
+        let legacy = Set(PetCommands.legacyNames)
+        XCTAssertEqual(PetCommands.capabilities.filter { $0["approval"] != nil && legacy.contains($0["name"] as! String) }.map { $0["name"] as? String },
+                       [PetCommands.quitApp])
+        XCTAssertTrue(PetCommands.capabilities.filter { $0["approval"] != nil }.allSatisfy {
+            $0["name"] as? String == PetCommands.quitApp || ($0["name"] as? String)?.hasPrefix("combo_computer_") == true })
         let on = PetCommands.capabilities(allowQuit: true)
         let quit = on.first { $0["name"] as? String == PetCommands.quitApp }
         XCTAssertEqual(quit?["approval"] as? String, "required")
-        XCTAssertEqual(on.filter { $0["approval"] != nil }.count, 1)
+        XCTAssertEqual(on.filter { $0["approval"] != nil && legacy.contains($0["name"] as! String) }.count, 1)
         for c in on { XCTAssertLessThanOrEqual((c["description"] as! String).count, 200) }
         XCTAssertEqual(on.count, PetCommands.allNames.count)
         XCTAssertEqual(PetCommands.allNames.count, Set(PetCommands.allNames).count)
@@ -65,7 +70,8 @@ final class PetDesktopParseTests: XCTestCase {
         XCTAssertEqual(names, PetCommands.names)
         XCTAssertTrue(names.contains("combo_quit_app"))
         let caps = o["capabilities"] as! [[String: Any]]
-        XCTAssertEqual(caps.filter { $0["approval"] as? String == "required" }.map { $0["name"] as? String }, ["combo_quit_app"])
+        XCTAssertEqual(caps.filter { $0["approval"] as? String == "required" && !($0["name"] as! String).hasPrefix("combo_computer_") }
+            .map { $0["name"] as? String }, ["combo_quit_app"])
     }
 
     func testOutcomeDetailsGoIntoTheResultButNeverOverrideOkOrMessage() {

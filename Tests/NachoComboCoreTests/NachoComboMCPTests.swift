@@ -185,7 +185,7 @@ final class GadgetApprovalTests: XCTestCase {
         XCTAssertEqual(GadgetTrust(url: url, trustable: { [.clipboard] }).alwaysAllowed, [])
         trust.disabled = ["combo_open_app"]
         XCTAssertEqual(changes, 3)
-        XCTAssertEqual(GadgetToolRegistry.trustableGadgets(), [], "no content tool is offered to Nacho yet")
+        XCTAssertEqual(GadgetToolRegistry.trustableGadgets(), [.computer], "NACHO-147: Computer Use is the first gadget with content tools for Nacho")
         XCTAssertEqual(GadgetToolRegistry.trustableGadgets(in: testTools), [.clipboard, .computer])
     }
 }

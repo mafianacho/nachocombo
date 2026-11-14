@@ -1077,6 +1077,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     /// the dispatcher reads gadget and permission state on the main thread; "always allow" is kept next to settings.json.
     private func wireNachoComboMCP() {
         GadgetToolDispatcher.shared.register(PetCommandToolRunner(executor: pet), for: PetCommandToolRunner.gadgets)
+        GadgetToolDispatcher.shared.register(computerUse.makeGadgetRunner { [weak self] f in self?.pet.attach(name: f.name, data: f.data, mime: f.mime) ?? "나초콤보가 닫히는 중이에요." }, for: [.computer])
         GadgetToolDispatcher.shared.setState(
             gadgetIsOn: { [weak self] gadget in
                 AppDelegate.onMain { () -> Bool in gadget.moduleID.map { self?.manager.states[$0] == .running } ?? true }
