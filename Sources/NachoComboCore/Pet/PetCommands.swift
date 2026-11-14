@@ -35,6 +35,8 @@ public enum PetCommand: Equatable {
     case saveWorkspace(String)
     case applyWorkspace(String)
     case listWorkspaces
+    /// A gadget's own function (clipboard, shelf, capture, monitor …): `PetGadgetCommands.swift`.
+    case gadget(PetGadgetAction)
 }
 
 public enum PetCommandProblem: Error, Equatable {
@@ -110,7 +112,7 @@ public enum PetCommands {
     /// Every capability this build knows, in hello order.
     public static let allNames = [arrangeWindow, layoutWindows, listWindows, listApps, openApp, focusApp, hideApp, quitApp,
                                   setSystem, setGadget, listGadgets, setDimStrength, clearShelf,
-                                  saveWorkspace, applyWorkspace, listWorkspaces]
+                                  saveWorkspace, applyWorkspace, listWorkspaces] + PetGadgetCommands.names
 
     /// What hello declares with the default switches.
     public static var names: [String] { names(allowQuit: declaresQuitApp) }
@@ -224,20 +226,32 @@ public enum PetCommands {
         case listWorkspaces:
             return ("저장된 작업 공간 이름과 각각의 앱·창 수, 저장 시각을 봐요. 어떤 작업 공간이 있는지 확인할 때 써요.", object([:]))
         default:
-            return nil
+            return PetGadgetCommands.spec(name)
         }
     }
 
-    /// `hello.capabilities` / `capabilities` frame body (names match `^[a-zA-Z0-9_-]{1,64}$`).
-    public static var capabilities: [[String: Any]] { capabilities(allowQuit: declaresQuitApp) }
+    /// `hello.capabilities` / `capabilities` frame body (names match `^[a-zA-Z0-9_-]{1,64}$`). Follows the app's
+    /// "always allow" switches and switched-off actions (`PetGadgetTrust.shared`).
+    public static var capabilities: [[String: Any]] {
+        capabilities(allowQuit: declaresQuitApp, alwaysAllowed: PetGadgetTrust.shared.alwaysAllowed,
+                     disabled: PetGadgetTrust.shared.disabled)
+    }
 
-    public static func capabilities(allowQuit: Bool) -> [[String: Any]] {
-        names(allowQuit: allowQuit).compactMap { name in
+    public static func capabilities(allowQuit: Bool, alwaysAllowed: Set<ModuleID> = [], disabled: Set<String> = []) -> [[String: Any]] {
+        names(allowQuit: allowQuit).filter { !disabled.contains($0) }.compactMap { name in
             guard let s = spec(name) else { return nil }
             var c: [String: Any] = ["name": name, "description": s.description, "input_schema": s.schema]
-            if approvalRequired.contains(name) { c["approval"] = "required" }
+            if requiresApproval(name, alwaysAllowed: alwaysAllowed) { c["approval"] = "required" }
             return c
         }
+    }
+
+    /// Declared with `"approval": "required"`: the risky ones, and content sent to the server unless its gadget is
+    /// "always allowed".
+    public static func requiresApproval(_ name: String, alwaysAllowed: Set<ModuleID>) -> Bool {
+        if approvalRequired.contains(name) { return true }
+        guard let gadget = PetGadgetCommands.contentSending[name] else { return false }
+        return !alwaysAllowed.contains(gadget)
     }
 
     /// Accepts the raw value (`windowSnap`) or the display name (`Window Snap`, any case).
@@ -387,6 +401,7 @@ public enum PetCommands {
         case applyWorkspace: return workspaceName(p).map { .applyWorkspace($0) }
         case listWorkspaces: return noParams(p, .listWorkspaces)
         default:
+            if let gadget = PetGadgetCommands.parse(capability: capability, params: p) { return gadget.map { .gadget($0) } }
             return .failure(.unknownCapability(String(capability.prefix(64))))
         }
     }
