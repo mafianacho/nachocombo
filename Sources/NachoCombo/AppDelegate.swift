@@ -1083,6 +1083,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         // NACHO-146: Window Snap's new tools; its older tools still go through the pet's executor (fallback).
         GadgetToolDispatcher.shared.register(WindowToolRunner(fallback: PetCommandToolRunner(executor: pet), snap: snap), for: [.window])
         GadgetToolDispatcher.shared.register(computerUse.makeGadgetRunner { [weak self] f in self?.pet.attach(name: f.name, data: f.data, mime: f.mime) ?? "나초콤보가 닫히는 중이에요." }, for: [.computer])
+        // NACHO-38: desktop tidy-up (files) and window arrangement proposals; apply tools are connector only with an approval card.
+        GadgetToolDispatcher.shared.register(DesktopToolRunner(host: AppDesktopTidyHost()), for: DesktopToolRunner.gadgets)
         menuBarTools = MenuBarToolController(
             organizer: { [weak self] in self?.organizer }, options: { [weak self] in self?.manager.settings.options ?? .defaults },
             accessibilityGranted: { WindowSnapModule.isTrusted(prompt: false) })

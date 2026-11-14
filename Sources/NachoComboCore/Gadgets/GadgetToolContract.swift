@@ -26,6 +26,8 @@ public enum GadgetID: String, CaseIterable, Codable {
     case appswitch
     case calendar
     case computer
+    /// Desktop tidy-up and window arrangement proposals (NACHO-38). No module of its own: always available.
+    case desktop
 
     /// The module behind the gadget (nil for `combo`, which is the app itself).
     public var moduleID: ModuleID? {
@@ -45,6 +47,7 @@ public enum GadgetID: String, CaseIterable, Codable {
         case .appswitch: return .appSwitch
         case .calendar: return .calendarClock
         case .computer: return .computerUse
+        case .desktop: return nil
         }
     }
 
@@ -78,10 +81,11 @@ public enum GadgetID: String, CaseIterable, Codable {
         case .appswitch: return "앱 전환"
         case .calendar: return "달력 시계"
         case .computer: return "컴퓨터 사용"
+        case .desktop: return "바탕화면 정리"
         }
     }
 
-    public var displayName: String { moduleID?.displayName ?? "Nacho Combo" }
+    public var displayName: String { self == .desktop ? "Desktop Tidy" : (moduleID?.displayName ?? "Nacho Combo") }
 
     /// MCP resource with this gadget's guide.
     public var guideURI: String { "nachocombo://gadgets/\(rawValue)/guide" }
@@ -140,12 +144,15 @@ public struct GadgetTool: Equatable {
     /// The dispatcher answers `gadget_off` while the gadget's module is off. Migrated tools keep their old behaviour
     /// (false); new tools default to true.
     public let requiresGadgetOn: Bool
+    /// The connector declares `approval: "required"` whatever the risk and whatever "always allow" says (NACHO-38: moving
+    /// files is undoable, so `change`, but the user approves every run). Default false: no existing tool changes.
+    public let alwaysRequiresApproval: Bool
 
     public init(gadget: GadgetID, action: String, korean: String, english: String, input: JSONValue = GadgetSchema.object(),
                 output: String, risk: GadgetToolRisk, permissions: Set<OSPermission> = [],
                 exits: Set<GadgetToolExit> = [.mcp, .connector], aliases: [String] = [],
                 legacyConnectorName: String? = nil, legacyMCPName: String? = nil, mcpGroup: ToolGroup? = nil,
-                requiresGadgetOn: Bool = true) {
+                requiresGadgetOn: Bool = true, alwaysRequiresApproval: Bool = false) {
         self.gadget = gadget
         self.action = action
         self.koreanDescription = korean
@@ -160,6 +167,7 @@ public struct GadgetTool: Equatable {
         self.legacyMCPName = legacyMCPName
         self.mcpGroup = mcpGroup
         self.requiresGadgetOn = requiresGadgetOn
+        self.alwaysRequiresApproval = alwaysRequiresApproval
     }
 
     /// `<gadget>_<action>` (`combo_<action>` for Nacho Combo itself). No dots: Claude-family clients only accept
@@ -193,6 +201,7 @@ public struct GadgetTool: Equatable {
     /// Whether the connector declares the tool with `"approval": "required"`:
     /// read/change never; content_out/input_inject unless the gadget is always allowed; destructive always.
     public func connectorApproval(alwaysAllowed: Bool) -> Bool {
+        if alwaysRequiresApproval { return true }
         switch risk {
         case .read, .change: return false
         case .contentOut, .inputInject: return !alwaysAllowed

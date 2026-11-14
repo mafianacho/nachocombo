@@ -38,7 +38,7 @@ Every gadget already has a provider file (empty ones for menubar, monitor, disk,
 | `disk` | Disk Map | `appswitch` | App Switch (apps: list, open, focus, hide, quit) |
 | `clipboard` | Clipboard History | `calendar` | Calendar Clock |
 | `shelf` | File Shelf | `computer` | Computer Use |
-| `capture` | Capture Float | | |
+| `capture` | Capture Float | `desktop` | Desktop tidy-up and window arrangement proposals (no module: always on) |
 
 ## Tool fields
 
@@ -56,6 +56,7 @@ Every gadget already has a provider file (empty ones for menubar, monitor, disk,
 | `exits` | `.mcp`, `.connector` (default both) |
 | `aliases`, `legacyConnectorName`, `legacyMCPName` | old names still accepted |
 | `mcpGroup` | Computer Use tools only: the tool group switch they sit under |
+| `alwaysRequiresApproval` | default false. true: the connector declares `"approval": "required"` whatever the risk and "always allow" (NACHO-38: file moves are `change`, but every run is approved) |
 | `requiresGadgetOn` | default true: the dispatcher answers `gadget_off` while the module is off (migrated tools: false, unchanged behaviour) |
 
 `GadgetToolRegistry.problems()` checks all of it (`GadgetRegistryTests.testRegistryKeepsTheContract`): unique names across new names and aliases on each exit, length, pattern, forbidden words, descriptions, schema shape, guide examples, prompt names.
@@ -225,3 +226,22 @@ Keep Awake, Focus Dim, Device Control, Mouse Tune, App Switch and Calendar Clock
 
 Guides: `nachocombo://gadgets/<id>/guide` for all six; prompts `awake_presentation` ("발표 모드": Keep Awake + Focus Dim), `dim_focus_now`,
 `device_meeting`, `mouse_wheel_setup`, `appswitch_tidy_apps`, `calendar_world_clock`. Not run on a real Mac.
+
+## Desktop tidy (NACHO-38)
+
+`desktop` has no module (always on) and its own runner, `DesktopToolRunner` (`Gadgets/Tools/DesktopTools.swift`, Core), over `DesktopTidyEngine` (`DesktopTidy.swift`, Core, tested on a temporary folder). The window side goes through `AppDesktopTidyHost` (`Sources/NachoCombo/DesktopTidyHost.swift`), which calls the existing `window_arrange_apps` tool. Nothing is ever deleted or overwritten: files are only moved.
+
+| MCP name | Connector name | Risk | Approval | Exits | Notes |
+|---|---|---|---|---|---|
+| `desktop_tidy_plan` | `combo_desktop_tidy_plan` | read | no | both | scans `~/Desktop`, answers `plan_id` (10 minutes), counts per category, up to 50 names; moves nothing |
+| `desktop_tidy_apply` | `combo_desktop_tidy_apply` | change | **always** (`alwaysRequiresApproval`) | connector | checks every file again; changed files are skipped; `plan_stale` / `plan_not_found` otherwise |
+| `desktop_tidy_undo` | `combo_desktop_tidy_undo` | change | no | connector | latest tidy or `tidy_id`; never overwrites (`conflict`, `not_found` reported) |
+| `desktop_tidy_history` | `combo_desktop_tidy_history` | read | no | both | 30 days: id, time, count, undone; no file names |
+| `desktop_arrange_suggest` | `combo_desktop_arrange_suggest` | read | no | both | app names with open windows (no titles) → `window_arrange_apps` arguments + `plan_id`; Accessibility |
+| `desktop_arrange_apply` | `combo_desktop_arrange_apply` | change | **always** | connector | applies through Window Snap; undo with `window_undo` |
+
+External MCP clients have no approval card, so apply and undo are not offered to them.
+
+Rules: only plain files directly on `~/Desktop`; skipped: folders, app bundles, symlinks, hidden files, the `정리됨` folder, `.download` `.crdownload` `.part`, files changed in the last 2 minutes. Categories (first match): screenshot (`스크린샷 `/`Screenshot `/`Screen Shot ` + image), image, document, archive, installer, other → `~/Desktop/정리됨/<스크린샷|이미지|문서|압축|설치 파일|기타>/`. A name clash gets `name 2.ext`. Journal: `~/Library/Application Support/NachoCombo/desktop-tidy/journal.json` (`{tidy_id, at, moves:[{from,to}]}`), entries older than 30 days are dropped on every tidy and at app start (the record only). Undo only moves from `정리됨` to the desktop, whatever the journal says. The app log never gets file names.
+
+Not run on a real Mac: the first Desktop folder access prompt (Files and Folders), Finder icon positions after a tidy, and Desktop & Documents in iCloud.

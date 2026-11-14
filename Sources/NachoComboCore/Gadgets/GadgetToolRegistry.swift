@@ -21,7 +21,7 @@ public enum GadgetToolRegistry {
     public static let providers: [GadgetToolProvider.Type] = [
         ComboTools.self, WindowTools.self, AppSwitchTools.self, DeviceTools.self, DimTools.self, ShelfTools.self,
         MenuBarTools.self, MonitorTools.self, DiskTools.self, ClipboardTools.self, CaptureTools.self, AwakeTools.self,
-        MouseTools.self, CalendarTools.self, ComputerTools.self,
+        MouseTools.self, CalendarTools.self, ComputerTools.self, DesktopTools.self,
     ]
 
     /// Migrated connector capabilities first (old hello order), then everything else in provider order.
