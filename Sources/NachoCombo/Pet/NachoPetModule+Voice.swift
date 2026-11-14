@@ -51,7 +51,7 @@ extension NachoPetModule {
         l.highlighted = nil
         cardLocal[card.id] = l
         chatWindow?.render()
-        session.answerCard(id: card.id, action: a.action, optionIDs: a.optionIDs) { [weak self] refusal in
+        session.answerCard(id: card.id, action: a.action, optionIDs: a.optionIDs, allowRuleID: a.allowRuleID) { [weak self] refusal in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 var l = self.cardLocal[card.id] ?? PetCardLocal()
