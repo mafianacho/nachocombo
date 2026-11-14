@@ -246,6 +246,7 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     }
 
     func cancelQueued() { session.cancelQueued() }
+    func clearReturned() { session.clearReturned() }
 
     func stopTurn() {
         voiceInputStarted()
