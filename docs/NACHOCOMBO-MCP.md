@@ -180,3 +180,21 @@ On the MCP exit these run through `PetCommandToolRunner` → `PetCommands.parse`
 5. Run `swift test`: `GadgetRegistryTests.testRegistryKeepsTheContract` must stay green (names, words, lengths, schema, guide examples). Add your own tests (runner parameters, results).
 6. Connector: nothing else to do — the capability is declared from the registry with the approval of its risk. MCP: nothing else to do — the tool is listed under your gadget switch.
 7. Never log or post clipboard text, screen contents, typed text, keys.
+
+## Settings gadgets (NACHO-150)
+
+Keep Awake, Focus Dim, Device Control, Mouse Tune, App Switch and Calendar Clock share one runner, `SettingsGadgetToolRunner`
+(`Sources/NachoComboCore/Gadgets/SettingsGadgetsModel.swift`, testable without AppKit) over a small port that the app implements in
+`Sources/NachoCombo/SettingsGadgetsMCP.swift`. All arguments are checked against closed lists before the port is touched.
+
+| Gadget | Tools (new) | Notes |
+|---|---|---|
+| `awake` | `status` (read), `start` minutes 0-1440, `stop` (change) | battery / power rules stay settings-only |
+| `dim` | `status` (read), `pause`, `resume` (change); `set_strength` kept (+ `combo_set_dim_strength`) | switching the gadget on/off is `combo_set_gadget` |
+| `device` | `status` (read), `set_volume`, `set_mic_muted` (change); old `set` kept | left out: switching devices, Do Not Disturb (macOS), external display brightness |
+| `mouse` | `status` (read), `set` (change): reverse/smooth scroll, speed 0.5/1/1.5/2/3, side buttons, middle button | |
+| `appswitch` | `settings` (read), `set_settings` hide_on_repeat (change); list/open/focus/hide/quit kept | shortcuts are not editable by tools |
+| `calendar` | `status` (read), `set` (change): date/weekday/seconds/hours/next event/world clocks (≤ 6 valid zone ids) | no event-content tool exists, so no `content_out` here |
+
+Guides: `nachocombo://gadgets/<id>/guide` for all six; prompts `awake_presentation` ("발표 모드": Keep Awake + Focus Dim), `dim_focus_now`,
+`device_meeting`, `mouse_wheel_setup`, `appswitch_tidy_apps`, `calendar_world_clock`. Not run on a real Mac.

@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private var manager: ModuleManager!
     private var organizer: MenuBarOrganizerModule!
     private var menuBarTools: MenuBarToolController?
+    private var settingsGadgets: SettingsGadgetsController?
     private var monitor: SystemMonitorModule!
     private var snap: WindowSnapModule!
     private var shelf: ShelfModule!
@@ -1084,6 +1085,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             organizer: { [weak self] in self?.organizer }, options: { [weak self] in self?.manager.settings.options ?? .defaults },
             accessibilityGranted: { WindowSnapModule.isTrusted(prompt: false) })
         GadgetToolDispatcher.shared.register(MenuBarToolRunner(controller: menuBarTools!), for: [.menubar])
+        settingsGadgets = SettingsGadgetsController(
+            keepAwake: { [weak self] in self?.keepAwake }, dim: { [weak self] in self?.dim }, devices: { [weak self] in self?.devices },
+            options: { [weak self] in self?.manager.settings.options ?? .defaults },
+            setOptions: { [weak self] in self?.gadgetSetOptions($0) },
+            dimIntensity: { [weak self] in self?.manager.settings.dimIntensity ?? FocusDimLogic.defaultIntensity })
+        GadgetToolDispatcher.shared.register(SettingsGadgetToolRunner(port: settingsGadgets!), for: SettingsGadgetToolRunner.gadgets)
         GadgetToolDispatcher.shared.setState(
             gadgetIsOn: { [weak self] gadget in
                 AppDelegate.onMain { () -> Bool in gadget.moduleID.map { self?.manager.states[$0] == .running } ?? true }
