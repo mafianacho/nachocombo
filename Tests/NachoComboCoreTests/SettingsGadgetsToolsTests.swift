@@ -8,7 +8,7 @@ private final class FakePort: SettingsGadgetsPort {
     var opts = GadgetOptions.defaults
     var awakeState = AwakeSnapshot(holding: false, manual: false, secondsLeft: nil, reason: "Sleeps as usual", keepDisplay: true, powerOnly: false, batteryFloor: 20)
     var dimState = DimSnapshot(paused: false, percent: 50, scope: "frontWindow", otherDisplays: true, onlyInSession: false)
-    var deviceState = DeviceSnapshot(outputName: "Speakers", volumePercent: 40, inputName: "Mic", micMuted: false)
+    var deviceState = SoundSnapshot(outputName: "Speakers", volumePercent: 40, inputName: "Mic", micMuted: false)
     var deviceAnswer: (Bool, String) = (true, "set")
     private(set) var calls: [String] = []
 
@@ -22,7 +22,7 @@ private final class FakePort: SettingsGadgetsPort {
     func awakeStop() { calls.append("stop"); awakeState.holding = false; awakeState.manual = false; awakeState.secondsLeft = nil }
     func dim() -> DimSnapshot { dimState }
     func dimSetPaused(_ paused: Bool) { calls.append("paused(\(paused))"); dimState.paused = paused }
-    func device() -> DeviceSnapshot { deviceState }
+    func device() -> SoundSnapshot { deviceState }
     func deviceSetOutput(volumePercent: Int?, muted: Bool?) -> (Bool, String) {
         calls.append("output(\(volumePercent.map(String.init) ?? "-"),\(muted.map(String.init) ?? "-"))"); return deviceAnswer
     }

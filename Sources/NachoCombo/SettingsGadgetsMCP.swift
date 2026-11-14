@@ -58,9 +58,9 @@ final class SettingsGadgetsController: SettingsGadgetsPort {
 
     // MARK: Device Control
 
-    func device() -> DeviceSnapshot {
-        guard let d = devices() else { return DeviceSnapshot(outputName: nil, volumePercent: nil, inputName: nil, micMuted: false) }
-        return DeviceSnapshot(outputName: d.currentOutput?.name, volumePercent: d.outputVolume.map { Int(($0 * 100).rounded()) },
+    func device() -> SoundSnapshot {
+        guard let d = devices() else { return SoundSnapshot(outputName: nil, volumePercent: nil, inputName: nil, micMuted: false) }
+        return SoundSnapshot(outputName: d.currentOutput?.name, volumePercent: d.outputVolume.map { Int(($0 * 100).rounded()) },
                               inputName: d.currentInput?.name, micMuted: d.micMuted)
     }
 

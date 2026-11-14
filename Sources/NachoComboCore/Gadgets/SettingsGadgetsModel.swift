@@ -32,7 +32,7 @@ public struct DimSnapshot: Equatable {
     }
 }
 
-public struct DeviceSnapshot: Equatable {
+public struct SoundSnapshot: Equatable {
     public var outputName: String?
     public var volumePercent: Int?
     public var inputName: String?
@@ -51,7 +51,7 @@ public protocol SettingsGadgetsPort: AnyObject {
     func awakeStop()
     func dim() -> DimSnapshot
     func dimSetPaused(_ paused: Bool)
-    func device() -> DeviceSnapshot
+    func device() -> SoundSnapshot
     /// Volume and/or mute of the current sound output. Returns (ok, message).
     func deviceSetOutput(volumePercent: Int?, muted: Bool?) -> (Bool, String)
     func deviceSetMicMuted(_ muted: Bool)
