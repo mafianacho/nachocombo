@@ -18,7 +18,7 @@ public enum DiskTools: GadgetToolProvider {
                    korean: "디스크 지도 창을 열고 홈 폴더(또는 홈 안의 지정한 폴더)를 스캔하기 시작해요. 몇 분 걸릴 수 있고, 끝나면 top_items로 결과를 봐요. 아무것도 지우지 않아요.",
                    english: "Opens Disk Map and starts scanning the home folder or a folder inside it (~, ~/… or an absolute path under home). Takes minutes; read the result with disk_top_items.",
                    input: GadgetSchema.object([
-                       "path": GadgetSchema.string("홈 안의 폴더: ~, ~/Downloads, /Users/<이름>/… (기본 ~)", maxLength: 1024),
+                       "path": GadgetSchema.string("홈 안의 폴더: ~, ~/Downloads 또는 홈 폴더 아래의 절대 경로 (기본 ~)", maxLength: 1024),
                    ]),
                    output: "{ok, message, path, scan}", risk: .change),
     ]
