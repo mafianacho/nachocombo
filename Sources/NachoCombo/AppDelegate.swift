@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private let store = SettingsStore(url: SettingsStore.defaultURL())
     private var manager: ModuleManager!
     private var organizer: MenuBarOrganizerModule!
+    private var menuBarTools: MenuBarToolController?
     private var monitor: SystemMonitorModule!
     private var snap: WindowSnapModule!
     private var shelf: ShelfModule!
@@ -1079,6 +1080,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         GadgetToolDispatcher.shared.register(PetCommandToolRunner(executor: pet), for: PetCommandToolRunner.gadgets)
         // NACHO-146: Window Snap's new tools; its older tools still go through the pet's executor (fallback).
         GadgetToolDispatcher.shared.register(WindowToolRunner(fallback: PetCommandToolRunner(executor: pet), snap: snap), for: [.window])
+        menuBarTools = MenuBarToolController(
+            organizer: { [weak self] in self?.organizer }, options: { [weak self] in self?.manager.settings.options ?? .defaults },
+            accessibilityGranted: { WindowSnapModule.isTrusted(prompt: false) })
+        GadgetToolDispatcher.shared.register(MenuBarToolRunner(controller: menuBarTools!), for: [.menubar])
         GadgetToolDispatcher.shared.setState(
             gadgetIsOn: { [weak self] gadget in
                 AppDelegate.onMain { () -> Bool in gadget.moduleID.map { self?.manager.states[$0] == .running } ?? true }
