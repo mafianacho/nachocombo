@@ -406,7 +406,8 @@ final class NachoComboMCPServerTests: XCTestCase {
         XCTAssertEqual(result(off)["isError"] as? Bool, true)
         XCTAssertTrue(pet.commands.isEmpty)
         settings.setGadgetEnabled(.window, true)
-        XCTAssertEqual(Set(toolNames()), ["window_arrange", "window_layout", "window_list_windows"])
+        XCTAssertEqual(Set(toolNames()), ["window_arrange", "window_layout", "window_list_windows", "window_displays", "window_place", "window_tile", "window_split",
+                                          "window_ratio", "window_move_display", "window_arrange_apps", "window_undo"])
         let on = rpc(2, "tools/call", #"{"name":"window_arrange","arguments":{"position":"left"}}"#)
         XCTAssertEqual(result(on)["isError"] as? Bool, false)
         XCTAssertEqual(callText(on)["ok"] as? Bool, true)
