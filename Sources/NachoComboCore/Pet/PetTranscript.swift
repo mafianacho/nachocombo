@@ -185,6 +185,7 @@ public enum PetText {
 }
 
 public enum PetTranscript {
+    public static let queuedNote = "답이 끝나면 보낼게요"
     public static let examples = ["창 왼쪽으로 붙여 줘", "킵 어웨이크 켜 줘", "이 캡처 뭐야?"]
 
     /// The header's one status line: connection, activity or the task's state. Task and card states show here only,
@@ -217,6 +218,11 @@ public enum PetTranscript {
         }
         if st.config?.serviceNotice != nil { return ("연결됨", .wait) }
         return ("연결됨", .ok)
+    }
+
+    /// The header's whole line as shown (status and credits). Also the tooltip, so a truncated line can be read in full.
+    public static func headerLine(_ st: PetSessionState, selection: PetSelectionChatState = PetSelectionChatState()) -> String {
+        headerStatus(st, selection: selection).text + (headerCredits(st, selection: selection).map { " · \($0)" } ?? "")
     }
 
     public enum HeaderDot: Equatable { case ok, busy, wait, warn, off }
@@ -323,6 +329,13 @@ public enum PetTranscript {
         if let n = chat.lastNotification { out.append(.line(PetChatLine(kind: .notification, symbol: "bell", parts: [PetTextPart(n)]))) }
         if let u = chat.usage, u.exhausted || u.lowBalance || u.blockReason != nil {
             out.append(.line(PetChatLine(kind: .usage, symbol: "creditcard", parts: [PetTextPart(u.summary)])))
+        }
+        if let q = st.queuedText {
+            let shown = q.isEmpty ? "첨부 파일 \(st.pending.count)개" : q
+            out.append(.mine(text: shown, attachments: [], past: true))
+            out.append(.line(PetChatLine(kind: .notice, symbol: "clock", parts: [
+                PetTextPart(queuedNote), PetTextPart(" · ", style: .secondary),
+                PetTextPart("취소", link: PetLinks.url("cancelqueued", [:]))], alignTrailing: true)))
         }
         if selection.intro { out.append(.selectionIntro) }
         if let p = selection.preview { out.append(.selectionPreview(p)) }

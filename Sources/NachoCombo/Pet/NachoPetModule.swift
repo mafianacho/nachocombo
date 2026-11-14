@@ -89,10 +89,13 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         RunLoop.main.add(t, forMode: .common)
         faceTimer = t
         refreshSelectionWatcher()
+        PetServerArt.shared.start(endpoint: { [weak self] in self?.settings.endpoint },
+                                  onChange: { [weak self] in self?.petWindow?.characterView.artChanged() })
         return .running
     }
 
     func stop() {
+        PetServerArt.shared.stop()
         faceTimer?.invalidate()
         faceTimer = nil
         selectionWatcher.stop()
@@ -235,6 +238,18 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
         dictationState.stop()
         session.send(text: text) { refusal in DispatchQueue.main.async { completion(refusal) } }
     }
+
+    /// Send while Nacho is answering: the text waits and goes out when the answer ends.
+    func queueSend(_ text: String, completion: @escaping (String?) -> Void) {
+        voiceInputStarted()
+        serverRecorder.cancel()
+        dictation.stop()
+        dictationState.stop()
+        session.sendOrQueue(text: text) { refusal in DispatchQueue.main.async { completion(refusal) } }
+    }
+
+    func cancelQueued() { session.cancelQueued() }
+    func clearReturned() { session.clearReturned() }
 
     func stopTurn() {
         voiceInputStarted()

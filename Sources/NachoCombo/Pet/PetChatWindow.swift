@@ -24,7 +24,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private let avatar = NSImageView()
     private let name = NSTextField(labelWithString: "나초")
     private let dot = PetBox()
-    private let status = NSTextField(labelWithString: "")
+    let status = NSTextField(labelWithString: "")
     private var tabButtons: [PetPill] = []
     private var selectedTab = 0
     // banner, log, pending, composer
@@ -486,13 +486,27 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
 
     // MARK: rendering
 
+    /// The waiting text that could not be sent, already moved back into the input (so one render does it once).
+    private var takenBackText: String?
+
     func render() {
         guard let module = module else { return }
         let st = module.state
+        if let back = st.returnedText {
+            if takenBackText != back {
+                takenBackText = back
+                let typed = input.stringValue
+                input.stringValue = typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? back : back + "\n" + typed
+                module.clearReturned()
+                flash("대기하던 글을 보내지 못했어요. 입력창에 돌려놨어요.")
+                return
+            }
+        } else { takenBackText = nil }
         let signedIn = st.auth == .signedIn
         let selection = module.selectionChatState
         let head = PetTranscript.headerStatus(st, selection: selection)
-        status.stringValue = head.text + (PetTranscript.headerCredits(st, selection: selection).map { " · \($0)" } ?? "")
+        status.stringValue = PetTranscript.headerLine(st, selection: selection)
+        status.toolTip = status.stringValue  // a truncated line can be read in full
         switch head.dot {
         case .ok: dot.fill = PetTheme.color(\.success)
         case .busy: dot.fill = PetTheme.accent
@@ -512,14 +526,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         let busy = st.chat.isBusy
         let listening = module.dictationState.isListening || module.serverRecorder.isRecording
         let hasText = !input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !st.pending.isEmpty
-        if busy {
-            sendButton.set(symbol: "stop.fill", color: PetTheme.color(\.window), fill: .some(PetTheme.text))
-            sendButton.setAccessibilityLabel("답변 멈추기"); sendButton.toolTip = "멈추기"
-        } else {
-            sendButton.set(symbol: "arrow.up", color: hasText ? PetTheme.color(\.onAccent) : PetTheme.tertiary,
-                           fill: .some(hasText ? PetTheme.accent : PetTheme.color(\.surface)))
-            sendButton.setAccessibilityLabel("보내기"); sendButton.toolTip = "보내기"
-        }
+        applySendButton(busy: busy, hasText: hasText)
         sendButton.isEnabled = !st.uploading
         micButton.set(symbol: listening ? "mic.fill" : "mic", color: listening ? PetTheme.color(\.onDanger) : PetTheme.secondary,
                       fill: .some(listening ? PetTheme.color(\.danger) : nil))
@@ -530,6 +537,18 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
                                                                attributes: [.font: PetTheme.body, .foregroundColor: listening ? PetTheme.color(\.danger) : PetTheme.tertiary])
         renderPending(st.pending)
         if selectedTab == 0 { renderLog(st) } else { renderConnections() }
+    }
+
+    /// The round button: stop while Nacho answers and nothing is typed, else send (typed text waits for the answer's end).
+    func applySendButton(busy: Bool, hasText: Bool) {
+        if busy, !hasText {
+            sendButton.set(symbol: "stop.fill", color: PetTheme.color(\.window), fill: .some(PetTheme.text))
+            sendButton.setAccessibilityLabel("답변 멈추기"); sendButton.toolTip = "멈추기"
+        } else {
+            sendButton.set(symbol: "arrow.up", color: hasText ? PetTheme.color(\.onAccent) : PetTheme.tertiary,
+                           fill: .some(hasText ? PetTheme.accent : PetTheme.color(\.surface)))
+            sendButton.setAccessibilityLabel("보내기"); sendButton.toolTip = busy ? "보내기 (답이 끝나면 보내요)" : "보내기"
+        }
     }
 
     /// Notices that are not part of a turn: flash, dictation problems, uploads, the session's last error.
@@ -601,6 +620,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         let q = Dictionary(uniqueKeysWithValues: (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
         switch url.host {
         case "older": module?.loadOlderHistory()
+        case "cancelqueued": module?.cancelQueued()
         case "forget": if let u = q["u"] { module?.forgetMemory(u) }
         case "undo": if let u = q["u"] { module?.undoForget(u) }
         case "memfb": if let t = q["turn"] { module?.askMemoryFeedback(turnID: t) }
@@ -734,12 +754,25 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         }
     }
 
-    @objc private func returnPressed() { sendClicked() }
+    @objc private func returnPressed() { sendClicked(fromReturn: true) }
 
-    private func sendClicked() {
+    private func sendClicked(fromReturn: Bool = false) {
         guard let module = module else { return }
-        if module.state.chat.isBusy { module.stopTurn(); return }
         let text = input.stringValue
+        let hasText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !module.state.pending.isEmpty
+        if module.state.chat.isBusy {
+            // Stopping is the stop button (empty field) and Esc; Enter with text never stops the answer.
+            if !hasText { if !fromReturn { module.stopTurn() }; return }
+            sendButton.isEnabled = false
+            module.queueSend(text) { [weak self] refusal in
+                guard let self = self else { return }
+                self.sendButton.isEnabled = true
+                if let r = refusal { self.flash(r) } else { self.input.stringValue = "" }
+                if self.selectedTab != 0 { self.select(tab: 0) }
+                self.render()
+            }
+            return
+        }
         sendButton.isEnabled = false
         module.send(text) { [weak self] refusal in
             guard let self = self else { return }

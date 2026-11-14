@@ -140,6 +140,13 @@ final class PetCharacterView: NSView {
         if !gate.needsFrames(motion, at: t) && hoverSettled { stop() }
     }
 
+    /// Server pictures arrived: draw the current state again with the new art.
+    func artChanged() {
+        currentLayer.contents = nil
+        previousLayer.contents = nil
+        tick()
+    }
+
     private func tick() {
         let t = PetCharacterView.now
         let dt = lastTick == 0 ? 0 : min(100, t - lastTick)
