@@ -15,7 +15,16 @@ public struct PetMarkdownSpan: Equatable {
 
 /// Inline markdown for Nacho's chat bubbles. Line breaks and spaces are kept as written; block syntax (lists, headings)
 /// is left as typed. A half-written marker (an answer still streaming: `**굵` ) stays plain until it closes.
+/// Links keep only web and mail addresses: the answer is model output, so an app link (`nachopet://card?…`) or a
+/// `file:` link must not become a click that approves a card or opens a local file. Those stay plain text.
 public enum PetMarkdown {
+    public static let linkSchemes: Set<String> = ["http", "https", "mailto"]
+
+    static func safeLink(_ url: URL?) -> URL? {
+        guard let url = url, let scheme = url.scheme?.lowercased(), linkSchemes.contains(scheme) else { return nil }
+        return url
+    }
+
     public static func spans(_ source: String) -> [PetMarkdownSpan] {
         guard source.contains("*") || source.contains("`") || source.contains("_") || source.contains("](") || source.contains("~") else {
             return [PetMarkdownSpan(source)]
@@ -28,7 +37,7 @@ public enum PetMarkdown {
             if text.isEmpty { continue }
             let intent = run.inlinePresentationIntent ?? []
             let span = PetMarkdownSpan(text, bold: intent.contains(.stronglyEmphasized), italic: intent.contains(.emphasized),
-                                       code: intent.contains(.code), link: run.link)
+                                       code: intent.contains(.code), link: safeLink(run.link))
             if var last = out.last, last.bold == span.bold, last.italic == span.italic, last.code == span.code, last.link == span.link {
                 last.text += span.text
                 out[out.count - 1] = last

@@ -167,6 +167,15 @@ final class PetMarkdownTests: XCTestCase {
         XCTAssertTrue(spans.contains { $0.text == "문서" && $0.link?.absoluteString == "https://example.com/a" })
     }
 
+    func testOnlyWebAndMailLinksStayClickable() {
+        let spans = PetMarkdown.spans("[승인](nachopet://card?id=c1&action=approve) [파일](file:///Applications/Calculator.app) [스크립트](javascript:alert(1)) [메일](mailto:a@b.co)")
+        XCTAssertTrue(spans.contains { $0.text.contains("승인") && $0.link == nil })
+        XCTAssertTrue(spans.contains { $0.text.contains("파일") && $0.link == nil })
+        XCTAssertTrue(spans.contains { $0.text.contains("스크립트") && $0.link == nil })
+        XCTAssertTrue(spans.contains { $0.text == "메일" && $0.link?.absoluteString == "mailto:a@b.co" })
+        XCTAssertFalse(spans.contains { $0.link?.scheme == "nachopet" || $0.link?.scheme == "file" })
+    }
+
     func testPlainTextAndHalfWrittenMarkersStayAsTyped() {
         XCTAssertEqual(PetMarkdown.spans("그냥 글"), [PetMarkdownSpan("그냥 글")])
         XCTAssertEqual(PetMarkdown.spans("아직 **쓰는 중").map { $0.text }.joined(), "아직 **쓰는 중")
