@@ -138,6 +138,10 @@ public struct PetCard: Equatable {
     public var answeredOptionIDs: [String] = []
     /// Rule proposal: what the user said in the chat (the rule is made only by a tap or a number).
     public var saidText: String? = nil
+    /// Approval: the allow rules the server offers with 실행 (`payload.rule_options`: id + `summary`). Empty = none, the card is as before.
+    public var ruleOptions: [Option] = []
+    /// Approval: the rule the stored answer created (`answer.allow_rule.rule_option_id`), to mark it after answering.
+    public var answeredRuleID: String? = nil
 
     static func decode(_ o: JSONObject) -> PetCard {
         let p = o.obj("payload") ?? [:]
@@ -166,6 +170,13 @@ public struct PetCard: Equatable {
         card.reversibilityText = p.str("reversibility_text")
         card.answeredOptionIDs = chosen
         card.saidText = p.str("said_text")
+        if kind == "approval" {
+            card.ruleOptions = p.objs("rule_options").compactMap { opt -> Option? in
+                guard let id = opt.str("id"), let s = opt.str("summary"), !s.isEmpty else { return nil }
+                return Option(id: id, label: s)
+            }
+            card.answeredRuleID = answer.obj("allow_rule")?.str("rule_option_id")
+        }
         return card
     }
 

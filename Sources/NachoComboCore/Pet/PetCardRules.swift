@@ -32,9 +32,11 @@ public struct PetCardAnswer: Equatable {
     public var action: String
     public var optionIDs: [String]
     public var followUpText: String?
+    /// Approval only: with `approve`, the `rule_options` id to also save as an allow rule (`allow_rule.rule_option_id`).
+    public var allowRuleID: String?
 
-    public init(action: String, optionIDs: [String] = [], followUpText: String? = nil) {
-        self.action = action; self.optionIDs = optionIDs; self.followUpText = followUpText
+    public init(action: String, optionIDs: [String] = [], followUpText: String? = nil, allowRuleID: String? = nil) {
+        self.action = action; self.optionIDs = optionIDs; self.followUpText = followUpText; self.allowRuleID = allowRuleID
     }
 }
 
@@ -66,6 +68,16 @@ public enum PetCardRules {
     public static func rows(_ c: PetCard) -> [PetCardRow] {
         let ask = c.kind == "choice" && c.taskID == nil  // ask_choice: the chosen label also goes to the chat
         switch PetCardStyle.of(c) {
+        case .approval where !c.ruleOptions.isEmpty:
+            // 이번만 실행 first (nothing saved), then one row per rule the server offers, 거절 last. Only a tap or a number
+            // + Enter picks a rule: the spoken replies never answer an approval.
+            var rows = [PetCardRow(number: 1, label: "이번만 실행", detail: nil, role: .primary, answer: PetCardAnswer(action: "approve"), optionID: nil)]
+            for o in c.ruleOptions {
+                rows.append(PetCardRow(number: rows.count + 1, label: "실행하고 항상 허용", detail: o.label, role: .option,
+                                       answer: PetCardAnswer(action: "approve", allowRuleID: o.id), optionID: o.id))
+            }
+            rows.append(PetCardRow(number: rows.count + 1, label: "거절", detail: nil, role: .quiet, answer: PetCardAnswer(action: "deny"), optionID: nil))
+            return rows
         case .approval:
             return [PetCardRow(number: 1, label: "실행", detail: nil, role: .primary, answer: PetCardAnswer(action: "approve"), optionID: nil),
                     PetCardRow(number: 2, label: "거절", detail: nil, role: .quiet, answer: PetCardAnswer(action: "deny"), optionID: nil)]
@@ -158,6 +170,14 @@ public enum PetCardRules {
         guard c.status == "answered" else { return [] }
         let rs = rows(c)
         switch PetCardStyle.of(c) {
+        case .approval where !c.ruleOptions.isEmpty:
+            switch c.answeredAction {
+            case "approve":
+                if let id = c.answeredRuleID, let r = rs.first(where: { $0.optionID == id }) { return [r.number] }
+                return [1]
+            case "decline", "deny": return [rs.count]
+            default: return []
+            }
         case .approval:
             switch c.answeredAction { case "approve": return [1]; case "decline", "deny": return [2]; default: return [] }
         case .ruleProposal:
