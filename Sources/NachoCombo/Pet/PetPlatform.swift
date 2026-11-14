@@ -217,7 +217,8 @@ final class PetServerArt {
     static let flavor = PetArtResolver.originalFlavor
 
     private var sync: PetCharacterAssetSync?
-    private var images: [String: NSImage] = [:]  // sha256 → decoded picture (main thread)
+    private var images: [String: NSImage] = [:]  // state → decoded server picture (main thread)
+    private var noServerImage = Set<String>()  // states with no usable server picture; both reset when something changed
     private var observer: NSObjectProtocol?
     private var onChange: (() -> Void)?
 
@@ -243,24 +244,34 @@ final class PetServerArt {
         observer = nil
         PetArt.serverImage = nil
         onChange = nil
+        images = [:]
+        noServerImage = []
     }
 
     private func refresh() {
         sync?.refresh { [weak self] changed in
             guard changed else { return }
-            DispatchQueue.main.async { self?.onChange?() }
+            DispatchQueue.main.async {
+                self?.images = [:]
+                self?.noServerImage = []
+                self?.onChange?()
+            }
         }
     }
 
+    /// Asked on every animation frame: answered from memory after the first time per state.
     private func image(state: String) -> NSImage? {
-        guard let sync = sync else { return nil }
+        if let hit = images[state] { return hit }
+        if noServerImage.contains(state) { return nil }
         // Bundled flavors: only `original` ships, so any other flavor falls to it (resolver rule 2).
-        guard case let .server(file) = sync.source(flavor: PetServerArt.flavor, state: state, bundledFlavors: [PetArtResolver.originalFlavor])
-        else { return nil }
-        if let hit = images[file.sha256] { return hit }
-        guard let data = sync.cache.read(file), let img = NSImage(data: data) else { return nil }  // undecodable → bundle
-        images[file.sha256] = img
-        return img
+        if let sync = sync,
+           case let .server(file) = sync.source(flavor: PetServerArt.flavor, state: state, bundledFlavors: [PetArtResolver.originalFlavor]),
+           let data = sync.cache.read(file), let img = NSImage(data: data) {  // undecodable → bundle
+            images[state] = img
+            return img
+        }
+        noServerImage.insert(state)
+        return nil
     }
 }
 

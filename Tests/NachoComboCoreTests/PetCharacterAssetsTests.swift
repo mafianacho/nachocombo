@@ -139,7 +139,7 @@ final class PetCharacterAssetsTests: XCTestCase {
         let cache = PetCharacterAssetCache(directory: dir)
         XCTAssertTrue(cache.store(data, for: f))
         try? png(8).write(to: dir.appendingPathComponent(f.sha256 + ".png"))
-        XCTAssertNil(cache.read(f))
+        XCTAssertNil(PetCharacterAssetCache(directory: dir).read(f))  // a new run re-verifies from disk
         XCTAssertFalse(cache.store(Data("not an image".utf8), for: f))
     }
 
@@ -155,5 +155,20 @@ final class PetCharacterAssetsTests: XCTestCase {
         XCTAssertTrue(refresh(s))
         XCTAssertNil(s.cache.read(fa))
         XCTAssertEqual(s.cache.read(fb), b)
+    }
+
+    func testRepeatedLookupDoesNotTouchTheDiskAgain() {
+        let data = png(11), f = file(data)
+        let http = CharAssetFakeHTTP()
+        http.routes["/api/v1/character-assets"] = PetHTTPResponse(status: 200, body: catalogJSON(version: "v1", states: ["idle": f]))
+        http.routes[f.url] = PetHTTPResponse(status: 200, body: data)
+        let s = sync(http)
+        _ = refresh(s)
+        XCTAssertEqual(s.source(flavor: "original", state: "idle", bundledFlavors: ["original"]), .server(f))
+        // Gone from disk: `has` still answers from memory (verified once), until the next refresh/prune.
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent(f.sha256 + ".png"))
+        for _ in 0..<5 { XCTAssertEqual(s.source(flavor: "original", state: "idle", bundledFlavors: ["original"]), .server(f)) }
+        // A fresh cache object (new run) verifies from disk again and finds nothing.
+        XCTAssertFalse(PetCharacterAssetCache(directory: dir).has(f))
     }
 }

@@ -99,6 +99,13 @@ public final class PetCharacterAssetCache {
     public let directory: URL
     public init(directory: URL) { self.directory = directory }
 
+    // sha256 of files already verified this run: `has`/`read` hit the disk and hash only the first time.
+    private let lock = NSLock()
+    private var verified = Set<String>()
+    private func isVerified(_ sha: String) -> Bool { lock.lock(); defer { lock.unlock() }; return verified.contains(sha) }
+    private func markVerified(_ sha: String) { lock.lock(); verified.insert(sha); lock.unlock() }
+    private func unmark(_ sha: String) { lock.lock(); verified.remove(sha); lock.unlock() }
+
     private func path(_ file: CharacterAssetFile) -> URL {
         directory.appendingPathComponent(file.sha256 + "." + file.fileExtension)
     }
@@ -121,16 +128,24 @@ public final class PetCharacterAssetCache {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: path(file), options: .atomic)
+            markVerified(file.sha256)
             return true
         } catch { return false }
     }
 
     public func read(_ file: CharacterAssetFile) -> Data? {
-        guard let data = try? Data(contentsOf: path(file)), PetCharacterAssetCache.valid(data, for: file) else { return nil }
+        guard file.isWellFormed, let data = try? Data(contentsOf: path(file)) else { return nil }
+        if isVerified(file.sha256) { return data }
+        guard PetCharacterAssetCache.valid(data, for: file) else { return nil }
+        markVerified(file.sha256)
         return data
     }
 
-    public func has(_ file: CharacterAssetFile) -> Bool { read(file) != nil }
+    /// Cheap after the first check (memory only), so it may be asked on every frame.
+    public func has(_ file: CharacterAssetFile) -> Bool {
+        if file.isWellFormed, isVerified(file.sha256) { return true }
+        return read(file) != nil
+    }
 
     var catalogURL: URL { directory.appendingPathComponent("catalog.json") }
 
@@ -150,6 +165,7 @@ public final class PetCharacterAssetCache {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
         for n in names where n != "catalog.json" && !keep.contains(n) {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(n))
+            unmark(String(n.prefix(64)))
         }
     }
 }
@@ -180,9 +196,10 @@ public final class PetCharacterAssetSync {
     private func setCatalog(_ c: CharacterAssetCatalog) { lock.lock(); current = c; loaded = true; lock.unlock() }
 
     public func source(flavor: String, state: String, bundledFlavors: Set<String>) -> PetArtSource {
-        PetArtResolver.resolve(flavor: flavor, state: state, catalog: catalog, isCached: { sha in
-            guard let file = self.catalog?.flavors.flatMap({ $0.states.values }).first(where: { $0.sha256 == sha }) else { return false }
-            return self.cache.has(file)
+        let cat = catalog
+        let file = cat?.file(flavor: flavor, state: state)
+        return PetArtResolver.resolve(flavor: flavor, state: state, catalog: cat, isCached: { sha in
+            file?.sha256 == sha && file.map { self.cache.has($0) } == true
         }, bundledFlavors: bundledFlavors)
     }
 
