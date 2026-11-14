@@ -3,7 +3,7 @@ import NachoComboCore
 
 /// What the settings window can show on its right-hand side.
 enum SettingsPage: Equatable {
-    case home, combos, general, permissions
+    case home, combos, general, permissions, mcp
     case gadget(ModuleID)
 
     var key: String {
@@ -12,6 +12,7 @@ enum SettingsPage: Equatable {
         case .combos: return "combos"
         case .general: return "general"
         case .permissions: return "permissions"
+        case .mcp: return "mcp"
         case .gadget(let id): return id.rawValue
         }
     }
@@ -22,13 +23,14 @@ enum SettingsPage: Equatable {
         case "combos": self = .combos
         case "general": self = .general
         case "permissions": self = .permissions
+        case "mcp": self = .mcp
         default:
             guard let id = ModuleID(rawValue: key) else { return nil }
             self = .gadget(id)
         }
     }
 
-    static var sidebarOrder: [SettingsPage] { [.home, .combos, .general, .permissions] + ModuleID.allCases.map { .gadget($0) } }
+    static var sidebarOrder: [SettingsPage] { [.home, .combos, .general, .permissions, .mcp] + ModuleID.allCases.map { .gadget($0) } }
 }
 
 /// Whether Nacho Combo opens at login (Login Items, macOS 13 and later).
@@ -45,6 +47,8 @@ protocol SettingsHost: GadgetHost {
     func revealSettingsFile()
     func resetAllSettings()
     func quitApp()
+    /// The body of the MCP page (Settings ▸ MCP): the server, keys, tool groups and per-gadget exposure.
+    func settingsMCPView() -> NSView?
     /// Things on the Permissions page that need the user (the sidebar count).
     func permissionsAttentionCount() -> Int
     /// Orders a combo: its options, its switches; gadgets whose permission is missing wait for Allow.
@@ -233,6 +237,7 @@ final class SidebarView: NSView {
                                                        glyph: Brand.onNacho))
         add(.general, "General", SidebarView.symbolIcon("gearshape.fill", tint: Brand.ink2, glyph: Brand.paper))
         add(.permissions, "Permissions", SidebarView.symbolIcon("lock.shield.fill", tint: Brand.nachoDeep, glyph: Brand.onNacho))
+        add(.mcp, "MCP", SidebarView.symbolIcon("server.rack", tint: Brand.ink2, glyph: Brand.paper))
         let heading = Brand.eyebrow("Gadgets", size: 10.5)
         onCount.font = Brand.mono(10.5, weight: .medium)
         onCount.textColor = Brand.ink2
@@ -242,7 +247,7 @@ final class SidebarView: NSView {
         for id in ModuleID.allCases { add(.gadget(id), id.displayName, GadgetIcon.image(for: id, size: 20)) }
 
         let stack = UI.vstack(views, spacing: 2)
-        stack.setCustomSpacing(16, after: rows[3])
+        stack.setCustomSpacing(16, after: rows[4])
         stack.setCustomSpacing(4, after: headingRow)
         stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
         addSubview(stack)
@@ -886,4 +891,41 @@ final class PermissionsPage: NSView {
         r.widthAnchor.constraint(equalToConstant: width).isActive = true
         return r
     }
+}
+
+
+// MARK: - MCP
+
+/// Settings ▸ MCP (NACHO-195): everything about the server that outside MCP clients connect to. The Computer Use gadget
+/// itself is only Nacho's switch; its old server settings moved here, with the per-gadget exposure switches.
+final class MCPPage: NSView {
+    private let width = GadgetDetailView.width
+
+    convenience init(host: SettingsHost) { self.init(body: host.settingsMCPView()) }
+
+    init(body: NSView?) {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        let eyebrow = Brand.eyebrow("Settings")
+        let title = UI.label("MCP", style: .title2, weight: .bold)
+        let intro = UI.wrapLabel("Let MCP clients such as Claude, Cursor or a script use Nacho Combo's gadgets. Clients connect with an API key you make here. Nothing is open until you turn the server on.",
+                                 width: GadgetDetailView.inner, style: .subheadline)
+        let stack = UI.vstack([eyebrow, title, intro], spacing: 6)
+        stack.setCustomSpacing(2, after: eyebrow)
+        stack.setCustomSpacing(8, after: title)
+        stack.setCustomSpacing(16, after: intro)
+        if let body = body { stack.addArrangedSubview(body) }
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 22),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: GadgetDetailView.margin),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -28),
+            widthAnchor.constraint(equalToConstant: width),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var isFlipped: Bool { true }
+
+    func refresh() {}
 }

@@ -13,6 +13,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     let combos: ComboPage
     private let general: GeneralPage
     private let permissions: PermissionsPage
+    private let mcp: MCPPage
     let detail: GadgetDetailView
     private let scroll = NSScrollView()
     /// Spans the scroll view's width; the page sits centered in it.
@@ -37,6 +38,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         combos = ComboPage(host: host)
         general = GeneralPage(host: host)
         permissions = PermissionsPage(host: host)
+        mcp = MCPPage(host: host)
         detail = GadgetDetailView(host: host)
         window = NSWindow(contentRect: NSRect(origin: .zero, size: SettingsWindowController.defaultSize),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -129,6 +131,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         case .combos: view = combos
         case .general: view = general
         case .permissions: view = permissions
+        case .mcp: view = mcp
         case .gadget(let id):
             view = detail
             if changed || detail.module != id { detail.show(id, tab: tab) } else if let tab = tab { detail.select(tab: tab) }
@@ -211,6 +214,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         case .combos: combos.refresh()
         case .general: general.refresh()
         case .permissions: permissions.refresh()
+        case .mcp: mcp.refresh()
         case .gadget: detail.refresh()
         }
     }
