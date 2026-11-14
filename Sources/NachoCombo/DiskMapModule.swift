@@ -129,6 +129,20 @@ final class DiskMapModule: NSObject, FeatureModule {
         return text
     }
 
+    // MARK: NachoCombo MCP (NACHO-149)
+
+    /// What the disk tools read: the map in memory, if any (never the documentation sample).
+    var toolState: DiskMapState { controller?.toolState ?? .empty }
+
+    /// Opens the window and scans the folder at `path` (the tools keep it inside the home folder). Nothing is removed.
+    func toolScan(path: String) -> Bool {
+        guard running else { return false }
+        showWindow()
+        guard let controller = controller else { return false }
+        controller.scan(DiskTarget(name: FileManager.default.displayName(atPath: path), path: path, isVolume: false))
+        return true
+    }
+
     var diagnostics: [String: String] {
         var values: [String: String] = ["running": "\(running)", "windowVisible": "\(isWindowVisible)",
                                         "fullDiskAccess": "\(DiskMapModule.hasFullDiskAccess)"]
@@ -1344,6 +1358,13 @@ final class DiskMapController: NSObject, NSWindowDelegate {
     }
 
     // MARK: facts
+
+    /// The scan for the disk tools (NACHO-149): none, running, or the finished tree.
+    var toolState: DiskMapState {
+        if phase == .scanning { return .scanning(path: target.path) }
+        guard phase == .ready, !isSample, let root = root, let at = scannedAt else { return .empty }
+        return .ready(root: root, scannedAt: at)
+    }
 
     var summary: String? {
         guard phase == .ready, let root = root, let at = scannedAt else { return phase == .scanning ? "scanning" : nil }

@@ -85,6 +85,14 @@ final class ShelfModule: NSObject, FeatureModule {
         refreshPanel()
     }
 
+    /// Takes one item off the shelf (NACHO-149 `shelf_forget`): the original stays, the shelf's undo can bring it back.
+    @discardableResult
+    func forget(_ id: UUID) -> Bool {
+        let removed = store.remove(id: id)
+        refreshPanel()
+        return removed
+    }
+
     private func ensurePanel() -> ShelfPanel {
         if let panel = panel { return panel }
         let created = ShelfPanel()

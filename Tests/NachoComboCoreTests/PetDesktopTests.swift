@@ -47,11 +47,19 @@ final class PetDesktopParseTests: XCTestCase {
         XCTAssertTrue(PetCommands.declaresQuitApp)
         XCTAssertTrue(PetCommands.names.contains(PetCommands.quitApp))
         XCTAssertFalse(PetCommands.names(allowQuit: false).contains(PetCommands.quitApp))
-        XCTAssertEqual(PetCommands.capabilities.filter { $0["approval"] != nil }.map { $0["name"] as? String }, [PetCommands.quitApp])
+        // Approval follows the registry risk (NACHO-144): quit, Computer Use's content / input tools (NACHO-147),
+        // and since NACHO-149 the destructive / content tools of the data gadgets (combo_clear_shelf among them).
+        let asking = PetCommands.capabilities.filter { $0["approval"] != nil }.compactMap { $0["name"] as? String }
+        XCTAssertEqual(asking, PetCommands.capabilities.compactMap { $0["name"] as? String }
+            .filter { GadgetToolRegistry.connectorTool(named: $0)?.connectorApproval(alwaysAllowed: false) == true })
+        let legacy = Set(PetCommands.legacyNames)
+        XCTAssertEqual(asking.filter { legacy.contains($0) }, [PetCommands.quitApp, PetCommands.clearShelf],
+                       "among the 16 first capabilities: quit, and the shelf since NACHO-149")
+        XCTAssertFalse(asking.contains(PetCommands.listApps))
         let on = PetCommands.capabilities(allowQuit: true)
         let quit = on.first { $0["name"] as? String == PetCommands.quitApp }
         XCTAssertEqual(quit?["approval"] as? String, "required")
-        XCTAssertEqual(on.filter { $0["approval"] != nil }.count, 1)
+        XCTAssertEqual(on.filter { $0["approval"] != nil }.count, asking.count)
         for c in on { XCTAssertLessThanOrEqual((c["description"] as! String).count, 200) }
         XCTAssertEqual(on.count, PetCommands.allNames.count)
         XCTAssertEqual(PetCommands.allNames.count, Set(PetCommands.allNames).count)
@@ -65,7 +73,10 @@ final class PetDesktopParseTests: XCTestCase {
         XCTAssertEqual(names, PetCommands.names)
         XCTAssertTrue(names.contains("combo_quit_app"))
         let caps = o["capabilities"] as! [[String: Any]]
-        XCTAssertEqual(caps.filter { $0["approval"] as? String == "required" }.map { $0["name"] as? String }, ["combo_quit_app"])
+        let required = caps.filter { $0["approval"] as? String == "required" }.compactMap { $0["name"] as? String }
+        XCTAssertTrue(required.contains("combo_quit_app"))
+        XCTAssertTrue(required.contains("combo_clear_shelf"))
+        XCTAssertFalse(required.contains("combo_list_apps"))
     }
 
     func testOutcomeDetailsGoIntoTheResultButNeverOverrideOkOrMessage() {

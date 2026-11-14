@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private let store = SettingsStore(url: SettingsStore.defaultURL())
     private var manager: ModuleManager!
     private var organizer: MenuBarOrganizerModule!
+    private var menuBarTools: MenuBarToolController?
+    private var settingsGadgets: SettingsGadgetsController?
     private var monitor: SystemMonitorModule!
     private var snap: WindowSnapModule!
     private var shelf: ShelfModule!
@@ -107,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         computerUse.currentSettings = { [weak self] in self?.manager.settings.computerUse ?? ComputerUseSettings() }
         computerUse.onActivity = { [weak self] in self?.stateChanged() }
         computerUse.onEmergencyStop = { [weak self] in self?.manager.setEnabled(.computerUse, false) }
+        wireNachoComboMCP()
         let card = ComputerUseCard(module: computerUse, manager: manager, width: GadgetDetailView.cardInner)
         card.openPermissionPane = { [weak self] permission in self?.openComputerUsePermission(permission) }
         card.recheckPermissions = { [weak self] in self?.recheckComputerUse(force: true) }
@@ -1072,6 +1075,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         monitor.previewImages(appearance: appearance, sample: samplePreviews)
     }
 
+    /// NachoCombo MCP (NACHO-145): the migrated combo_* tools also run on the MCP exit through the pet's executor;
+    /// the dispatcher reads gadget and permission state on the main thread; "always allow" is kept next to settings.json.
+    private func wireNachoComboMCP() {
+        GadgetToolDispatcher.shared.register(PetCommandToolRunner(executor: pet), for: PetCommandToolRunner.gadgets)
+        GadgetToolDispatcher.shared.register(DataGadgetRunner(host: AppDataGadgetHost(monitor: monitor, disk: disk, clipboard: clipboard, shelf: shelf, capture: capture), fallback: PetCommandToolRunner(executor: pet)), for: DataGadgetRunner.gadgets)
+        // NACHO-146: Window Snap's new tools; its older tools still go through the pet's executor (fallback).
+        GadgetToolDispatcher.shared.register(WindowToolRunner(fallback: PetCommandToolRunner(executor: pet), snap: snap), for: [.window])
+        GadgetToolDispatcher.shared.register(computerUse.makeGadgetRunner { [weak self] f in self?.pet.attach(name: f.name, data: f.data, mime: f.mime) ?? "나초콤보가 닫히는 중이에요." }, for: [.computer])
+        menuBarTools = MenuBarToolController(
+            organizer: { [weak self] in self?.organizer }, options: { [weak self] in self?.manager.settings.options ?? .defaults },
+            accessibilityGranted: { WindowSnapModule.isTrusted(prompt: false) })
+        GadgetToolDispatcher.shared.register(MenuBarToolRunner(controller: menuBarTools!), for: [.menubar])
+        settingsGadgets = SettingsGadgetsController(
+            keepAwake: { [weak self] in self?.keepAwake }, dim: { [weak self] in self?.dim }, devices: { [weak self] in self?.devices },
+            options: { [weak self] in self?.manager.settings.options ?? .defaults },
+            setOptions: { [weak self] in self?.gadgetSetOptions($0) },
+            dimIntensity: { [weak self] in self?.manager.settings.dimIntensity ?? FocusDimLogic.defaultIntensity })
+        GadgetToolDispatcher.shared.register(SettingsGadgetToolRunner(port: settingsGadgets!), for: SettingsGadgetToolRunner.gadgets)
+        GadgetToolDispatcher.shared.setState(
+            gadgetIsOn: { [weak self] gadget in
+                AppDelegate.onMain { () -> Bool in gadget.moduleID.map { self?.manager.states[$0] == .running } ?? true }
+            },
+            permissionGranted: { [weak self] permission in
+                AppDelegate.onMain { () -> Bool in
+                    switch permission {
+                    case .accessibility: return self?.gadgetPermissionGranted(.accessibility) == true
+                    case .screenRecording: return self?.gadgetPermissionGranted(.screenRecording) == true
+                    case .automation: return true  // macOS asks on first use
+                    }
+                }
+            })
+        GadgetTrust.shared.attach(url: GadgetTrust.defaultURL)
+    }
+
+    private static func onMain<T>(_ work: () -> T) -> T {
+        Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+    }
+
     func gadgetPermissionGranted(_ permission: GadgetPermission) -> Bool? {
         switch permission {
         case .accessibility: return WindowSnapModule.isTrusted(prompt: false)
@@ -1693,6 +1734,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
                     self?.stateChanged()
                 }
             }
+        case "mcp" where parts.count == 4 && parts[1] == "gadget":
+            // Debug only: `mcp gadget <id> on|off` switches a gadget's NachoCombo MCP tools (the settings screen lands later).
+            if let gadget = GadgetID(rawValue: parts[2]) {
+                manager.setComputerUse { $0.setGadgetEnabled(gadget, parts[3] == "on") }
+            }
+        case "trust" where parts.count == 3:
+            // Debug only: `trust <id> on|off` is the per-gadget "always allow" switch (NACHO-131 builds its screen).
+            if let gadget = GadgetID(rawValue: parts[1]) { GadgetTrust.shared.setAlwaysAllowed(gadget, parts[2] == "on") }
         case "combo" where parts.count >= 2:
             // Debug only: `combo select|order|edit <id>`, `combo new [preset]`, `combo save`, `combo undo`,
             // `combo welcome on|off`.
