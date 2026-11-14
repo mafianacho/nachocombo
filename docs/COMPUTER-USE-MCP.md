@@ -10,10 +10,10 @@ The Core (everything that does not touch macOS) is covered by `swift test`, whic
 Computer Use is a gadget of Nacho Combo. When it is on, it opens a **Streamable HTTP MCP server** on this Mac (`http://127.0.0.1:47653/mcp`). An MCP client that holds an API key (Bearer) can then call tools to look at the screen and to control apps, windows, input and the clipboard. When the gadget is off, the port is closed and every connection, the emergency-stop shortcut and any running shell command are cleaned up (the OFF contract).
 
 In the app:
-- It has its own page in the settings window (sidebar ▸ Computer Use) with a header switch, like every other gadget. All tool groups on that page are off by default.
+- Since NACHO-195 the gadget page is one switch (the header switch), a short line, the emergency stop and, only while an OS permission is missing, one line for it (e.g. "Accessibility permission is needed" with Open Settings; it disappears by itself when the app is active again and the permission is allowed). Switching the gadget on asks macOS only for the permissions that are missing. "Reset Accessibility Permission…" is inside a collapsed Troubleshooting section. Everything about the server for outside clients (server switch, port, LAN mode, TLS, tool groups, per-gadget exposure, API keys, call log, client examples) is in the new **Settings ▸ MCP** page. Where this document says "the page" below for those controls, read Settings ▸ MCP.
 - It is **excluded from combos**: a combo never switches it on or off, and it is not part of a combo's gadget list. It is only ever turned on by its own switch.
 - Its emergency stop `⌃⌥⌘.` is **reserved**: no other shortcut in the app can take it.
-- Its settings are stored in `~/Library/Application Support/NachoCombo/settings.json` under the key `computerUse` (port, listen mode, tool-group switches, extra allowed host names). A missing or broken section loads as the defaults, which means everything off. API keys are not in this file (see [API keys](#api-keys)).
+- Its settings are stored in `~/Library/Application Support/NachoCombo/settings.json` under the key `computerUse` (server switch `serverEnabled`, port, listen mode, tool-group switches, per-gadget switches, extra allowed host names). A missing or broken section loads as the defaults, which means everything off. API keys are not in this file (see [API keys](#api-keys)).
 
 ## Structure
 | Layer | Files | Tested by |

@@ -11,6 +11,10 @@ NachoCombo MCP puts every Nacho Combo gadget behind **one tool registry** and of
 
 The server is the former Computer Use MCP server, extended: `serverInfo.name` is `NachoCombo MCP`, `initialize` declares `tools`, `resources` and `prompts`. Everything in [COMPUTER-USE-MCP.md](COMPUTER-USE-MCP.md) (keys, LAN/TLS, rate limits, emergency stop, call log without content) still applies.
 
+## Two switches: the Computer Use gadget and the MCP server (NACHO-195)
+
+The Computer Use gadget switch is Nacho's own: it lets Nacho look at the screen and use the mouse and keyboard, and switching it on asks macOS only for the missing permissions (Accessibility, Screen Recording) and turns on the groups Nacho uses (never the high-risk ones). The MCP server switch (Settings ▸ MCP, `computerUse.serverEnabled`) is for outside clients: it opens the port. The two are independent: with the server off and the gadget on, Nacho's Computer Use works and the port is closed; with the server on and the gadget off, the port serves gadget tools only (no Computer Use tool). The emergency stop closes both at once (it turns the gadget off and the server switch off, so the port does not reopen by itself). Users who updated with the gadget on keep the server on: a settings file with no `serverEnabled` key and the gadget on is migrated to `serverEnabled = true` (an explicit saved value always wins); `settings.json` keys `computerUse` and the key file `computer-use-keys.json` are read as before. The per-gadget switches (`enabledGadgets`) are on Settings ▸ MCP ▸ Gadget Tools and decide what `tools/list` offers.
+
 ## Files
 
 | What | File | Owner |
