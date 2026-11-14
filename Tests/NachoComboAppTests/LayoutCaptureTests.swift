@@ -135,7 +135,7 @@ final class LayoutCaptureTests: XCTestCase {
         let thirds = try WindowTiling.split(parts: 3, direction: .horizontal, in: Self.visible, gap: gap).get()
         XCTAssertEqual(thirds.count, 3)
         assertSound(thirds, "thirds")
-        XCTAssertEqual(thirds[0].width, thirds[1].width, accuracy: 0.5)
+        XCTAssertEqual(thirds[0].width, thirds[2].width, accuracy: 0.5, "outer thirds are equal (gap trims the edges)")
         try emit("layout-thirds", ScreenView(caption: "후: 가로 3등분 (WindowTiling.split, 도식)", frames: thirds))
 
         let quarters = try WindowTiling.split(parts: 4, direction: .quadrant, in: Self.visible, gap: gap).get()
