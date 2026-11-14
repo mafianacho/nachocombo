@@ -20,8 +20,8 @@ final class PetDesktopContractTests: XCTestCase {
                      "combo_arrange_window", "combo_set_gadget", "combo_list_gadgets"] {
             XCTAssertTrue(names.contains(name), "\(name) is not declared")
         }
-        // Risky and not approved on the server yet: not declared at all.
-        XCTAssertFalse(names.contains("combo_quit_app"))
+        // Risky: declared, and only together with the server's approval card.
+        XCTAssertEqual(caps()["combo_quit_app"]?["approval"] as? String, "required")
     }
 
     func testEveryDescriptionIsShortKoreanAndEverySchemaIsAnObject() {
@@ -37,7 +37,7 @@ final class PetDesktopContractTests: XCTestCase {
             let schema = c["input_schema"] as? [String: Any]
             XCTAssertEqual(schema?["type"] as? String, "object", name)
             XCTAssertNotNil(schema?["properties"] as? [String: Any], name)
-            XCTAssertNil(c["approval"], "\(name) asks for approval but is declared without the server's approval card")
+            XCTAssertEqual(c["approval"] as? String, name == "combo_quit_app" ? "required" : nil, "\(name): only quit asks for approval")
             XCTAssertTrue(JSONSerialization.isValidJSONObject(c), name)
         }
     }
@@ -91,8 +91,9 @@ final class PetDesktopContractTests: XCTestCase {
         refused("combo_workspace_apply", ["name": 3])
     }
 
-    func testQuitIsRefusedWhileTheServerCannotAskForApproval() {
-        XCTAssertEqual(PetCommands.parse(capability: "combo_quit_app", params: ["app": "Safari"]),
+    func testQuitParsesWhenDeclaredAndIsRefusedWhenSwitchedOff() {
+        XCTAssertEqual(PetCommands.parse(capability: "combo_quit_app", params: ["app": "Safari"]), .success(.quitApp("Safari")))
+        XCTAssertEqual(PetCommands.parse(capability: "combo_quit_app", params: ["app": "Safari"], allowQuit: false),
                        .failure(.notAllowed("quitting apps is switched off in this Nacho Combo until the server asks the user to approve it")))
     }
 

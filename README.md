@@ -538,8 +538,8 @@ first launch. It is **on by default**, needs no permission and connects to nothi
   strength, empty the File Shelf (undoable), switch other gadgets on or off, and save / put back named workspaces
   (running apps, window frames, gadgets; putting one back opens missing apps but never quits any). Windows and
   workspaces need the Accessibility permission; without it Nacho says how to allow it. Do Not Disturb cannot be switched
-  by apps on macOS 12+ and external monitors' brightness is not set by Nacho: Nacho answers why. Quitting apps is not
-  offered until nacho-server asks the user to approve it. Nacho never switches Computer Use or itself, never turns on a
+  by apps on macOS 12+ and external monitors' brightness is not set by Nacho: Nacho answers why. Quitting an app
+  (`combo_quit_app`) is offered only with nacho-server's approval card: nothing quits until the user approves it. Nacho never switches Computer Use or itself, never turns on a
   gadget that still needs a permission, and all of this can be switched off on the Settings tab (*Let Nacho use apps,
   windows and gadgets on this Mac*), which also lists the saved workspaces with a Delete button.
 - **Moves with you:** drag Nacho anywhere; it comes back to the same place. Right-click ▸ 오른쪽 아래로 돌려놓기 puts it

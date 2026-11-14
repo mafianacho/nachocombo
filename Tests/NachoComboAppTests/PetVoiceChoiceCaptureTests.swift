@@ -171,6 +171,30 @@ final class PetVoiceChoiceCaptureTests: XCTestCase {
         }
     }
 
+    /// NACHO-35: `combo_quit_app` is declared with `"approval": "required"`, so the server's approval card comes first.
+    /// Three scenes: the card waits (nothing has quit), approved and quit, declined and nothing happened.
+    func testQuitAppApprovalScenes() throws {
+        var card = decode(["id": "qa", "kind": "approval", "status": "pending", "version": 1, "task_id": "t2", "expires_at": "2026-11-13T06:20:00Z",
+                           "payload": ["title": "메모 앱을 종료할까요?", "action_type": "quit_app", "reversibility": "reversible",
+                                       "reversibility_text": "앱을 다시 열면 돼요"]])
+        for dark in [false, true] {
+            let chat = try render("quit-approval-pending", st: state("메모 앱 종료해 줘", answer: "메모를 종료하기 전에 확인할게요.", cards: [card]),
+                                  dark: dark, caption: "앱 종료 승인 카드: 승인 전에는 아무 일도 없음")
+            XCTAssertEqual(rows(in: try XCTUnwrap(chat.contentView)).count, 2, "실행 and 거절")
+        }
+        card.status = "answered"
+        card.answeredAction = "approve"
+        for dark in [false, true] {
+            _ = try render("quit-approved-result", st: state("메모 앱 종료해 줘", answer: "메모를 종료했어요.", cards: [card]),
+                           dark: dark, caption: "승인 뒤: 앱 종료 결과")
+        }
+        card.answeredAction = "decline"
+        for dark in [false, true] {
+            _ = try render("quit-declined", st: state("메모 앱 종료해 줘", answer: "알겠어요, 메모는 그대로 둘게요.", cards: [card]),
+                           dark: dark, caption: "거절: 아무 일도 일어나지 않음")
+        }
+    }
+
     func testOneChoiceWithANumberKeyMark() throws {
         var local = PetCardLocal()
         local.highlighted = 2

@@ -6,7 +6,7 @@ import NachoComboCore
 /// Runs Nacho's desktop actions (apps, several windows, system controls, File Shelf / Focus Dim, workspaces) after
 /// `PetCommands.parse` has checked them. App names are matched against running and installed apps; windows move
 /// through the Accessibility API like Window Snap. Nothing here quits an app unless the risky, approval-gated
-/// `quitApp` arrives (it is not declared while `PetCommands.declaresQuitApp` is off).
+/// `quitApp` arrives (declared with `"approval": "required"`, so the server shows its approval card first).
 final class PetDesktopActions {
     private let manager: ModuleManager
     private let snap: WindowSnapModule
