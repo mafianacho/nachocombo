@@ -4,7 +4,7 @@ import NachoComboCore
 /// 「새로운 기능」 창. 한 장에 GIF 하나, 제목, 한 줄 설명. 이전·다음, 쪽 표시, 닫기. 라이트·다크 둘 다 `PetTheme`를 따른다.
 /// GIF는 `NSImageView.animates`로 재생한다(소리 없음). 그림 파일이 없으면 그 자리는 비워 두고 글만 보여 준다.
 final class WhatsNewWindow: NSWindow {
-    static let contentSize = NSSize(width: 460, height: 500)
+    static let contentSize = NSSize(width: 460, height: 430)
     private static let gifHeight: CGFloat = 240
 
     private let content: WhatsNewContent
