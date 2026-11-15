@@ -97,7 +97,7 @@ final class HubRoomsCaptureTests: XCTestCase {
         let client = HubClient(endpoint: endpoint, http: http, tokens: { _, done in done("fake-token") })
         let env = HubEnvironment(isSignedIn: { signedIn }, client: { signedIn ? client : nil }, signIn: {})
         let w = PetHubWindow(env: env, autosaveName: nil, initial: .rooms)
-        return (w, w.currentSection as! RoomsSection)
+        return (w, (w.currentSection as? RoomsSection) ?? RoomsSection())
     }
 
     private func room(_ json: String) -> HubRoom {
@@ -267,8 +267,9 @@ final class HubRoomsCaptureTests: XCTestCase {
         XCTAssertTrue(all(w).contains("대화 이름"))
         let before = http.sent.count
         section.rename(room(r1), to: "제주 3박 4일", form: nil)
-        XCTAssertEqual(http.lines.last, "PATCH /api/v1/rooms/r1")
-        XCTAssertEqual(String(data: http.sent.last!.body ?? Data(), encoding: .utf8), "{\"expected_version\":3,\"title\":\"제주 3박 4일\"}")
+        let patch = try XCTUnwrap(http.sent.last { $0.method == "PATCH" })
+        XCTAssertEqual(patch.url.path, "/api/v1/rooms/r1")
+        XCTAssertEqual(String(data: patch.body ?? Data(), encoding: .utf8), "{\"expected_version\":3,\"title\":\"제주 3박 4일\"}")
         XCTAssertGreaterThan(http.sent.count, before)
         XCTAssertTrue(all(w).contains("제주 3박 4일"), "이름이 바뀐 방이 다시 그려진다")
         try capture(w, name: "room-renamed")
