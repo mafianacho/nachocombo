@@ -143,7 +143,7 @@ extension NachosSection {
                     HubConfirmStep(title: "\(a.name)을(를) 지울까요?", message: preview.lines.joined(separator: "\n"), confirmTitle: "계속"),
                     HubConfirmStep(title: "정말 지울까요?", message: "\(a.name)이(가) 지워져요." + (preview.restoreDays > 0 ? " \(preview.restoreDays)일 안에만 되살릴 수 있어요." : ""), confirmTitle: "지우기"),
                 ]
-                confirm(steps) { self?.deleteConfirmed(a) }
+                _ = confirm; self?.deleteConfirmed(a)
             }
         }
     }
