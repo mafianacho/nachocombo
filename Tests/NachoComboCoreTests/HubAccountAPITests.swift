@@ -101,11 +101,12 @@ final class HubAccountAPITests: XCTestCase {
     }
 
     func testReportUserPathAndBody() {
-        let r = HubAccountAPI.reportUser(e, userID: "u 1/2", bearer: "T", description: "욕설", idempotencyKey: "K")
+        let r = HubAccountAPI.reportUser(e, userID: "u-1", bearer: "T", description: "욕설", idempotencyKey: "K")
         XCTAssertEqual(r.method, "POST")
-        XCTAssertEqual(r.url.path, "/api/v1/users/u%201%2F2/report")
+        XCTAssertEqual(r.url.path, "/api/v1/users/u-1/report")
         XCTAssertEqual(r.headers["Idempotency-Key"], "K")
         XCTAssertEqual(body(r), "{\"description\":\"욕설\"}")
+        XCTAssertEqual(HubAccountAPI.reportUser(e, userID: "a/../b?c", bearer: "T", description: "x", idempotencyKey: "K").url.path, "/api/v1/users/a..bc/report", "path-changing characters are dropped")
     }
 
     // MARK: responses
@@ -284,9 +285,9 @@ final class HubAccountRulesTests: XCTestCase {
     }
 
     func testHandleSaveOnlyWhenAvailable() {
-        XCTAssertTrue(AccountRules.handleState.canSave(.available))
+        XCTAssertTrue(AccountRules.canSaveHandle(.available))
         for s in [AccountRules.HandleState.same, .short, .uppercase, .invalid, .checking, .failed, .taken, .blocked] {
-            XCTAssertFalse(AccountRules.handleState.canSave(s), "\(s)")
+            XCTAssertFalse(AccountRules.canSaveHandle(s), "\(s)")
         }
     }
 
