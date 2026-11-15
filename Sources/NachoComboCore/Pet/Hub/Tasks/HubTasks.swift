@@ -409,13 +409,20 @@ public enum HubTasks {
 
 /// 라이브 뷰(C4): 서버 → 맥 방향 보기만 한다. 맥 화면은 서버로 보내지 않는다.
 public enum HubLiveView {
-    /// 서버가 준 보기 주소 중 https이고 서버 호스트(와 포트)인 것만 연다. userinfo가 있거나 다른 호스트·스킴이면 nil.
-    public static func allowedURL(_ raw: String, serverHost: String, serverPort: Int? = nil) -> URL? {
+    /// 나초딥 호스팅 뷰어 호스트(spec live-view.tsp `viewer_url` = `https://<나초딥>/api/v1/remote/viewer#t=…`,
+    /// 나초서버 config/default.toml `dip.base_url`). 정확히 같은 이름만, 기본 포트(443)만 허용한다(하위·상위 도메인 불허).
+    public static let viewerHosts: [String] = ["dip.mafianacho.com"]
+
+    /// 서버가 준 보기 주소 중 https이고 서버 호스트(와 포트) 또는 나초딥 뷰어 호스트(443)인 것만 연다.
+    /// userinfo가 있거나 다른 호스트·스킴·포트면 nil.
+    public static func allowedURL(_ raw: String, serverHost: String, serverPort: Int? = nil, viewerHosts: [String] = HubLiveView.viewerHosts) -> URL? {
         let host = serverHost.lowercased()
         guard !host.isEmpty, let c = URLComponents(string: raw), c.scheme?.lowercased() == "https",
-              c.user == nil, c.password == nil, let h = c.host?.lowercased(), h == host,
-              (c.port ?? 443) == (serverPort ?? 443), let url = c.url else { return nil }
-        return url
+              c.user == nil, c.password == nil, let h = c.host?.lowercased(), !h.isEmpty, let url = c.url else { return nil }
+        let port = c.port ?? 443
+        if h == host, port == (serverPort ?? 443) { return url }
+        if port == 443, viewerHosts.contains(where: { $0.lowercased() == h }) { return url }
+        return nil
     }
 
     /// 보기 창 안내(앱 `browser.live.*`와 같은 뜻).

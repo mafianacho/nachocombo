@@ -141,7 +141,9 @@ final class TasksSection: HubSectionBase {
     /// 쓰기 요청을 보내고 결과를 창 토스트로 알린다. 성공하면 `ok`(메인 큐).
     func write(_ build: @escaping (String?) -> PetHTTPRequest, failText: ((PetAPIError) -> String)? = nil, ok: @escaping (PetHTTPResponse) -> Void) {
         guard let client = ctx.client else { ctx.toast("로그인이 필요해요.", true); return }
+        // HubClient는 토큰을 기다리는 동안 [weak self]라, 섹션을 옮겨 ctx가 바뀌어도 결과가 버려지지 않게 끝날 때까지 붙든다.
         client.send(build) { [weak self] r in
+            withExtendedLifetime(client) {}
             guard let self = self else { return }
             self.onMain {
                 switch r {

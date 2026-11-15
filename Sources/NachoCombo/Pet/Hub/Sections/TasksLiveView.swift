@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 import NachoComboCore
 
-/// 라이브 뷰(C4): 서버가 준 보기 주소를 `WKWebView`로 연다. https이고 서버 호스트일 때만 열고, 서버 호스트 밖으로 가려는 이동은 막는다.
+/// 라이브 뷰(C4): 서버가 준 보기 주소를 `WKWebView`로 연다. https이고 서버 호스트 또는 나초딥 뷰어 호스트(`HubLiveView.viewerHosts`)일 때만 열고, 그 밖으로 가려는 이동은 막는다.
 /// 서버 → 맥 방향 보기만 한다. 맥 화면·클립보드·파일은 서버로 보내지 않는다.
 final class TasksLiveViewPane: NSView, WKNavigationDelegate, WKUIDelegate {
     private let notice = HubKit.label("", font: PetTheme.caption, color: PetTheme.color(\.warning))
@@ -47,7 +47,7 @@ final class TasksLiveViewPane: NSView, WKNavigationDelegate, WKUIDelegate {
             decisionHandler(.allow)
         } else {
             decisionHandler(.cancel)
-            notice.stringValue = "\(serverHost) 밖의 주소로 바뀌었어요. 여기에 입력하지 말고 닫아 주세요."
+            notice.stringValue = "허용된 주소 밖으로 바뀌었어요. 여기에 입력하지 말고 닫아 주세요."
             notice.isHidden = false
         }
     }
