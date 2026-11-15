@@ -38,6 +38,8 @@ public struct PetSessionState: Equatable {
     public var queuedText: String?
     /// A queued text the automatic send could not deliver: the window moves it back into the input field.
     public var returnedText: String?
+    /// 가입이 덜 끝났거나 약관 갱신 동의가 남았다: 대화 소켓·커넥터를 열지 않는다(`HubOnboardingGate`, NACHO-277).
+    public var onboardingPending = false
     public init() {}
 }
 
@@ -295,18 +297,20 @@ public final class PetSession {
             self.queue.async {
                 guard auth === self.auth, self.chat == nil else { return }
                 switch result {
-                case .success:
-                    let c = ChatClient(endpoint: endpoint, token: { [weak auth] in auth?.currentAccessToken },
-                                       makeTransport: self.makeTransport)
-                    c.onChange = { [weak self, weak c] st in
-                        guard let self = self else { return }
-                        self.queue.async {
-                            guard let c = c, self.chat === c else { return }
-                            self.chatChanged(st)
+                case let .success(token):
+                    HubOnboardingGate.check(endpoint: endpoint, http: self.http, token: token) { [weak self] decision in
+                        self?.queue.async {
+                            guard let self = self, auth === self.auth, self.chat == nil else { return }
+                            if decision == .needsOnboarding {
+                                self.state.onboardingPending = true
+                                self.state.notice = "가입을 마치면 나초와 대화할 수 있어요. 나초 앱 창에서 이어 가 주세요."
+                                self.publish()
+                            } else {
+                                self.state.onboardingPending = false
+                                self.startChat(endpoint: endpoint, auth: auth)
+                            }
                         }
                     }
-                    self.chat = c
-                    c.connect()
                 case .failure(.network):
                     self.state.notice = AuthProblem.network.koreanMessage
                     self.publish()
@@ -320,6 +324,31 @@ public final class PetSession {
                     self.publish()
                 }
             }
+        }
+    }
+
+    /// 가입이 확인된 뒤에만 불린다(`connectChat`).
+    private func startChat(endpoint: ServerEndpoint, auth: PetAuth) {
+        let c = ChatClient(endpoint: endpoint, token: { [weak auth] in auth?.currentAccessToken },
+                           makeTransport: makeTransport)
+        c.onChange = { [weak self, weak c] st in
+            guard let self = self else { return }
+            self.queue.async {
+                guard let c = c, self.chat === c else { return }
+                self.chatChanged(st)
+            }
+        }
+        chat = c
+        c.connect()
+    }
+
+    /// 나초 앱 창에서 가입을 마쳤다: 다시 확인하고 대화를 연다(여전히 덜 끝났으면 계속 막는다).
+    public func onboardingFinished() {
+        queue.async {
+            self.state.onboardingPending = false
+            self.state.notice = nil
+            if self.state.auth == .signedIn, self.opened, self.chat == nil { self.connectChat() }
+            self.publish()
         }
     }
 

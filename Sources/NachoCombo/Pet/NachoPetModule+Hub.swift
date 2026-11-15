@@ -25,7 +25,10 @@ extension NachoPetModule {
     var hubEnvironment: HubEnvironment {
         HubEnvironment(isSignedIn: { [weak self] in self?.state.auth == .signedIn },
                        client: { [weak self] in self?.makeHubClient() },
-                       signIn: { [weak self] in self?.openChat(); self?.signIn() })
+                       signIn: { [weak self] in self?.openChat(); self?.signIn() },
+                       checksOnboarding: true,
+                       onboardingFinished: { [weak self] in self?.session.onboardingFinished() },
+                       signOut: { [weak self] in self?.signOut() })
     }
 
     /// 「나초 앱 열기…」. 이미 열려 있으면 앞으로 가져온다.
