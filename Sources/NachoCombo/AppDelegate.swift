@@ -103,6 +103,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         pet.performLater = { [weak self] command, done in self?.desktop.run(command, done: done) ?? false }
         pet.openSettings = { [weak self] in self?.showSettings(.nachoPet) }
         pet.turnOff = { [weak self] in self?.manager.setEnabled(.nachoPet, false) }
+        pet.userGadget = { [weak self] id, on in self?.userEnable(id, on, navigate: false) }
+        pet.gadgetStatus = { [weak self] in
+            var out: [String: String] = [:]
+            for id in ModuleID.allCases {
+                switch self?.manager.states[id] ?? .off {
+                case .running: out[id.rawValue] = "on"
+                case .off: out[id.rawValue] = "off"
+                case .needsPermission: out[id.rawValue] = "waiting for permission"
+                case .failed: out[id.rawValue] = "failed"
+                }
+            }
+            return out
+        }
         pet.onChange = { [weak self] in
             self?.petCard?.refresh()
             self?.stateChanged()
