@@ -241,6 +241,7 @@ final class HubMemoryCaptureTests: XCTestCase {
         clock = t0.addingTimeInterval(11)
         sec.restore()
         XCTAssertEqual(http.count("POST", "/api/v1/memory/f3/restore"), 0)
+        settle()
         XCTAssertTrue(all(w).contains("되돌릴 시간이 지났어요."), all(w))
     }
 
@@ -254,6 +255,7 @@ final class HubMemoryCaptureTests: XCTestCase {
         clock = clock.addingTimeInterval(5)
         sec.restore()
         XCTAssertEqual(http.count("POST", "/api/v1/memory/f3/restore"), 1)
+        settle()
         XCTAssertTrue(all(w).contains("되돌릴 시간이 지났어요."), all(w))
     }
 
