@@ -42,7 +42,7 @@ final class FooSection: HubSectionBase {
 
 - 화면은 `state.contentHost`에 붙이고 `state.show(.content)`. 빈 목록은 `.empty("문구")`.
 - 쓰기는 `HubAPI.post/patch/put/delete`. 만드는 요청은 `idempotencyKey: HubAPI.newIdempotencyKey()`, 낙관적 잠금은 `expectedVersion:`. 409 `version_conflict`는 `err.isVersionConflict` → 새로 불러온다.
-- 목록: `HubAPI.page(resp)` → `items`, `nextCursor`(다음 요청의 `before`), `hasMore`. `HubListView.setRows/appendRows`.
+- 목록: `HubAPI.page(resp)` → `items`, `hasMore`, `nextQuery`(다음 쪽 쿼리). 서버는 `X-Next-Before`/`next_before` → `before`, `next_cursor` → `cursor` 두 방식을 쓰니 쿼리 이름을 직접 쓰지 말고 `nextQuery`를 그대로 붙인다. `HubListView.setRows/appendRows`.
 - 되돌릴 수 없는 동작(삭제·나가기·차단·해제)은 `ctx.confirm([step1, step2]) { ... }`로 확인창을 두 번 거친다. 서버 미리보기가 있으면 첫 단계 `message`에 넣는다.
 - 알림은 `ctx.toast("문구", isError)`. 입력 칸은 `HubFormField(validator:)`(검증 문구는 한국어).
 - 색·크기·글꼴은 `PetTheme`/`PetTokens`만 쓴다(라이트·다크 자동).
@@ -52,8 +52,9 @@ final class FooSection: HubSectionBase {
 
 ## 요청 규칙 (HubAPI)
 
-- GET/DELETE: 쿼리(부른 순서 그대로). DELETE의 `expected_version`은 쿼리.
-- POST/PATCH/PUT: JSON 본문(키 정렬), `expected_version`은 본문, `Idempotency-Key` 헤더.
+- GET: 쿼리(부른 순서 그대로).
+- POST/PATCH/PUT: JSON 본문(키 정렬). DELETE는 `json:`·`expectedVersion:`이 있을 때만 본문(예: `DELETE /api/v1/agents/{id}`의 `DeletePolicies`).
+- `expected_version`은 언제나 본문(쿼리 아님). `Idempotency-Key`는 헤더.
 - 오류 `{"error":{code,message,reason}}` → `PetAPIError.text`(한국어, `ErrorText`).
 - 401은 토큰을 새로 받아 한 번만 다시 보낸다. 지금 모듈 연결은 세션의 `withAccessToken`을 쓰고 「강제 새로고침」은 아직 없다(`PetSession.swift`는 #47 파일이라 건드리지 않았다).
 - 서버 변경 없음. 경로·필드는 nacho-server `spec/*.tsp`와 같게 한다.

@@ -2,8 +2,8 @@ import Foundation
 
 // 나초 앱 창(허브)의 공용 API. 기존 PetHTTPRequest/PetHTTPClient/ServerEndpoint/PetAPIError를 그대로 쓰고
 // 새 네트워크 층은 만들지 않는다. 요청 만들기는 순수 함수라 시험이 바이트를 그대로 확인한다.
-//   GET/DELETE: 쿼리 · POST/PATCH/PUT: JSON 본문(키 정렬) · `Idempotency-Key` · `expected_version`
-//   (본문이 있으면 본문, GET/DELETE는 쿼리 `expected_version`)
+//   GET: 쿼리 · POST/PATCH/PUT/DELETE: JSON 본문(키 정렬, DELETE는 줄 것이 있을 때만) · `Idempotency-Key` 헤더
+//   `expected_version`은 언제나 본문(nacho-server spec `ExpectedVersion`·`DeletePolicies`처럼 본문으로 받는다)
 // 오류 본문 {"error":{code,message,reason}} → 한국어(ErrorText). 401은 토큰을 새로 받아 한 번만 다시 보낸다.
 
 /// 서버 JSON 객체를 앱 모듈에서도 읽도록 감싼 값(`JSONObject`는 Core 안에서만 보인다).
@@ -18,11 +18,22 @@ public struct HubObject {
     public func strs(_ k: String) -> [String] { raw.strs(k) }
 }
 
-/// 커서 목록 한 쪽. 다음 쪽은 `nextCursor`(있으면)를 요청의 `before`로 보낸다.
+/// 커서 목록 한 쪽. 서버는 두 방식을 쓴다(nacho-server spec):
+///   - `X-Next-Before` 헤더 또는 본문 `next_before` → 다음 요청 쿼리 `before`
+///   - 본문 `next_cursor` → 다음 요청 쿼리 `cursor`
+/// `cursorParam`이 어느 쪽인지 알려 주니, 다음 쪽은 `nextQuery`를 그대로 붙인다.
 public struct HubPage {
     public var items: [HubObject]
     public var nextCursor: String?
     public var hasMore: Bool
+    /// 다음 요청에서 `nextCursor`를 실을 쿼리 이름(`before` 또는 `cursor`).
+    public var cursorParam: String = "before"
+
+    /// 다음 쪽 쿼리(`[(cursorParam, nextCursor)]`). 다음 쪽이 없으면 nil.
+    public var nextQuery: [(String, String)]? {
+        guard hasMore, let c = nextCursor else { return nil }
+        return [(cursorParam, c)]
+    }
 }
 
 public extension PetAPIError {
@@ -79,12 +90,13 @@ public enum HubAPI {
         withBody("PUT", e, path, query: query, bearer: bearer, json: json, idempotencyKey: idempotencyKey, expectedVersion: expectedVersion)
     }
 
-    /// DELETE는 본문이 없다. `expected_version`은 쿼리로 보낸다.
-    public static func delete(_ e: ServerEndpoint, _ path: String, query: [(String, String)] = [], bearer: String?,
+    /// DELETE는 줄 것(`json`·`expectedVersion`)이 있을 때만 JSON 본문을 싣는다(예: `DELETE /api/v1/agents/{id}`의 `DeletePolicies`).
+    public static func delete(_ e: ServerEndpoint, _ path: String, query: [(String, String)] = [], bearer: String?, json: [String: Any]? = nil,
                               idempotencyKey: String? = nil, expectedVersion: Int? = nil) -> PetHTTPRequest {
-        var q = query
-        if let v = expectedVersion { q.append(("expected_version", String(v))) }
-        var r = PetHTTPRequest.get(url(e, path, query: q), bearer: bearer)
+        if json != nil || expectedVersion != nil {
+            return withBody("DELETE", e, path, query: query, bearer: bearer, json: json ?? [:], idempotencyKey: idempotencyKey, expectedVersion: expectedVersion)
+        }
+        var r = PetHTTPRequest.get(url(e, path, query: query), bearer: bearer)
         r.method = "DELETE"
         return finish(r, idempotencyKey: idempotencyKey)
     }
@@ -116,9 +128,14 @@ public enum HubAPI {
             return .failure(.badResponse)
         }
         let header = resp.header("X-Next-Before").flatMap { $0.isEmpty ? nil : $0 }
-        let cursor = header ?? o.str("next_cursor") ?? o.str("next_before")
+        let cursor: String?
+        let param: String
+        if let h = header { cursor = h; param = "before" }
+        else if let c = o.str("next_cursor"), !c.isEmpty { cursor = c; param = "cursor" }
+        else if let b = o.str("next_before"), !b.isEmpty { cursor = b; param = "before" }
+        else { cursor = nil; param = "before" }
         let more = o.bool("has_more") ?? (cursor != nil)
-        return .success(HubPage(items: rows.compactMap { ($0 as? [String: Any]).map(HubObject.init) }, nextCursor: cursor, hasMore: more))
+        return .success(HubPage(items: rows.compactMap { ($0 as? [String: Any]).map(HubObject.init) }, nextCursor: cursor, hasMore: more, cursorParam: param))
     }
 
     /// 2xx이고 본문이 필요 없는 응답(204 등).

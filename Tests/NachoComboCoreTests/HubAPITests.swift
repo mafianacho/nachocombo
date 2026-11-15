@@ -39,13 +39,25 @@ final class HubAPITests: XCTestCase {
         XCTAssertNil(u.headers["Authorization"])
     }
 
-    func testDeleteHasNoBodyAndVersionGoesInQuery() {
-        let d = HubAPI.delete(endpoint, "/api/v1/schedules/s1", bearer: "T", expectedVersion: 2)
+    func testPlainDeleteHasNoBody() {
+        let d = HubAPI.delete(endpoint, "/api/v1/schedules/s1", bearer: "T", idempotencyKey: "K")
         XCTAssertEqual(d.method, "DELETE")
-        XCTAssertEqual(d.url.absoluteString, "https://nacho.example.com/api/v1/schedules/s1?expected_version=2")
+        XCTAssertEqual(d.url.absoluteString, "https://nacho.example.com/api/v1/schedules/s1")
         XCTAssertNil(d.body)
-        let d2 = HubAPI.delete(endpoint, "/api/v1/schedules/s1", bearer: "T")
-        XCTAssertEqual(d2.url.absoluteString, "https://nacho.example.com/api/v1/schedules/s1")
+        XCTAssertNil(d.headers["Content-Type"])
+        XCTAssertEqual(d.headers["Idempotency-Key"], "K")
+    }
+
+    /// nacho-server spec: `DELETE /api/v1/agents/{id}`는 본문 `DeletePolicies`, `expected_version`은 언제나 본문(쿼리 아님).
+    func testDeleteWithBodyAndVersionInBody() {
+        let d = HubAPI.delete(endpoint, "/api/v1/agents/a1", bearer: "T", json: ["task_policy": "cancel"], expectedVersion: 2)
+        XCTAssertEqual(d.method, "DELETE")
+        XCTAssertEqual(d.url.absoluteString, "https://nacho.example.com/api/v1/agents/a1")
+        XCTAssertEqual(d.headers["Content-Type"], "application/json")
+        XCTAssertEqual(body(d), "{\"expected_version\":2,\"task_policy\":\"cancel\"}")
+        let v = HubAPI.delete(endpoint, "/api/v1/x/1", bearer: "T", expectedVersion: 5)
+        XCTAssertEqual(v.url.absoluteString, "https://nacho.example.com/api/v1/x/1")
+        XCTAssertEqual(body(v), "{\"expected_version\":5}")
     }
 
     func testEmptyKeysAreDropped() {
@@ -70,12 +82,19 @@ final class HubAPITests: XCTestCase {
         XCTAssertEqual(page.items.map { $0.str("id") }, ["a", "b"])
         XCTAssertEqual(page.nextCursor, "CUR")
         XCTAssertTrue(page.hasMore)
+        XCTAssertEqual(page.cursorParam, "before")
+        XCTAssertEqual(page.nextQuery?.map { "\($0.0)=\($0.1)" }, ["before=CUR"])
     }
 
     func testDecodePageFromObjectKeys() throws {
         let p1 = try HubAPI.page(resp(200, "{\"items\":[{\"id\":\"a\"}],\"next_cursor\":\"N\"}")).get()
         XCTAssertEqual(p1.items.count, 1)
         XCTAssertEqual(p1.nextCursor, "N")
+        // next_cursor는 다음 요청의 `cursor`로 간다(spec: archive·billing·media). `before`가 아니다.
+        XCTAssertEqual(p1.cursorParam, "cursor")
+        XCTAssertEqual(p1.nextQuery?.map { "\($0.0)=\($0.1)" }, ["cursor=N"])
+        let pb = try HubAPI.page(resp(200, "{\"items\":[],\"next_before\":\"2026-11-01T00:00:00Z\"}")).get()
+        XCTAssertEqual(pb.nextQuery?.map { "\($0.0)=\($0.1)" }, ["before=2026-11-01T00:00:00Z"])
         let p2 = try HubAPI.page(resp(200, "{\"facts\":[{\"id\":\"a\"}],\"has_more\":true}"), key: "facts").get()
         XCTAssertEqual(p2.items.count, 1)
         XCTAssertTrue(p2.hasMore)
@@ -87,6 +106,7 @@ final class HubAPITests: XCTestCase {
         XCTAssertTrue(p.items.isEmpty)
         XCTAssertFalse(p.hasMore)
         XCTAssertNil(p.nextCursor)
+        XCTAssertNil(p.nextQuery)
     }
 
     func testGarbageBodyIsBadResponse() {
