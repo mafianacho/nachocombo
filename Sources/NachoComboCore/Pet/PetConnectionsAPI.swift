@@ -82,6 +82,17 @@ public struct CatalogRow: Equatable, Identifiable {
     public var supportReason: String?
     public var connected: Bool
 
+    public init(source: String, label: String, summary: String, connectKind: String, supportStatus: String, supportReason: String?,
+                connected: Bool) {
+        self.source = source
+        self.label = label
+        self.summary = summary
+        self.connectKind = connectKind
+        self.supportStatus = supportStatus
+        self.supportReason = supportReason
+        self.connected = connected
+    }
+
     public var plan: MacConnectPlan { MacConnectPlan.plan(connectKind: connectKind, supportStatus: supportStatus, supportReason: supportReason) }
 }
 

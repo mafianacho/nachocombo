@@ -69,6 +69,16 @@ public struct ConnectionsRow: Equatable, Identifiable {
     public var tone: ConnectionsTone
     public var control: ConnectionsSwitchState
 
+    public init(ref: ConnectionsRef, section: ConnectionsSection, title: String, status: String, tone: ConnectionsTone,
+                control: ConnectionsSwitchState) {
+        self.ref = ref
+        self.section = section
+        self.title = title
+        self.status = status
+        self.tone = tone
+        self.control = control
+    }
+
     public var id: String {
         switch ref {
         case let .tool(i): return "tool:\(i)"
