@@ -86,6 +86,7 @@ extension RoomsSection {
         }
         form.setContentHuggingPriority(.defaultLow, for: .horizontal)
         save.setContentHuggingPriority(.required, for: .horizontal)
+        save.widthAnchor.constraint(equalToConstant: 72).isActive = true
         return HubKit.hstack([form, save])
     }
 

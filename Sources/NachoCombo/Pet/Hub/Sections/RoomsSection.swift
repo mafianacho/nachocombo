@@ -195,6 +195,7 @@ final class RoomsSection: HubSectionBase {
         let search = HubKit.hstack([searchForm, go])
         searchForm.setContentHuggingPriority(.defaultLow, for: .horizontal)
         go.setContentHuggingPriority(.required, for: .horizontal)
+        go.widthAnchor.constraint(equalToConstant: 92).isActive = true   // 단추 폭은 정해 두고 입력 칸이 나머지를 쓴다
         return [title, tabs, search]
     }
 
