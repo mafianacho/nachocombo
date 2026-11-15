@@ -156,25 +156,25 @@ public enum HubSchedulesAPI {
 
     /// confirm·pause·transfer: `{status:"ok", schedule}`.
     public static func decodeOk(_ resp: PetHTTPResponse) -> Result<HubSchedule, PetAPIError> {
-        HubAPI.object(resp).flatMap { o in
+        HubAPI.object(resp).flatMap { (o: HubObject) -> Result<HubSchedule, PetAPIError> in
             guard o.str("status") == "ok", let s = o.obj("schedule") else { return .failure(.badResponse) }
             return .success(schedule(s))
         }
     }
 
     public static func decodeDeleted(_ resp: PetHTTPResponse) -> Result<Void, PetAPIError> {
-        HubAPI.object(resp).flatMap { $0.str("status") == "deleted" ? .success(()) : .failure(.badResponse) }
+        HubAPI.object(resp).flatMap { (o: HubObject) -> Result<Void, PetAPIError> in o.str("status") == "deleted" ? .success(()) : .failure(.badResponse) }
     }
 
     public static func decodeStartedTask(_ resp: PetHTTPResponse) -> Result<HubStartedTask, PetAPIError> {
-        HubAPI.object(resp).flatMap { o in
+        HubAPI.object(resp).flatMap { (o: HubObject) -> Result<HubStartedTask, PetAPIError> in
             guard let id = o.str("id") else { return .failure(.badResponse) }
             return .success(HubStartedTask(id: id, title: o.str("title") ?? ""))
         }
     }
 
     public static func decodeRunLog(_ resp: PetHTTPResponse) -> Result<HubScheduleRunLog, PetAPIError> {
-        HubAPI.object(resp).flatMap { o in
+        HubAPI.object(resp).flatMap { (o: HubObject) -> Result<HubScheduleRunLog, PetAPIError> in
             guard let rid = o.str("run_id") else { return .failure(.badResponse) }
             return .success(HubScheduleRunLog(
                 runID: rid, scheduleID: o.str("schedule_id") ?? "", dateText: o.str("date_text") ?? "", agentID: o.str("agent_id") ?? "",
