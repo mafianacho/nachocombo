@@ -44,7 +44,7 @@ final class SchedulesSection: HubSectionBase {
     private func call<T>(_ build: @escaping (ServerEndpoint, String?) -> PetHTTPRequest,
                          decode: @escaping (PetHTTPResponse) -> Result<T, PetAPIError>,
                          done: @escaping (Result<T, PetAPIError>) -> Void) {
-        guard let client = ctx.client else { done(.failure(PetAPIError(status: 401, code: "unauthorized", text: "로그인이 필요해요."))); return }
+        guard let client = ctx.client else { done(.failure(.signedOut)); return }
         let endpoint = client.endpoint
         client.send({ build(endpoint, $0) }) { result in
             // 일부러 client·self를 강하게 잡는다: 사용자가 다른 섹션으로 옮겨도 결과가 버려지지 않게.

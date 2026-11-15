@@ -319,3 +319,8 @@ public enum HubScheduleText {
         return ErrorText.userMessage(code: err.code ?? "internal_error", reason: reason, fallback: "")
     }
 }
+
+public extension PetAPIError {
+    /// 로그인이 안 된 상태(앱 쪽은 `PetAPIError`를 직접 만들 수 없어 여기서 준다).
+    static let signedOut = PetAPIError(status: 401, code: "unauthorized", text: "로그인이 필요해요.")
+}
