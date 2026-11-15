@@ -146,7 +146,7 @@ extension NachosSection {
             if case let .success(resp) = result, let u = PetServerAPI.decodeUsage(resp.body) { credits = u.remaining }
             let step = HubConfirmStep(title: "사진을 만들까요?", message: HubPhotos.creditConfirmMessage(sceneLabel: label, remainingToday: remaining, credits: credits),
                                       confirmTitle: "만들기", destructive: false)
-            confirm([step]) { self?.takePhoto(a, sceneID: sceneID) }
+            _ = confirm; self?.takePhoto(a, sceneID: sceneID)   // MUTATION: 확인 건너뜀
         }
     }
 

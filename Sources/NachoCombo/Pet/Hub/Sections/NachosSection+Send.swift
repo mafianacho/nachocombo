@@ -14,7 +14,6 @@ extension HubSectionBase {
             return
         }
         client.send(build) { result in
-            withExtendedLifetime(client) {}
             if Thread.isMainThread { done(result) } else { DispatchQueue.main.async { done(result) } }
         }
     }
