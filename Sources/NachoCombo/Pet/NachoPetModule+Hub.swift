@@ -13,11 +13,13 @@ extension NachoPetModule {
     }
 
     /// 요청 실행기: 로그인이 되어 있고 서버 주소가 있을 때만. 토큰은 세션이 필요할 때 새로 받는다.
-    /// (세션에 "강제 새로고침"이 아직 없어 401 재시도도 같은 `withAccessToken`을 쓴다. docs/HUB.md 참고.)
     func makeHubClient() -> HubClient? {
         guard state.auth == .signedIn, let endpoint = settings.endpoint else { return nil }
         let session = self.session!
-        return HubClient(endpoint: endpoint, http: hubHTTP, tokens: { _, done in session.withAccessToken(done) })
+        // 401을 받으면 새로고침을 강제해 새 토큰으로 한 번만 다시 보낸다(실패하면 로그아웃 안내로 끝난다).
+        return HubClient(endpoint: endpoint, http: hubHTTP, tokens: { force, done in
+            if force { session.refreshAccessToken(done) } else { session.withAccessToken(done) }
+        })
     }
 
     var hubEnvironment: HubEnvironment {
@@ -31,9 +33,18 @@ extension NachoPetModule {
 
     /// 「나초 앱 열기…」. 이미 열려 있으면 앞으로 가져온다.
     func openHub(section: HubSectionID? = nil) {
+        HubRooms.chatOpener = { [weak self] room in self?.openRoomInChat(room) }
         if hubWindow == nil { hubWindow = PetHubWindow(env: hubEnvironment) }
         if let s = section { hubWindow?.select(s) } else { hubWindow?.refreshAuth() }
         NSApp.activate(ignoringOtherApps: true)
         hubWindow?.makeKeyAndOrderFront(nil)
+    }
+}
+
+extension NachoPetModule {
+    /// 허브에서 고른 방을 대화창에서 연다(NACHO-276).
+    func openRoomInChat(_ room: HubRoom) {
+        openChat()
+        session.openRoom(id: room.id, title: room.displayTitle, kind: room.kind)
     }
 }

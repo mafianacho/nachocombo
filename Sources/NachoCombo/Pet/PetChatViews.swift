@@ -43,6 +43,10 @@ final class PetLinkText: NSTextView, NSTextViewDelegate {
         super.init(frame: frameRect, textContainer: container)
     }
 
+    /// Right-click menu of the bubble this text sits in (erase); the text's own copy menu otherwise.
+    var messageMenu: NSMenu?
+    override func menu(for event: NSEvent) -> NSMenu? { messageMenu ?? super.menu(for: event) }
+
     var fitted: NSSize {
         guard let layout = layoutManager, let container = textContainer else { return .zero }
         layout.ensureLayout(for: container)
@@ -218,6 +222,10 @@ struct PetItemViews {
     let width: CGFloat
     let onLink: (URL) -> Void
     let onExample: (String) -> Void
+    /// The right-click menu on my own bubbles: erase (the window asks twice before it does).
+    var onRedact: ((Int) -> Void)? = nil
+    /// Set by the window to the seq the previous `.redactable` item announced; the next bubble gets the menu.
+    var redactSeq: Int? = nil
 
     /// `.bubble { max-width }` at the design's width; a wider (resized) chat gives bubbles the same share of the log.
     var bubbleMaxWidth: CGFloat {
@@ -230,6 +238,11 @@ struct PetItemViews {
         case let .older(loading): return older(loading)
         case let .hello(title, examples): return hello(title, examples)
         case let .mine(text, attachments, past): return bubble(text, mine: true, past: past, streaming: false, attachments: attachments)
+        case let .sender(name): return PetRow(label(name, font: PetTheme.caption, color: PetTheme.secondary), width: width)
+        case .redactable:
+            let v = NSView()
+            v.isHidden = true  // marks the next bubble only; a hidden view takes no room in the stack
+            return v
         case let .nacho(text, past, streaming): return bubble(text, mine: false, past: past, streaming: streaming, attachments: [])
         case let .line(l): return line(l)
         case let .files(chips, mine): return files(chips, mine: mine)
@@ -272,6 +285,11 @@ struct PetItemViews {
         stack.translatesAutoresizingMaskIntoConstraints = false
         let t = PetLinkText(content, maxWidth: inner)
         t.onLink = onLink
+        if mine, let seq = redactSeq, let onRedact = onRedact {
+            let menu = PetRedactMenu.make(seq: seq, onRedact: onRedact)
+            t.messageMenu = menu
+            box.menu = menu
+        }
         stack.addArrangedSubview(t)
         if !attachments.isEmpty {
             let chips = attachments.map { name -> NSView in
@@ -717,5 +735,25 @@ final class PetFieldBox: PetBox {
         (focused ? PetTheme.accent : PetTheme.color(\.separator)).setStroke()
         p.lineWidth = 1
         p.stroke()
+    }
+}
+
+
+/// The menu of one of my messages. The item keeps its action alive (a menu item's target is not retained).
+final class PetRedactMenu: NSObject {
+    private let seq: Int
+    private let onRedact: (Int) -> Void
+    private init(seq: Int, onRedact: @escaping (Int) -> Void) { self.seq = seq; self.onRedact = onRedact }
+    @objc private func fire() { onRedact(seq) }
+
+    static func make(seq: Int, onRedact: @escaping (Int) -> Void) -> NSMenu {
+        let action = PetRedactMenu(seq: seq, onRedact: onRedact)
+        let item = NSMenuItem(title: "메시지 지우기…", action: #selector(PetRedactMenu.fire), keyEquivalent: "")
+        item.target = action
+        item.representedObject = action
+        item.image = PetTheme.symbol("trash", size: PetTokens.Size.icon)
+        let menu = NSMenu()
+        menu.addItem(item)
+        return menu
     }
 }

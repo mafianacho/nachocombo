@@ -142,6 +142,14 @@ public final class ChatClient {
         }
     }
 
+    /// Read mark for a named room (the room the user just opened), forward only.
+    public func markRead(room: String, seq: Int) {
+        queue.async {
+            guard self.state.phase == .connected, self.state.roomID == room, seq > 0, let t = self.transport else { return }
+            t.send(ClientFrame.read(roomID: room, seq: seq).encode())
+        }
+    }
+
     public func stop() {
         queue.async {
             guard self.state.isBusy, let room = self.state.roomID, let t = self.transport else { return }

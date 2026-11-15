@@ -1,15 +1,14 @@
 import AppKit
 import NachoComboCore
 
-/// 「대화창에서 이어 말하기」 자리. 대화창이 여러 방을 다루는 일은 U10(다음 stage)이 한다.
-/// 지금은 꺼 둔다: 단추는 비활성이고 `openInChat`은 아무것도 하지 않는다. U10이 `chatOpener`를 채우고 `continueInChatEnabled`를 켠다.
+/// 「대화창에서 이어 말하기」: 허브가 고른 방을 대화창이 열게 한다(NACHO-276 U10). 모듈이 `chatOpener`를 채운다.
+/// 열 곳이 없으면(로그인 전 등) 단추는 꺼진 채로 둔다.
 enum HubRooms {
-    static let continueInChatEnabled = false
-    static var chatOpener: ((String) -> Void)?
+    static var chatOpener: ((HubRoom) -> Void)?
+    static var continueInChatEnabled: Bool { chatOpener != nil }
 
-    static func openInChat(roomID: String) {
-        guard continueInChatEnabled else { return }
-        chatOpener?(roomID)
+    static func openInChat(room: HubRoom) {
+        chatOpener?(room)
     }
 }
 
