@@ -104,7 +104,7 @@ final class ConnectionsTabTests: XCTestCase {
         XCTAssertEqual(rows.first { $0.ref == .gadget(.capture) }!.status, "맥 권한 필요")
         XCTAssertEqual(rows.first { $0.ref == .gadget(.capture) }!.tone, .attention)
         XCTAssertNil(rows.first { $0.ref == .gadget(.combo) }, "Nacho Combo itself is not a gadget row")
-        XCTAssertEqual(rows.first { $0.ref == .gadget(.computer) }!.control, .fixed("컴퓨터 사용 설정에서 켜요"))
+        XCTAssertEqual(rows.first { $0.ref == .gadget(.computer) }!.control, .fixed("설정에서 켜요"))
         XCTAssertFalse(rows.first { $0.ref == .gadget(.computer) }!.control.canToggle)
     }
 

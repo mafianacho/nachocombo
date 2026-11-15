@@ -130,7 +130,7 @@ public enum ConnectionsDetailBuilder {
         if let level = c.scopeLevel, ["read", "read_write"].contains(level), c.health != .disconnected {
             scope = ConnectionsScopeChoice(levels: [("read", "읽기만"), ("read_write", "읽기와 쓰기")], selected: level)
         }
-        let summary = (info?.summary.isEmpty == false ? info?.summary : nil) ?? "나초가 \(c.label)을(를) 대신 쓸 수 있게 해 줘요."
+        let summary = (info?.summary.isEmpty == false ? info?.summary : nil) ?? "나초가 \(c.label) 서비스를 대신 쓸 수 있게 해 줘요."
         return ConnectionsDetail(
             ref: .connector(c.id), title: c.label, status: c.statusLine, tone: c.tone,
             control: c.enabled && c.health != .disconnected ? .on : .off,
@@ -138,7 +138,7 @@ public enum ConnectionsDetailBuilder {
             emptyAbilities: "아직 알려진 기능이 없어요.", facts: facts, notice: notice, scope: scope, reconnectTitle: reconnect,
             disconnect: c.health == .disconnected ? nil : ConnectionsDisconnect(
                 buttonTitle: "연결 해제", confirmTitle: "\(c.label) 연결을 끊을까요?",
-                confirmMessage: "나초가 \(c.label)을(를) 더 이상 쓸 수 없어요. 되돌릴 수 없어요. 다시 쓰려면 처음부터 다시 연결해야 해요.",
+                confirmMessage: "나초가 \(c.label) 서비스를 더 이상 쓸 수 없어요. 되돌릴 수 없어요. 다시 쓰려면 처음부터 다시 연결해야 해요.",
                 confirmButton: "연결 해제"))
     }
 
@@ -160,9 +160,9 @@ public enum ConnectionsDetailBuilder {
             status = "맥 권한 필요"; tone = .attention; notice = "켜려면 맥 권한이 필요해요. 스위치를 누르면 허용할 곳을 알려 줘요."
         case .failed: status = "시작하지 못했어요"; tone = .attention
         case .alwaysAvailable: status = "항상 쓸 수 있어요"
-        case .managedElsewhere: status = "컴퓨터 사용 설정에서 켜요"; tone = .off
+        case .managedElsewhere: status = "컴퓨터 사용 설정 화면에서 켜고 꺼요"; tone = .off
         }
-        let summary = GadgetToolRegistry.guide(for: g.id)?.summary ?? "나초콤보의 \(g.id.koreanName) 가젯이에요."
+        let summary = GadgetToolRegistry.guide(for: g.id).map { ToolWords.firstSentence($0.summary, limit: 140) } ?? "나초콤보의 \(g.id.koreanName) 가젯이에요."
         return ConnectionsDetail(
             ref: .gadget(g.id), title: g.id.koreanName, status: status, tone: tone, control: g.control, summary: summary,
             abilitiesTitle: "이 맥에서 나초가 하는 일", abilities: abilities, emptyAbilities: "나초가 이 가젯으로 하는 일이 없어요.",

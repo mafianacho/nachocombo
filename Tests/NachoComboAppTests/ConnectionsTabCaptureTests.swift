@@ -331,20 +331,25 @@ final class ConnectionsTabCaptureTests: XCTestCase {
     private func capture(_ view: PetConnectionsView, name: String) throws {
         for dark in [false, true] {
             let pad: CGFloat = 12
-            view.layoutSubtreeIfNeeded()
-            let size = NSSize(width: view.contentWidth + 2 * pad, height: max(view.fittingSize.height + 2 * pad, 200))
-            let root = NSView(frame: NSRect(origin: .zero, size: size))
+            let tall = NSSize(width: view.contentWidth + 2 * pad, height: 4000)
+            let root = NSView(frame: NSRect(origin: .zero, size: tall))
             root.wantsLayer = true
-            root.layer?.backgroundColor = (dark ? NSColor(srgbRed: 0.10, green: 0.09, blue: 0.08, alpha: 1)
-                                                : NSColor(srgbRed: 0.984, green: 0.980, blue: 0.973, alpha: 1)).cgColor
             root.addSubview(view)
             NSLayoutConstraint.activate([
                 view.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: pad),
                 view.topAnchor.constraint(equalTo: root.topAnchor, constant: pad),
             ])
-            let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+            let window = NSWindow(contentRect: NSRect(origin: .zero, size: tall), styleMask: [.borderless], backing: .buffered, defer: false)
             window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             window.contentView = root
+            view.needsLayout = true
+            root.layoutSubtreeIfNeeded()
+            // The stack lays itself out to its content: its height is the picture's height.
+            let size = NSSize(width: tall.width, height: max(view.frame.height + 2 * pad, 120))
+            window.setContentSize(size)
+            root.frame = NSRect(origin: .zero, size: size)
+            root.layer?.backgroundColor = (dark ? NSColor(srgbRed: 0.10, green: 0.09, blue: 0.08, alpha: 1)
+                                                : NSColor(srgbRed: 0.984, green: 0.980, blue: 0.973, alpha: 1)).cgColor
             root.layoutSubtreeIfNeeded()
             root.displayIfNeeded()
             let rep = try XCTUnwrap(root.bitmapImageRepForCachingDisplay(in: root.bounds))
@@ -365,7 +370,8 @@ final class ConnectionsTabCaptureTests: XCTestCase {
         var idx = b64.startIndex
         while idx < b64.endIndex {
             let end = b64.index(idx, offsetBy: chunk, limitedBy: b64.endIndex) ?? b64.endIndex
-            print("BENTO-CAPTURE \(name) \(i + 1)/\(n) \(b64[idx..<end])")
+            // One write per line: the test log interleaves stdout with XCTest's own lines when a line is split.
+            FileHandle.standardError.write(Data("BENTO-CAPTURE \(name) \(i + 1)/\(n) \(b64[idx..<end])\n".utf8))
             idx = end
             i += 1
         }

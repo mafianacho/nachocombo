@@ -291,7 +291,7 @@ public struct GadgetSwitchState: Equatable {
         case .on: return .on
         case .off, .needsPermission, .failed: return .off
         case .alwaysAvailable: return .fixed("항상 쓸 수 있어요")
-        case .managedElsewhere: return .fixed("컴퓨터 사용 설정에서 켜요")
+        case .managedElsewhere: return .fixed("설정에서 켜요")
         }
     }
 }
@@ -360,7 +360,7 @@ public enum ConnectionsListBuilder {
             case .off: status = "꺼짐"; tone = .off
             case .needsPermission: status = "맥 권한 필요"; tone = .attention
             case .failed: status = "시작하지 못했어요"; tone = .attention
-            case .managedElsewhere: status = "컴퓨터 사용 설정에서 켜요"; tone = .off
+            case .managedElsewhere: status = "컴퓨터 사용 설정 화면에서 켜고 꺼요"; tone = .off
             }
             return ConnectionsRow(ref: .gadget(g.id), section: .gadgets, title: g.id.koreanName, status: status, tone: tone, control: g.control)
         }

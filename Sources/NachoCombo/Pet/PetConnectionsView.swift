@@ -461,7 +461,9 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
         // Title, status, switch.
         let title = Parts.label(d.title, font: PetTheme.title, width: contentWidth - 70, lines: 2)
         let status = Parts.label(d.status, font: PetTheme.caption, color: Parts.toneColor(d.tone), width: contentWidth - 70, lines: 1)
-        var headViews: [NSView] = [Parts.vstack([title, status], spacing: 1)]
+        let titles = Parts.vstack([title, status], spacing: 1)
+        titles.setHuggingPriority(NSLayoutConstraint.Priority(200), for: .horizontal)
+        var headViews: [NSView] = [titles]
         switch d.control {
         case .on, .off:
             headViews.append(PetToggle(on: d.control.isOn, label: d.title + " 켜기/끄기") { [weak self] on in self?.toggle(ref, on: on) })
@@ -512,7 +514,9 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
         let textWidth = contentWidth - CGFloat(2 * Sp.m) - reserved
         var lines: [NSView] = [Parts.label(a.title, width: textWidth)]
         if let n = a.note { lines.append(Parts.label(n, font: PetTheme.caption, color: PetTheme.tertiary, width: textWidth)) }
-        var views: [NSView] = [Parts.vstack(lines, spacing: 1)]
+        let texts = Parts.vstack(lines, spacing: 1)
+        texts.setHuggingPriority(NSLayoutConstraint.Priority(200), for: .horizontal)
+        var views: [NSView] = [texts]
         if let on = a.isOn {
             views.append(PetToggle(on: on, label: a.title) { [weak self] value in self?.toggleAction(a.id, on: value) })
         }
