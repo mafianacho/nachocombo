@@ -81,8 +81,20 @@ final class RoomsSection: HubSectionBase {
             body.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
         // 입력 칸이 든 줄만 폭을 채운다. 단추 줄은 단추 크기 그대로 왼쪽에 붙인다.
-        HubKit.fill(top, header.filter { v in (v as? NSStackView)?.arrangedSubviews.contains { $0 is HubFormField } == true })
+        HubKit.fill(top, header.filter { v in v is NSStackView })
         return root
+    }
+
+    /// 단추 줄: 단추는 제 크기를 지키고, 남는 자리는 오른쪽 빈 칸이 가져간다(단추가 늘어나지 않는다).
+    func buttonRow(_ views: [NSView]) -> NSStackView {
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        spacer.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        for v in views { v.setContentHuggingPriority(.required, for: .horizontal) }
+        let row = HubKit.hstack(views + [spacer])
+        row.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        return row
     }
 
     func emptyNote(_ text: String) -> NSView {
@@ -175,13 +187,14 @@ final class RoomsSection: HubSectionBase {
 
     func listHeader() -> [NSView] {
         let title = HubKit.label("대화", font: PetTheme.title)
-        let tabs = HubKit.hstack([
+        let tabs = buttonRow([
             tabButton("대화", selected: listTab == .active) { [self] in listTab = .active; load() },
             tabButton("보관한 대화", selected: listTab == .stored) { [self] in listTab = .stored; load() },
         ])
         let go = HubKit.primaryButton("검색", symbol: "magnifyingglass") { [self] in searchSubmitted() }
         let search = HubKit.hstack([searchForm, go])
         searchForm.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        go.setContentHuggingPriority(.required, for: .horizontal)
         return [title, tabs, search]
     }
 

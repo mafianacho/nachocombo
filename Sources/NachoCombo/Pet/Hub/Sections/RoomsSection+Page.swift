@@ -32,7 +32,7 @@ extension RoomsSection {
         let parts = HubKit.scrollingStack(spacing: Double(PetTokens.Space.m), inset: Double(PetTokens.Space.l))
         if doc.blocks.isEmpty { parts.stack.addArrangedSubview(HubKit.label("내용이 없어요.", color: PetTheme.secondary)) }
         for b in doc.blocks { parts.stack.addArrangedSubview(pageBlockView(b)) }
-        present(screen(header: [HubKit.hstack([backButton, save]), title], body: parts.scroll))
+        present(screen(header: [buttonRow([backButton, save]), title], body: parts.scroll))
     }
 
     func rich(_ s: String, font: NSFont = PetTheme.body, color: NSColor = PetTheme.text, width: CGFloat = RoomsSection.pageWidth) -> NSView {
@@ -145,7 +145,7 @@ extension RoomsSection {
         } else {
             parts.stack.addArrangedSubview(HubKit.label("이 파일은 미리 볼 수 없어요. 저장해서 열어 보세요.", color: PetTheme.secondary))
         }
-        present(screen(header: [HubKit.hstack([backButton, save, del]), title], body: parts.scroll))
+        present(screen(header: [buttonRow([backButton, save, del]), title], body: parts.scroll))
     }
 
     func saveMedia(_ item: HubMediaItem) {

@@ -61,9 +61,9 @@ extension RoomsSection {
         cont.alphaValue = HubRooms.continueInChatEnabled ? 1 : 0.4
         cont.toolTip = "곧 열려요. 대화창에서 여러 방을 다루는 일은 다음 단계에서 해요."
         actions.append(cont)
-        var views: [NSView] = [back, title, info, HubKit.hstack(actions)]
+        var views: [NSView] = [back, title, info, buttonRow(actions)]
         if renameVisible && room.canRename { views.append(renameForm(room)) }
-        views.append(HubKit.hstack([
+        views.append(buttonRow([
             tabButton("기록", selected: tab == .history) { [self] in showRoom(room, tab: .history) },
             tabButton("사진·동영상", selected: tab == .photos) { [self] in showRoom(room, tab: .photos) },
             tabButton("파일", selected: tab == .files) { [self] in showRoom(room, tab: .files) },
@@ -84,6 +84,8 @@ extension RoomsSection {
             guard form.validate(), case let .success(t) = HubRoomsAPI.normalizeTitle(form.field.stringValue) else { return }
             rename(room, to: t, form: form)
         }
+        form.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        save.setContentHuggingPriority(.required, for: .horizontal)
         return HubKit.hstack([form, save])
     }
 
