@@ -83,7 +83,7 @@ final class HubWindowCaptureTests: XCTestCase {
     }
 
     func testEveryPlaceholderSectionSaysComingSoon() throws {
-        for id in HubSectionID.allCases where id != .usage && id != .tasks {  // 채워진 섹션은 자기 시험이 따로 있다(NACHO-271)
+        for id in HubSectionID.allCases where id != .usage && id != .groups && id != .tasks {  // 채워진 섹션은 자기 시험이 따로 있다
             let (w, http) = makeWindow(signedIn: true, reply: .usage, section: id)
             XCTAssertTrue(texts(try XCTUnwrap(w.contentView)).contains("준비 중이에요."), "\(id) shows the placeholder")
             XCTAssertTrue(http.paths.isEmpty, "\(id) asks nothing")
