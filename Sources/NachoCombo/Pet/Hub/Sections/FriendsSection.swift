@@ -107,7 +107,7 @@ final class FriendsSection: HubSectionBase {
             let tap: () -> Void = { [weak self] in self?.openTab(s) }
             return s == current ? HubKit.primaryButton(title, onClick: tap) : HubKit.secondaryButton(title, onClick: tap)
         }
-        return HubKit.hstack(pills, spacing: Double(PetTokens.Space.s))
+        return PetFlow.rows(pills, maxWidth: 700, gap: Double(PetTokens.Space.s))
     }
 
     /// 탭을 누르면 그 탭의 데이터를 새로 받는다.

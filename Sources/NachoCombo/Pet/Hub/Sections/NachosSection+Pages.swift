@@ -64,7 +64,7 @@ extension NachosSection {
 
     func showDetail(_ id: String) {
         guard let a = agent(id) else { screen = .list; showList(); return }
-        let page = HubScreen(title: a.name, back: { [weak self] in self?.go(.list) })
+        let page = HubScreen(title: "나초", back: { [weak self] in self?.go(.list) })
         let head = HubKit.hstack([HubArt.character(size: 72), HubKit.vstack([
             HubKit.label(a.name + (a.isDefault ? "  · 대표" : ""), font: PetTheme.title),
             HubKit.label(a.statusLabel, color: PetTheme.secondary),

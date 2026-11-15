@@ -68,6 +68,7 @@ final class HubActionRow: PetBox {
         let texts = HubKit.vstack([HubKit.hstack(titleViews, spacing: Double(PetTokens.Space.s))], spacing: Double(PetTokens.Space.xxs))
         if let s = subtitle, !s.isEmpty { texts.addArrangedSubview(HubKit.label(s, font: PetTheme.caption, color: PetTheme.secondary)) }
         texts.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        for b in buttons { b.setContentHuggingPriority(.required, for: .horizontal) }   // 단추는 글자 크기만큼만
         let row = HubKit.hstack([texts] + buttons, spacing: Double(PetTokens.Space.s))
         addSubview(row)
         let p = CGFloat(PetTokens.Space.m)
