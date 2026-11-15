@@ -106,6 +106,17 @@ public enum PetServerAPI {
         return r
     }
 
+    /// `POST /api/v1/rooms/{id}/messages/{seq}/redact` (spec/rooms.tsp): erases my own text message for good.
+    public static func redactRequest(_ e: ServerEndpoint, bearer: String?, roomID: String, seq: Int) -> PetHTTPRequest {
+        .postJSON(url(e, "/api/v1/rooms/\(roomID)/messages/\(seq)/redact"), bearer: bearer, json: [:])
+    }
+
+    /// Nil for an empty room id or a seq that cannot exist (seq starts at 1).
+    public static func redactRequestChecked(_ e: ServerEndpoint, bearer: String?, roomID: String, seq: Int) -> PetHTTPRequest? {
+        guard !roomID.isEmpty, seq > 0 else { return nil }
+        return redactRequest(e, bearer: bearer, roomID: roomID, seq: seq)
+    }
+
     public static func restoreRequest(_ e: ServerEndpoint, bearer: String?, memoryID: String) -> PetHTTPRequest {
         .postJSON(url(e, "/api/v1/memory/\(memoryID)/restore"), bearer: bearer, json: [:])
     }
@@ -191,6 +202,18 @@ public struct PetServerCalls {
                 if let v = decode(resp) { completion(.success(v)) } else { completion(.failure(.badResponse)) }
             }
         }
+    }
+
+    /// The server answers with the message as it is now (text gone). 404 = no such message of mine.
+    public func redact(roomID: String, seq: Int, completion: @escaping (Result<ChatMessage, PetAPIError>) -> Void) {
+        guard let req = PetServerAPI.redactRequestChecked(endpoint, bearer: bearer, roomID: roomID, seq: seq) else {
+            completion(.failure(PetAPIError(status: 400, code: "validation_error", text: ErrorText.userMessage(code: "validation_error", reason: nil, fallback: ""))))
+            return
+        }
+        run(req, { resp in
+            ((try? JSONSerialization.jsonObject(with: resp.body)) as? JSONObject).map(ChatMessage.decode)
+                ?? ChatMessage(id: "", seq: seq, role: "user", text: "")
+        }, completion)
     }
 
     public func history(roomID: String, beforeSeq: Int?, completion: @escaping (Result<PetHistoryPage, PetAPIError>) -> Void) {

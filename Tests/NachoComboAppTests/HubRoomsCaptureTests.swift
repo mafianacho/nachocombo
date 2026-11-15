@@ -242,7 +242,7 @@ final class HubRoomsCaptureTests: XCTestCase {
         let a = t.range(of: "사진도 보낼게")!.lowerBound, b = t.range(of: "제주도 일정 짜 줘")!.lowerBound
         XCTAssertTrue(a < b, "최근 대화가 위")
         let cont = try XCTUnwrap(pill(w, "대화창에서 이어 말하기"))
-        XCTAssertFalse(cont.isEnabled, "U10 전까지 꺼 둔다")
+        XCTAssertFalse(cont.isEnabled, "대화창이 방을 열 준비가 안 됐으면(chatOpener 없음) 꺼 둔다")
         cont.onClick?()
         XCTAssertFalse(HubRooms.continueInChatEnabled)
         try capture(w, name: "room-history")

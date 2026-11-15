@@ -245,19 +245,27 @@ final class PetMultiRoomSessionTests: XCTestCase {
         XCTAssertEqual(http.sent("GET", "/api/v1/rooms/g2/history").count, 1)
     }
 
-    func testReconnectFillsTheOpenRoomFromItsDelta() {
+    func testReconnectOfTheSameSocketFillsTheOpenRoomFromItsDelta() {
         session.openRoom(id: "g1", title: "주말 계획", kind: "group"); settle()
         http.on("GET", "/api/v1/rooms/g1/delta", 200,
                 #"{"messages":[{"id":"g-2","seq":8,"role":"assistant","text":"끊긴 사이 온 말"}],"last_seq":8,"read_seq":7,"has_more":false}"#)
         chat.handler?(.closed(nil)); settle()
-        // A second connection opens (reconnect) and the server says ready with the default room.
-        let again = factory.with(path: "/ws/chat")
-        XCTAssertGreaterThan(again.count, 1)
-        again.last?.deliver(#"{"type":"ready","user_id":"u1","agent_id":"\#(agent)","agent_name":"나초","room_id":"home"}"#)
-        settle()
+        chat.deliver(#"{"type":"ready","user_id":"u1","agent_id":"\#(agent)","agent_name":"나초","room_id":"home"}"#); settle()
         XCTAssertEqual(session.snapshot.chat.roomID, "g1")
         XCTAssertEqual(http.sent("GET", "/api/v1/rooms/g1/delta").first?.url.query?.contains("since_seq=7"), true)
         XCTAssertEqual(session.snapshot.chat.history.map { $0.text }, ["그룹 첫말", "끊긴 사이 온 말"])
+    }
+
+    func testANewChatClientGoesBackToTheOpenRoom() {
+        session.openRoom(id: "g1", title: "주말 계획", kind: "group"); settle()
+        session.reconnect(); settle()
+        let again = factory.with(path: "/ws/chat")
+        XCTAssertGreaterThan(again.count, 1)
+        again.last?.deliver(#"{"type":"ready","user_id":"u1","agent_id":"\#(agent)","agent_name":"나초","room_id":"home"}"#); settle()
+        XCTAssertEqual(session.snapshot.chat.roomID, "g1")
+        XCTAssertEqual(session.snapshot.chat.roomTitle, "주말 계획")
+        XCTAssertEqual(http.sent("GET", "/api/v1/rooms/g1/history").count, 2)
+        XCTAssertEqual(session.snapshot.chat.history.map { $0.text }, ["그룹 첫말"])
     }
 
     // MARK: redact
@@ -398,11 +406,11 @@ final class PetMultiRoomTranscriptTests: XCTestCase {
         let items = PetTranscript.items(groupState(), undoSecondsLeft: { _ in nil })
         XCTAssertEqual(items.compactMap { i -> String? in if case let .sender(n) = i { return n }; return nil }, ["모카", "민수"])
         // A name sits right above the bubble it names; my own message has none.
-        XCTAssertEqual(items[1], .sender("모카"))
-        XCTAssertEqual(items[2], .nacho(text: "안녕", past: true, streaming: false))
-        XCTAssertEqual(items[3], .sender("민수"))
-        XCTAssertEqual(items[4], .nacho(text: "나도 왔어", past: true, streaming: false))
-        XCTAssertEqual(items[5], .mine(text: "내 말", attachments: [], past: true))
+        XCTAssertEqual(items[0], .sender("모카"))
+        XCTAssertEqual(items[1], .nacho(text: "안녕", past: true, streaming: false))
+        XCTAssertEqual(items[2], .sender("민수"))
+        XCTAssertEqual(items[3], .nacho(text: "나도 왔어", past: true, streaming: false))
+        XCTAssertEqual(items[4], .mine(text: "내 말", attachments: [], past: true))
     }
 
     func testSingleRoomItemsAreUnchanged() {
@@ -436,6 +444,14 @@ final class PetMultiRoomTranscriptTests: XCTestCase {
         var home = PetSessionState()
         home.chat.apply(frame(#"{"type":"ready","user_id":"u1","agent_id":"a","agent_name":"나초","room_id":"home"}"#))
         XCTAssertNil(PetTranscript.roomHeader(home.chat))
+    }
+
+    func testRedactConfirmAsksTwiceWithLinks() {
+        let one = PetTranscript.redactConfirm(step: 1)
+        let two = PetTranscript.redactConfirm(step: 2)
+        XCTAssertEqual(one.parts.compactMap { $0.link?.host }, ["redactnext", "redactcancel"], "the first question never erases")
+        XCTAssertEqual(two.parts.compactMap { $0.link?.host }, ["redactgo", "redactcancel"])
+        XCTAssertTrue(two.plainText.contains("되돌릴 수 없"))
     }
 
     func testRoomTitleFallbackAndPlaceholder() {

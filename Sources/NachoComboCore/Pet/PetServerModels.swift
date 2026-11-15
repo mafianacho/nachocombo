@@ -60,6 +60,10 @@ public struct ChatMessage: Equatable {
     public var usedMemoryIDs: [String]
     public var card: PetCard?
     public var createdAt: String?
+    /// Who spoke, for rooms with several people or Nachos (`sender_user_id`, `sender_agent_id`, `sender_name_snapshot`).
+    public var senderUserID: String?
+    public var senderAgentID: String?
+    public var senderName: String?
 
     public init(id: String, seq: Int? = nil, role: String, text: String, clientMsgID: String? = nil, contentType: String = "text") {
         self.id = id
@@ -77,6 +81,9 @@ public struct ChatMessage: Equatable {
         usedMemoryIDs = []
         card = nil
         createdAt = nil
+        senderUserID = nil
+        senderAgentID = nil
+        senderName = nil
     }
 
     static func decode(_ m: JSONObject) -> ChatMessage {
@@ -97,6 +104,9 @@ public struct ChatMessage: Equatable {
         msg.usedMemoryIDs = m.strs("used_memory_ids")
         msg.card = m.obj("card").map(PetCard.decode)
         msg.createdAt = m.str("created_at")
+        msg.senderUserID = m.str("sender_user_id")
+        msg.senderAgentID = m.str("sender_agent_id")
+        msg.senderName = m.str("sender_name_snapshot")
         return msg
     }
 

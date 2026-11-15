@@ -29,6 +29,8 @@ final class PetTranscriptTests: XCTestCase {
             case let .sentContext(rows): return "sent \(rows.count)"
             case let .selectionPreview(p): return "preview \(p.title)"
             case .selectionIntro: return "intro"
+            case let .sender(n): return "sender \(n)"
+            case let .redactable(seq): return "redactable \(seq)"
             }
         }
     }

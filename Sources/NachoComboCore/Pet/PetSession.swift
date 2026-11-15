@@ -66,6 +66,11 @@ public final class PetSession {
     fileprivate var taskActionsInFlight: Set<String> = []
     /// Plan-note tasks already looked up with `GET /tasks/{id}` (once each).
     fileprivate var taskLookups: Set<String> = []
+    /// The room the user opened from the hub. A new chat connection (token refresh, reconnect) goes back to it.
+    private var viewRoom: (id: String, title: String?, kind: String?)?
+    /// Counts record loads: only the newest one may clear `loadingHistory` (an older room's answer comes late).
+    private var historyLoadToken = 0
+    private var loadingRoom: String?
 
     public init(settings: PetSettings, http: PetHTTPClient, secrets: PetSecretStore, browser: PetAuthBrowser?,
                 makeTransport: @escaping () -> WebSocketTransport, executor: PetCommandExecuting?,
@@ -270,6 +275,7 @@ public final class PetSession {
             self.state.auth = .signedOut
             self.state.notice = "로그아웃했어요."
             self.auth.signOut()
+            self.viewRoom = nil
             self.publish()
         }
     }
@@ -462,6 +468,11 @@ public final class PetSession {
             }
             guard !self.state.uploading else { finish("파일을 올리는 중이에요. 잠시만요."); return }
             if self.state.chat.isBusy { finish(SendRefusal.busy.koreanMessage); return }
+            // The selection bar talks to the Nacho only, never to the room that happens to be open.
+            if self.state.chat.viewingOtherRoom, let home = self.state.chat.defaultRoomID {
+                self.viewRoom = nil
+                self.switchChat(to: (home, nil, nil))
+            }
             self.state.uploading = true
             self.publish()
             self.upload([sent.file], endpoint: endpoint, done: []) { result in
@@ -680,6 +691,105 @@ public final class PetSession {
     }
 }
 
+// MARK: - several rooms in the chat window (NACHO-276)
+
+extension PetSession {
+    /// Opens a room from the hub in the chat window. Text waiting for the old room is dropped (it would go to the wrong
+    /// room); what the Nacho is still answering there stays with the server and comes back through the record.
+    public func openRoom(id: String, title: String?, kind: String?) {
+        queue.async {
+            guard !id.isEmpty else { return }
+            self.state.lastInteraction = self.now()
+            guard self.state.auth == .signedIn else { self.state.notice = AuthProblem.signedOut.koreanMessage; self.publish(); return }
+            self.viewRoom = (id, title, kind)
+            if self.chat == nil {
+                self.connectChat()  // `afterConnected` goes to `viewRoom`
+            } else if self.state.chat.phase == .connected {
+                self.switchChat(to: (id, title, kind))
+            }
+            self.publish()
+        }
+    }
+
+    /// Back to the Nacho's own room.
+    public func returnToDefaultRoom() {
+        queue.async {
+            self.viewRoom = nil
+            guard self.chat != nil, let home = self.state.chat.defaultRoomID, !home.isEmpty else { return }
+            self.switchChat(to: (home, nil, nil))
+            self.publish()
+        }
+    }
+
+    fileprivate func switchChat(to room: (id: String, title: String?, kind: String?)) {
+        guard let chat = chat else { return }
+        let isOpen = state.chat.roomID == room.id
+        state.queuedText = nil
+        state.returnedText = nil
+        chat.update { s in s.switchRoom(id: room.id, title: room.title, kind: room.kind) }
+        if !isOpen || !state.chat.historyLoaded { loadHistory(roomID: room.id, beforeSeq: nil) }
+    }
+
+    /// Erases my message `seq` in the open room (`POST /rooms/{id}/messages/{seq}/redact`). The text is replaced at once on
+    /// success. Completion gets nil, or the Korean reason.
+    public func redactMessage(seq: Int, completion: @escaping (String?) -> Void) {
+        queue.async {
+            guard self.state.auth == .signedIn else { completion(AuthProblem.signedOut.koreanMessage); return }
+            guard seq > 0, let room = self.state.chat.roomID, !room.isEmpty else { completion("지울 메시지를 찾지 못했어요."); return }
+            self.withCalls { calls in
+                guard let calls = calls else { completion(AuthProblem.signedOut.koreanMessage); return }
+                calls.redact(roomID: room, seq: seq) { r in
+                    self.queue.async {
+                        switch r {
+                        case let .success(m):
+                            self.chat?.update { s in
+                                guard s.roomID == room else { return }
+                                s.applyRedaction(seq: seq, text: m.text)
+                            }
+                            self.publish()
+                            completion(nil)
+                        case let .failure(e):
+                            if e.isUnauthorized { self.state.auth = .signedOut; self.publish() }
+                            completion(e.status == 404 ? "지울 메시지를 찾지 못했어요." : e.text)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A new access token even if the stored one still looks fresh (the server answered 401). Concurrent callers share one
+    /// refresh. When the refresh token is dead the login ends (nil) and the user is asked to sign in: no further tries.
+    public func refreshAccessToken(_ done: @escaping (String?) -> Void) {
+        queue.async {
+            let auth = self.auth
+            auth.forceRefresh { [weak self] r in
+                guard let self = self else { done(nil); return }
+                self.queue.async {
+                    guard auth === self.auth else { done(nil); return }
+                    switch r {
+                    case let .success(t): done(t)
+                    case .failure(.network):
+                        self.state.notice = AuthProblem.network.koreanMessage
+                        self.publish()
+                        done(nil)
+                    case .failure(.secretsUnavailable):
+                        self.state.auth = .failed(AuthProblem.secretsUnavailable.koreanMessage)
+                        self.state.notice = AuthProblem.secretsUnavailable.koreanMessage
+                        self.publish()
+                        done(nil)
+                    case .failure:
+                        self.state.auth = .signedOut
+                        self.state.notice = AuthProblem.rejected("").koreanMessage
+                        self.publish()
+                        done(nil)
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - server features besides the socket (history, recovery, usage, dictation, memory, cards)
 
 extension PetSession {
@@ -708,6 +818,11 @@ extension PetSession {
         if state.config == nil { loadClientConfig() }
         refreshUsage()
         guard let room = state.chat.roomID, !room.isEmpty else { return }
+        // A new connection (the chat client was made again) starts in the Nacho's own room: go back to the opened room.
+        if let v = viewRoom, v.id != room {
+            switchChat(to: v)
+            return
+        }
         if !state.chat.historyLoaded {
             loadHistory(roomID: room, beforeSeq: nil)
         } else {
@@ -727,20 +842,35 @@ extension PetSession {
     }
 
     private func loadHistory(roomID: String, beforeSeq: Int?) {
-        guard !state.loadingHistory else { return }
+        // One load per room at a time; a load for another room (the user switched) goes on beside it.
+        guard !(state.loadingHistory && loadingRoom == roomID) else { return }
         state.loadingHistory = true
+        loadingRoom = roomID
+        historyLoadToken += 1
+        let token = historyLoadToken
         publish()
         withCalls { calls in
-            guard let calls = calls else { self.state.loadingHistory = false; self.publish(); return }
+            guard let calls = calls else {
+                if token == self.historyLoadToken { self.state.loadingHistory = false; self.loadingRoom = nil }
+                self.publish()
+                return
+            }
             calls.history(roomID: roomID, beforeSeq: beforeSeq) { r in
                 self.queue.async {
-                    self.state.loadingHistory = false
+                    if token == self.historyLoadToken { self.state.loadingHistory = false; self.loadingRoom = nil }
                     switch r {
-                    case let .failure(e): self.failed(e)
+                    case let .failure(e):
+                        // An answer for a room that is no longer open says nothing to the user.
+                        if self.state.chat.roomID == roomID { self.failed(e) }
                     case let .success(page):
                         self.chat?.update { s in
                             guard s.roomID == roomID else { return }
                             s.mergeHistory(page.messages, hasMore: page.hasMore, older: beforeSeq != nil)
+                        }
+                        // Opening a room reads it: the phone's unread count goes down by what was shown.
+                        if beforeSeq == nil, self.viewRoom?.id == roomID,
+                           let top = page.messages.compactMap({ $0.seq }).max() {
+                            self.chat?.markRead(room: roomID, seq: top)
                         }
                         self.publish()
                     }
