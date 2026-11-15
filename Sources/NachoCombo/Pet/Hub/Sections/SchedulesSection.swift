@@ -140,8 +140,17 @@ final class SchedulesSection: HubSectionBase {
         HubKit.vstack([HubKit.label(name, font: PetTheme.caption, color: PetTheme.secondary), HubKit.label(value)], spacing: Double(PetTokens.Space.xxs))
     }
 
+    /// 단추는 내용 너비만 쓰고 남는 자리는 비운다(그냥 스택에 넣으면 한 줄을 다 채운다).
+    private func compact(_ views: [NSView]) -> NSView {
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        for v in views { v.setContentHuggingPriority(.required, for: .horizontal) }
+        return HubKit.hstack(views + [spacer])
+    }
+
     private func back(_ title: String, to s: Screen) -> NSView {
-        HubKit.hstack([HubKit.secondaryButton(title, symbol: "chevron.left") { [weak self] in self?.go(s) }])
+        compact([HubKit.secondaryButton(title, symbol: "chevron.left") { [weak self] in self?.go(s) }])
     }
 
     func show(list l: HubScheduleList) {
@@ -151,8 +160,8 @@ final class SchedulesSection: HubSectionBase {
             state.show(.empty("아직 예약이 없어요. 나초에게 「매일 아침 새 메일을 확인해 줘」처럼 맡겨 보세요."))
             return
         }
-        var views: [NSView] = [HubKit.hstack([HubKit.label("예약", font: PetTheme.title),
-                                              HubKit.secondaryButton("새로고침", symbol: "arrow.clockwise") { [weak self] in self?.reload() }])]
+        var views: [NSView] = [compact([HubKit.label("예약", font: PetTheme.title),
+                                        HubKit.secondaryButton("새로고침", symbol: "arrow.clockwise") { [weak self] in self?.reload() }])]
         func group(_ title: String, _ items: [HubSchedule]) {
             guard !items.isEmpty else { return }
             views.append(HubKit.label(title, font: PetTheme.caption, color: PetTheme.secondary))
@@ -212,7 +221,7 @@ final class SchedulesSection: HubSectionBase {
         if s.deletable {
             actions.append(HubKit.primaryButton("삭제", symbol: "trash", danger: true) { [weak self] in self?.deleteTapped() })
         }
-        views.append(HubKit.hstack(actions))
+        views.append(compact(actions))
         if s.registered, !s.paused, HubScheduleRules.canPause(s) {
             views.append(HubKit.label("일시 정지해도 진행 중인 실행은 멈추지 않고 다음 실행부터 적용돼요.", font: PetTheme.caption, color: PetTheme.secondary))
         }

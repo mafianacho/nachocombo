@@ -91,8 +91,13 @@ final class HubSchedulesCaptureTests: XCTestCase {
         for dark in [false, true] {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
             w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            let host = NSView(frame: w.contentLayoutRect)
-            w.contentView = host
+            let box = NSBox(frame: w.contentLayoutRect)
+            box.boxType = .custom
+            box.borderWidth = 0
+            box.fillColor = .windowBackgroundColor
+            box.contentViewMargins = .zero
+            w.contentView = box
+            let host: NSView = box
             s.view.translatesAutoresizingMaskIntoConstraints = false
             host.addSubview(s.view)
             NSLayoutConstraint.activate([s.view.leadingAnchor.constraint(equalTo: host.leadingAnchor), s.view.trailingAnchor.constraint(equalTo: host.trailingAnchor),
