@@ -52,7 +52,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private(set) var activeCardID: String?
     /// A number key that marked a card row; if more text follows, it was the start of a message and goes back in.
     private var heldDigit: (n: Int, card: String)?
-    private var connectionsText: NSAttributedString?
+    private var connectionsView: PetConnectionsView?
     private var shownItems: [PetChatItem] = []
     private var shownViews: [NSView] = []
     private var tickScheduled = false
@@ -688,56 +688,24 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     }
 
     private func renderConnections() {
+        guard let module = module else { return }
         shownItems = []
-        shownViews.forEach { $0.removeFromSuperview() }
-        shownViews = []
-        let text = connectionsText ?? PetLinkText.plain("불러오는 중…", font: PetTheme.body, color: PetTheme.secondary)
-        let v = PetLinkText(text, maxWidth: logWidth)
-        logStack.addArrangedSubview(v)
-        shownViews = [v]
-    }
-
-    private func loadConnections() {
-        connectionsText = nil
-        render()
-        module?.session.loadConnectors { [weak self] result in
-            DispatchQueue.main.async {
-                self?.connectionsText = PetChatWindow.describe(result, connector: self?.module?.state.connector ?? .off)
-                self?.render()
+        let view: PetConnectionsView
+        if let v = connectionsView, abs(v.contentWidth - logWidth) < 1 { view = v } else {
+            if let old = connectionsView {  // the chat was resized: draw the tab again at the new width
+                old.close()
+                logStack.removeArrangedSubview(old)
+                old.removeFromSuperview()
             }
+            view = PetConnectionsView(host: module, width: logWidth)
+            connectionsView = view
         }
-    }
-
-    static func describe(_ result: Result<ConnectorOverview, ConnectorError>, connector: ConnectorPhase) -> NSAttributedString {
-        let out = NSMutableAttributedString()
-        func line(_ s: String, bold: Bool = false, color: NSColor = PetTheme.text) {
-            let font = bold ? PetTheme.font(PetTokens.Font.body, PetTokens.Font.weightSemibold) : PetTheme.caption
-            out.append(NSAttributedString(string: s + "\n", attributes: [.font: font, .foregroundColor: color, .paragraphStyle: PetTheme.paragraph(font)]))
+        if view.superview !== logStack {
+            shownViews.forEach { logStack.removeArrangedSubview($0); $0.removeFromSuperview() }
+            logStack.addArrangedSubview(view)
+            shownViews = [view]
+            view.open()
         }
-        line("이 맥 (나초 콤보)", bold: true)
-        line("  창 배치·가젯 켜기/끄기: \(connector.koreanLabel)", color: PetTheme.secondary)
-        switch result {
-        case let .failure(e):
-            line("")
-            line(e.koreanMessage, color: PetTheme.color(\.warning))
-        case let .success(o):
-            line("")
-            line("연결된 서비스", bold: true)
-            if o.connections.isEmpty { line("  아직 없어요", color: PetTheme.secondary) }
-            for c in o.connections {
-                line("  \(c.isHealthy ? "●" : "○") \(c.label) — \(c.statusText)\(c.accountLabel.map { " · \($0)" } ?? "")")
-                if !c.scopeSummary.isEmpty { line("     \(c.scopeSummary)", color: PetTheme.secondary) }
-            }
-            line("")
-            line("나초가 쓸 수 있는 도구", bold: true)
-            for t in o.tools { line("  \(t.enabled ? "●" : "○") \(t.name) · \(t.kindText)", color: t.enabled ? PetTheme.text : PetTheme.secondary) }
-            if !o.capabilities.isEmpty {
-                line("")
-                line("이 맥이 나초에게 준 기능", bold: true)
-                for c in o.capabilities { line("  ● \(c.name)", color: PetTheme.secondary) }
-            }
-        }
-        return out
     }
 
     // MARK: actions
@@ -745,7 +713,11 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private func select(tab i: Int) {
         selectedTab = i
         styleTabs()
-        if i == 1 { loadConnections() } else { shownItems = []; shownViews.forEach { $0.removeFromSuperview() }; shownViews = []; render() }
+        if i != 1 { connectionsView?.close() }
+        shownItems = []
+        shownViews.forEach { logStack.removeArrangedSubview($0); $0.removeFromSuperview() }
+        shownViews = []
+        render()
     }
 
     private func styleTabs() {

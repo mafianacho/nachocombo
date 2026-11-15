@@ -15,6 +15,15 @@ final class HubSidebarRow: PetBox {
     var onClick: (() -> Void)?
     private let title: NSTextField
     private let icon = NSImageView()
+    private let badgeLabel = HubKit.label("", font: PetTheme.caption, color: PetTheme.color(\.onAccent), wrap: false)
+    private let badgeBox = PetBox()
+
+    /// 안 읽은 수 배지. 0이면 숨기고 접근성 라벨에 수를 넣는다(섹션이 공통으로 쓴다).
+    func setBadge(_ count: Int) {
+        badgeBox.isHidden = count <= 0
+        badgeLabel.stringValue = count > 99 ? "99+" : String(count)
+        setAccessibilityLabel(count > 0 ? "\(sectionID.title), 안 읽음 \(count)개" : sectionID.title)
+    }
 
     var selected = false {
         didSet {
@@ -34,7 +43,20 @@ final class HubSidebarRow: PetBox {
         icon.image = PetTheme.symbol(id.symbol, size: PetTokens.Size.icon)
         icon.contentTintColor = PetTheme.secondary
         icon.translatesAutoresizingMaskIntoConstraints = false
-        let row = HubKit.hstack([icon, title], spacing: PetTokens.Space.s)
+        badgeBox.fill = PetTheme.accent
+        badgeBox.radius = 9
+        badgeBox.translatesAutoresizingMaskIntoConstraints = false
+        badgeBox.isHidden = true
+        badgeBox.addSubview(badgeLabel)
+        NSLayoutConstraint.activate([
+            badgeLabel.leadingAnchor.constraint(equalTo: badgeBox.leadingAnchor, constant: 6),
+            badgeLabel.trailingAnchor.constraint(equalTo: badgeBox.trailingAnchor, constant: -6),
+            badgeLabel.topAnchor.constraint(equalTo: badgeBox.topAnchor, constant: 1),
+            badgeLabel.bottomAnchor.constraint(equalTo: badgeBox.bottomAnchor, constant: -1),
+        ])
+        badgeBox.setContentHuggingPriority(.required, for: .horizontal)
+        title.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let row = HubKit.hstack([icon, title, badgeBox], spacing: PetTokens.Space.s)
         addSubview(row)
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: CGFloat(PetTokens.Size.control)),
@@ -215,6 +237,7 @@ final class PetHubWindow: NSWindow {
         if env.isSignedIn() {
             let section = sections[selected] ?? HubSections.make(selected)
             sections[selected] = section
+            if let n = section as? NotificationsSection { connect(n) }
             content = section.view
         } else {
             content = signInView
@@ -228,6 +251,12 @@ final class PetHubWindow: NSWindow {
             content.bottomAnchor.constraint(equalTo: detail.bottomAnchor),
         ])
         if env.isSignedIn(), let section = sections[selected] { section.activate(makeContext()) }
+    }
+
+    /// 알림 섹션의 이동·배지를 창에 잇는다(섹션을 만들 때마다 같은 콜백으로 덮어쓴다).
+    private func connect(_ s: NotificationsSection) {
+        s.onNavigate = { [weak self] id in self?.select(id) }
+        s.onBadgeChange = { [weak self] count in self?.rows[.notifications]?.setBadge(count) }
     }
 
     private func makeContext() -> HubContext {
