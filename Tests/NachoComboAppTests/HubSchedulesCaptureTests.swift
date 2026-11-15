@@ -327,6 +327,32 @@ final class HubSchedulesCaptureTests: XCTestCase {
         XCTAssertTrue(all(s).contains("로그인이 필요해요."))
     }
 
+    /// 지금 실행 확인창(크레딧을 씁니다 + 남은 크레딧)을 실제 확인 카드로 그린다.
+    func testRunNowConfirmCardCapture() throws {
+        let rig = Rig(base())
+        let s = try openDetail(rig)
+        let step = HubScheduleRules.runNowStep(try XCTUnwrap(s.current), remaining: s.remainingCredits)
+        for dark in [false, true] {
+            let card = HubConfirmCard(step: HubConfirmStep(title: step.title, message: step.message, confirmTitle: step.confirmTitle, destructive: step.destructive),
+                                      onCancel: {}, onConfirm: {})
+            let box = NSBox(frame: NSRect(x: 0, y: 0, width: 520, height: 260))
+            box.boxType = .custom
+            box.borderWidth = 0
+            box.fillColor = .windowBackgroundColor
+            let w = NSWindow(contentRect: box.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            w.contentView = box
+            card.translatesAutoresizingMaskIntoConstraints = false
+            box.addSubview(card)
+            NSLayoutConstraint.activate([card.centerXAnchor.constraint(equalTo: box.centerXAnchor), card.centerYAnchor.constraint(equalTo: box.centerYAnchor)])
+            box.layoutSubtreeIfNeeded()
+            XCTAssertTrue(texts(card).joined().contains("크레딧을 씁니다"))
+            let rep = try XCTUnwrap(box.bitmapImageRepForCachingDisplay(in: box.bounds))
+            box.cacheDisplay(in: box.bounds, to: rep)
+            try emit(try XCTUnwrap(rep.representation(using: .png, properties: [:])), name: "schedules-run-now-confirm-\(dark ? "dark" : "light")")
+        }
+    }
+
     private func emit(_ png: Data, name: String) throws {
         try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         try png.write(to: outDir.appendingPathComponent("\(name).png"))
