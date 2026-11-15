@@ -241,7 +241,7 @@ public final class HubOnboardingFlow {
         guard let s = snapshot.state, let version = s.consentVersion, !version.isEmpty else { update { $0.error = .unknown }; return }
         guard begin(showBusy: true) else { return }
         let e = client.endpoint
-        let value = HubOnboardingRules.consentValue(terms: true, privacy: true, marketing: s.consentMarketing ?? false, version: version)
+        let value = HubOnboardingRules.consentValue(terms: true, privacy: true, thirdParty: true, aiTransfer: true, marketing: s.consentMarketing ?? false, version: version)
         client.send({ HubOnboardingAPI.submit(e, bearer: $0, step: .consent, value: value) }) { [weak self] r in
             guard let self = self else { return }
             switch r {
