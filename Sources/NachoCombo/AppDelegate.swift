@@ -275,6 +275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .whenNeeded: if gadgetsNeedingUser().isEmpty == false { showSettings(gadgetsNeedingUser().first) }
         case .never: break
         }
+        // NACHO-300: after an update, the bundled "What's new" window once (nothing to show: no window).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [firstLaunch] in
+            WhatsNewPresenter.shared.showIfUpdated(freshInstall: firstLaunch)
+        }
     }
 
     /// Double-clicking the app again (or `open -a`) while it is already running re-opens the settings window.
@@ -754,6 +758,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         let board = NSMenuItem(title: "Widget Board…", action: #selector(menuBoard), keyEquivalent: "")
         board.target = self
         menu.addItem(board)
+        if WhatsNewPresenter.shared.isAvailable {
+            let whatsNew = NSMenuItem(title: "새로운 기능…", action: #selector(menuWhatsNew), keyEquivalent: "")
+            whatsNew.target = self
+            menu.addItem(whatsNew)
+        }
         let settings = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -1619,6 +1628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
 
     @objc private func menuSettings() { showSettings() }
     @objc private func menuBoard() { bentoWindow.show() }
+    @objc private func menuWhatsNew() { WhatsNewPresenter.shared.showAgain() }
     @objc private func menuOrderCombo(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         orderCombo(id)

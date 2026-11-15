@@ -1,0 +1,8 @@
+{
+  "version": "0.11.0",
+  "items": [
+    {"title": "나초 앱 창이 생겼어요", "body": "알림·기억·예약 같은 나초 앱의 기능을 맥에서 바로 열어 봐요.", "gif": "app-window.gif"},
+    {"title": "나초가 기억한 것을 관리해요", "body": "기억을 보고, 고치고, 잊게 할 수 있어요.", "gif": "memory.gif"},
+    {"title": "알림과 활동을 한곳에서", "body": "나초의 알림과 친구 소식을 모아서 보여 줘요.", "gif": "notifications.gif"}
+  ]
+}
