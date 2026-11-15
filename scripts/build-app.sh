@@ -50,6 +50,12 @@ if [ -d Resources/Fonts ]; then
   mkdir -p "$APP/Contents/Resources/Fonts"
   cp Resources/Fonts/*.ttf Resources/Fonts/*.txt "$APP/Contents/Resources/Fonts/"
 fi
+# 「새로운 기능」 창의 버전별 내용(JSON)과 GIF. 파일이 없으면 앱은 창을 띄우지 않는다(NACHO-300).
+if [ -d Resources/WhatsNew ]; then
+  mkdir -p "$APP/Contents/Resources/WhatsNew"
+  cp Resources/WhatsNew/*.json Resources/WhatsNew/*.gif "$APP/Contents/Resources/WhatsNew/"
+fi
+ls -l "$APP/Contents/Resources/WhatsNew/"; echo "WHATSNEW-BUNDLE rc=$?"
 # Drop debug-map entries so build-machine paths are not embedded in the release binary.
 strip -S -x "$APP/Contents/MacOS/NachoCombo"
 cat > "$APP/Contents/Info.plist" <<PLIST
