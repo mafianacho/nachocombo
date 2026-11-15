@@ -16,6 +16,14 @@ public struct ConnectionRow: Equatable, Identifiable {
     public var accountLabel: String?
     public var scopeSummary: String
     public var link: URL?  // optional server-provided management link (http/https only)
+    /// The service switch (PATCH /connections/{id} `enabled`). Absent = on.
+    public var enabled: Bool = true
+    /// Row version the server wants back as `expected_version` when the switch or the scope changes.
+    public var version: Int = 0
+    /// oauth | app_password | qr | site | device | api_key
+    public var connectKind: String?
+    /// Granted scope level: read | read_write.
+    public var scopeLevel: String?
 
     public var statusText: String {
         if let a = needsAttention {
@@ -44,6 +52,10 @@ public struct ToolRow: Equatable, Identifiable {
     public var kind: String  // builtin | http | mcp | connector | connection
     public var source: String?
     public var enabled: Bool
+    /// NACHO-132: the user's own switch (`user_enabled`). Absent (an older server) = on.
+    public var userEnabled: Bool = true
+    /// NACHO-132: a default tool Nacho needs in every chat (`locked`). Absent = false.
+    public var locked: Bool = false
 
     public var kindText: String {
         switch kind {
@@ -95,7 +107,11 @@ public enum ConnectorDecoder {
                 needsAttention: o["needs_attention"] as? String,
                 accountLabel: o["account_label"] as? String,
                 scopeSummary: (o["scope_summary"] as? String) ?? "",
-                link: SafeLink.openable((o["link"] as? String) ?? (o["manage_url"] as? String)))
+                link: SafeLink.openable((o["link"] as? String) ?? (o["manage_url"] as? String)),
+                enabled: (o["enabled"] as? Bool) ?? true,
+                version: (o["version"] as? Int) ?? 0,
+                connectKind: o["connect_kind"] as? String,
+                scopeLevel: (o["granted_scope"] as? [String: Any])?["level"] as? String)
         }
     }
 
@@ -108,7 +124,9 @@ public enum ConnectorDecoder {
                 id: (t["id"] as? String) ?? name, name: name,
                 description: (t["search_description"] as? String) ?? (t["operation_description"] as? String) ?? "",
                 kind: (cfg?["kind"] as? String) ?? "builtin", source: t["source"] as? String,
-                enabled: (t["enabled"] as? Bool) ?? true)
+                enabled: (t["enabled"] as? Bool) ?? true,
+                userEnabled: (t["user_enabled"] as? Bool) ?? true,
+                locked: (t["locked"] as? Bool) ?? false)
         }
         let caps: [CapabilityRow] = ((o["connector_capabilities"] as? [[String: Any]]) ?? []).compactMap { c in
             guard let n = c["name"] as? String else { return nil }
