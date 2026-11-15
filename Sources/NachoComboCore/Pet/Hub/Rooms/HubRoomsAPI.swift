@@ -290,7 +290,7 @@ public enum HubRoomsAPI {
                     ref = HubPageRef(id: fid, title: a.str("name") ?? "문서")
                 }
                 return HubMessage(seq: seq, role: o.str("role") ?? "assistant", senderName: o.str("sender_name_snapshot"), text: o.str("text") ?? "",
-                                  createdAt: o.str("created_at"), attachments: o.objs("attachments").compactMap { mediaItem(HubObject($0)) }, pageRef: ref)
+                                  createdAt: o.str("created_at"), attachments: o.objs("attachments").compactMap { mediaItem($0) }, pageRef: ref)
             }
             return HubHistoryPage(messages: msgs, hasMore: (resp.header("X-Has-More") ?? "").lowercased() == "true")
         }
