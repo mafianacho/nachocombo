@@ -12,7 +12,7 @@ final class HubMemoryTests: XCTestCase {
     func testListFactsQueryOrderAndBearer() {
         let r = HubMemoryAPI.listFacts(e, bearer: "T", limit: 50, before: "2026-11-01T00:00:00Z")
         XCTAssertEqual(r.method, "GET")
-        XCTAssertEqual(r.url.absoluteString, "https://nacho.example.com/api/v1/memory/facts?limit=50&before=2026-11-01T00:00:00Z".replacingOccurrences(of: ":", with: "%3A"))
+        XCTAssertEqual(r.url.absoluteString, "https://nacho.example.com/api/v1/memory/facts?limit=50&before=2026-11-01T00%3A00%3A00Z")
         XCTAssertEqual(r.headers["Authorization"], "Bearer T")
         XCTAssertNil(r.body)
         XCTAssertEqual(HubMemoryAPI.listFacts(e, bearer: "T", limit: 50).url.absoluteString, "https://nacho.example.com/api/v1/memory/facts?limit=50")
