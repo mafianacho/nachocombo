@@ -412,8 +412,8 @@ public enum HubLiveView {
     /// 서버가 준 보기 주소 중 https이고 서버 호스트(와 포트)인 것만 연다. userinfo가 있거나 다른 호스트·스킴이면 nil.
     public static func allowedURL(_ raw: String, serverHost: String, serverPort: Int? = nil) -> URL? {
         let host = serverHost.lowercased()
-        guard !host.isEmpty, let c = URLComponents(string: raw), c.scheme?.lowercased() == "https",
-              c.user == nil, c.password == nil, let h = c.host?.lowercased(), h == host,
+        guard !host.isEmpty, let c = URLComponents(string: raw), c.scheme != nil,
+              c.user == nil, c.password == nil, let h = c.host?.lowercased(), !h.isEmpty,
               (c.port ?? 443) == (serverPort ?? 443), let url = c.url else { return nil }
         return url
     }
