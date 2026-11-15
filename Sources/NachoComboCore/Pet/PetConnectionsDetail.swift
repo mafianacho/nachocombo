@@ -12,6 +12,20 @@ public struct ConnectionsAbility: Equatable, Identifiable {
     /// nil = no switch of its own (it follows the service).
     public var isOn: Bool?
     public var permissions: [OSPermission] = []
+    /// NACHO-151: how Nacho asks before doing it (nil = it just runs). Shown under the title.
+    public var risk: GadgetToolRisk?
+    public var riskText: String?
+}
+
+/// NACHO-151: the "이 가젯은 항상 허용" switch of a gadget that has content_out / input_inject actions.
+public struct ConnectionsAlwaysAllow: Equatable {
+    public var gadget: GadgetID
+    public var title: String
+    public var note: String
+    public var isOn: Bool
+    /// Shown before it is switched on. Switching off needs no question.
+    public var confirmText: String
+    public var confirmButton: String
 }
 
 public struct ConnectionsFact: Equatable {
@@ -51,6 +65,7 @@ public struct ConnectionsDetail: Equatable {
     /// A sentence the user must read (sign in again, locked, permission).
     public var notice: String?
     public var scope: ConnectionsScopeChoice?
+    public var alwaysAllow: ConnectionsAlwaysAllow?
     /// "다시 연결": sign in again or connect again.
     public var reconnectTitle: String?
     public var disconnect: ConnectionsDisconnect?
@@ -93,7 +108,7 @@ public enum ConnectionsDetailBuilder {
             summary: t.description.isEmpty ? "나초가 대화 중에 고르는 도구예요." : ToolWords.firstSentence(t.description, limit: 240),
             abilitiesTitle: "", abilities: [], emptyAbilities: "", facts: facts,
             notice: t.locked ? "나초가 대화하는 데 꼭 필요한 기본 도구라서 끌 수 없어요." : (t.userEnabled ? nil : "꺼 두면 나초가 이 도구를 고르지 않아요."),
-            scope: nil, reconnectTitle: nil, disconnect: nil)
+            scope: nil, alwaysAllow: nil, reconnectTitle: nil, disconnect: nil)
     }
 
     // MARK: connector
@@ -135,7 +150,7 @@ public enum ConnectionsDetailBuilder {
             ref: .connector(c.id), title: c.label, status: c.statusLine, tone: c.tone,
             control: c.enabled && c.health != .disconnected ? .on : .off,
             summary: summary, abilitiesTitle: "나초가 쓸 수 있는 기능", abilities: abilities,
-            emptyAbilities: "아직 알려진 기능이 없어요.", facts: facts, notice: notice, scope: scope, reconnectTitle: reconnect,
+            emptyAbilities: "아직 알려진 기능이 없어요.", facts: facts, notice: notice, scope: scope, alwaysAllow: nil, reconnectTitle: reconnect,
             disconnect: c.health == .disconnected ? nil : ConnectionsDisconnect(
                 buttonTitle: "연결 해제", confirmTitle: "\(c.label) 연결을 끊을까요?",
                 confirmMessage: "나초가 \(c.label) 서비스를 더 이상 쓸 수 없어요. 되돌릴 수 없어요. 다시 쓰려면 처음부터 다시 연결해야 해요.",
@@ -144,11 +159,21 @@ public enum ConnectionsDetailBuilder {
 
     // MARK: gadget
 
-    public static func gadget(_ g: GadgetSwitchState, disabled: Set<String>, tools: [GadgetTool] = GadgetToolRegistry.all) -> ConnectionsDetail {
+    public static func gadget(_ g: GadgetSwitchState, disabled: Set<String>, alwaysAllowed: Set<GadgetID> = [],
+                              tools: [GadgetTool] = GadgetToolRegistry.all) -> ConnectionsDetail {
         let actions = MacActions.rows(for: g.id, disabled: disabled, tools: tools)
         let abilities = actions.map { a in
             ConnectionsAbility(id: a.id, title: a.title, note: a.permissions.isEmpty ? nil : "맥 권한: " + a.permissions.map { $0.koreanName }.joined(separator: ", "),
-                               isOn: a.isOn, permissions: a.permissions)
+                               isOn: a.isOn, permissions: a.permissions, risk: a.risk,
+                               riskText: MacActions.riskText(a.risk, alwaysAllowed: alwaysAllowed.contains(g.id)))
+        }
+        var alwaysAllow: ConnectionsAlwaysAllow?
+        if GadgetToolRegistry.trustableGadgets(in: tools).contains(g.id) {
+            let on = alwaysAllowed.contains(g.id)
+            alwaysAllow = ConnectionsAlwaysAllow(
+                gadget: g.id, title: "이 가젯은 항상 허용",
+                note: on ? "내용 전송·입력 행동을 묻지 않고 해요. 끄면 다시 매번 물어봐요." : "꺼 두면 내용을 보내거나 입력하기 전에 매번 물어봐요.",
+                isOn: on, confirmText: MacActions.alwaysAllowConfirm(g.id, tools: tools), confirmButton: "항상 허용")
         }
         var status: String
         var tone = ConnectionsTone.normal
@@ -167,7 +192,7 @@ public enum ConnectionsDetailBuilder {
             ref: .gadget(g.id), title: g.id.koreanName, status: status, tone: tone, control: g.control, summary: summary,
             abilitiesTitle: "이 맥에서 나초가 하는 일", abilities: abilities, emptyAbilities: "나초가 이 가젯으로 하는 일이 없어요.",
             facts: [ConnectionsFact(label: "맥 행동", value: MacActions.summary(actions))], notice: notice, scope: nil,
-            reconnectTitle: nil, disconnect: nil)
+            alwaysAllow: alwaysAllow, reconnectTitle: nil, disconnect: nil)
     }
 }
 

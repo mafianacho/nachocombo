@@ -226,6 +226,7 @@ public struct MacActionRow: Equatable, Identifiable {
     public var title: String
     public var permissions: [OSPermission]
     public var isOn: Bool
+    public var risk: GadgetToolRisk = .read
 }
 
 public enum MacActions {
@@ -233,8 +234,25 @@ public enum MacActions {
     public static func rows(for gadget: GadgetID, disabled: Set<String>, tools: [GadgetTool] = GadgetToolRegistry.all) -> [MacActionRow] {
         tools.filter { $0.gadget == gadget && $0.exits.contains(.connector) }.map { t in
             MacActionRow(id: t.connectorName, gadget: gadget, title: ToolWords.firstSentence(t.koreanDescription, limit: 120),
-                            permissions: t.permissions.sorted(), isOn: disabled.isDisjoint(with: t.connectorNames))
+                            permissions: t.permissions.sorted(), isOn: disabled.isDisjoint(with: t.connectorNames), risk: t.risk)
         }
+    }
+
+    /// What the user reads under an action: how Nacho asks. nil for read / change (they just run).
+    public static func riskText(_ risk: GadgetToolRisk, alwaysAllowed: Bool) -> String? {
+        switch risk {
+        case .read, .change: return nil
+        case .contentOut, .inputInject: return alwaysAllowed ? "이 가젯은 항상 허용이라 묻지 않고 해요" : "보내기 전에 매번 물어봐요"
+        case .destructive: return "매번 물어봐요(항상 허용 안 됨)"
+        }
+    }
+
+    /// The sentence before "always allow" is switched on: what then goes out or gets typed without a question.
+    public static func alwaysAllowConfirm(_ gadget: GadgetID, tools: [GadgetTool] = GadgetToolRegistry.all) -> String {
+        let own = tools.filter { $0.gadget == gadget && $0.exits.contains(.connector) }
+        let out = own.contains { $0.risk == .contentOut }, inject = own.contains { $0.risk == .inputInject }
+        let what = out && inject ? "내용을 보내고 입력하는 일을" : (inject ? "키 입력·클릭을" : "\(gadget.koreanName) 내용을 나초에게 보내는 일을")
+        return "\(what) 묻지 않고 해요. 되돌릴 수 없는 행동은 계속 매번 물어봐요. 언제든 끌 수 있어요."
     }
 
     public static func tool(connectorName: String, in tools: [GadgetTool] = GadgetToolRegistry.all) -> GadgetTool? {
