@@ -83,7 +83,7 @@ extension TasksSection {
         let pane = TasksLiveViewPane(url: url, serverHost: host, serverPort: base?.port, verifiedHost: ticket.verifiedHost, onClose: { [weak self] in
             self?.ctx.confirm([HubConfirmStep(title: "로그인을 그만둘까요?", message: "로그인하지 않으면 나초가 이 일을 이어 가지 못해요. 작업에서 다시 열 수 있어요.",
                                               confirmTitle: "그만두기", destructive: false)]) { self?.showDetail(t); self?.refreshDetail(t.id) }
-        }, makeSurface: makeSurface)
+        }, makeSurface: makeSurface ?? liveSurface)
         self.host(pane, name: "live:\(t.id)")
     }
 }

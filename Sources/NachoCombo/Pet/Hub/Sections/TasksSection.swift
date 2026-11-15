@@ -11,31 +11,40 @@ final class TasksSection: HubSectionBase {
     private(set) var screenName = "list"
     /// 상세 화면의 기록 자리(「기록 보기」가 채운다).
     var logsHost: NSStackView?
+    /// 라이브 뷰 화면 자리(시험이 가짜 화면을 줄 때만 쓴다. 비면 WKWebView).
+    var liveSurface: ((URL, TasksLiveViewPane) -> NSView)?
 
     override func load() {
         guard let client = ctx.client else { state.show(.failed("로그인이 필요해요.")); return }
         state.show(.loading)
         screenName = "list"
         let e = client.endpoint
-        let group = DispatchGroup()
+        // 두 요청이 모두 끝나면 한 번만 그린다(콜백은 임의의 큐에서 온다).
+        let lock = NSLock()
+        var pending = 2
         var listResult: Result<HubTaskList, PetAPIError>?
         var histResult: Result<HubPage, PetAPIError>?
-        group.enter()
-        client.send({ HubTasks.list(e, bearer: $0) }) { r in
-            listResult = r.flatMap { HubTasks.decodeList($0) }
-            group.leave()
-        }
-        group.enter()
-        client.send({ HubTasks.history(e, bearer: $0, limit: 20) }) { r in
-            histResult = r.flatMap { HubAPI.page($0) }
-            group.leave()
-        }
-        group.notify(queue: .main) { [weak self] in
-            guard let self = self, let lr = listResult else { return }
-            switch lr {
-            case let .failure(err): self.state.show(.failed(err.text))
-            case let .success(tasks): self.showList(tasks, history: histResult)
+        let done: () -> Void = { [weak self] in
+            lock.lock()
+            pending -= 1
+            let finished = pending == 0
+            lock.unlock()
+            guard finished else { return }
+            self?.onMain {
+                guard let self = self, let lr = listResult else { return }
+                switch lr {
+                case let .failure(err): self.state.show(.failed(err.text))
+                case let .success(tasks): self.showList(tasks, history: histResult)
+                }
             }
+        }
+        client.send({ HubTasks.list(e, bearer: $0) }) { r in
+            lock.lock(); listResult = r.flatMap { HubTasks.decodeList($0) }; lock.unlock()
+            done()
+        }
+        client.send({ HubTasks.history(e, bearer: $0, limit: 20) }) { r in
+            lock.lock(); histResult = r.flatMap { HubAPI.page($0) }; lock.unlock()
+            done()
         }
     }
 
