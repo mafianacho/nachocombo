@@ -52,7 +52,7 @@ final class HubGroupsTests: XCTestCase {
         XCTAssertEqual(i.headers["Idempotency-Key"], "K2")
         let l = HubGroups.listInvitations(e, query: [("before", "2026-11-01T00:00:00Z")], bearer: "T")
         XCTAssertEqual(l.method, "GET")
-        XCTAssertEqual(l.url.absoluteString, "https://nacho.example.com/api/v1/invitations?before=2026-11-01T00:00:00Z")
+        XCTAssertEqual(l.url.absoluteString, "https://nacho.example.com/api/v1/invitations?before=2026-11-01T00%3A00%3A00Z")
         XCTAssertEqual(HubGroups.listInvitations(e, query: [], bearer: "T").url.absoluteString, "https://nacho.example.com/api/v1/invitations")
         let a = HubGroups.acceptInvitation(e, "i1", bearer: "T")
         XCTAssertEqual(a.method, "POST")
