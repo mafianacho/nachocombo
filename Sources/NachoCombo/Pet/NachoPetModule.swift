@@ -18,6 +18,12 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
     var openSettings: (() -> Void)?
     /// Switches the gadget off (the pet's "Hide Nacho").
     var turnOff: (() -> Void)?
+    /// A gadget switched in the Connections tab: the app delegate runs the gallery's own path (a missing macOS permission is
+    /// explained and asked for then).
+    var userGadget: ((ModuleID, Bool) -> Void)?
+    /// `{module raw value: "on" | "off" | "waiting for permission" | "failed"}` as `combo_list_gadgets` words it, read without
+    /// running a command (the Connections tab looks every second).
+    var gadgetStatus: (() -> [String: String])?
     var onChange: (() -> Void)?
 
     private let settingsStore = PetSettingsStore(url: PetSettingsStore.defaultURL())
