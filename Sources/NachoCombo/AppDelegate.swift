@@ -276,7 +276,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .never: break
         }
         // NACHO-300: after an update, the bundled "What's new" window once (nothing to show: no window).
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { WhatsNewPresenter.shared.showIfUpdated() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [firstLaunch] in
+            WhatsNewPresenter.shared.showIfUpdated(freshInstall: firstLaunch)
+        }
     }
 
     /// Double-clicking the app again (or `open -a`) while it is already running re-opens the settings window.

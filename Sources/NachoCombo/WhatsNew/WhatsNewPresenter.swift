@@ -25,9 +25,10 @@ final class WhatsNewPresenter {
     /// 메뉴에 「새로운 기능」을 둘지(내용이 있을 때만).
     var isAvailable: Bool { loadContent() != nil }
 
-    /// 실행 직후 한 번: 업데이트한 뒤 처음이면 창을 띄운다.
-    func showIfUpdated(tracker: WhatsNewTracker = WhatsNewTracker()) {
-        guard let content = tracker.evaluate(current: currentVersion, content: loadContent()) else { return }
+    /// 실행 직후 한 번: 업데이트한 뒤 처음이면 창을 띄운다. `freshInstall`은 설정 파일이 없던 첫 실행인지다.
+    func showIfUpdated(freshInstall: Bool, tracker: WhatsNewTracker = WhatsNewTracker()) {
+        guard let content = tracker.evaluate(current: currentVersion, content: loadContent(), freshInstall: freshInstall)
+        else { return }
         present(content)
     }
 
