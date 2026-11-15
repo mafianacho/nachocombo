@@ -160,6 +160,9 @@ final class HubNotificationsTests: XCTestCase {
         XCTAssertEqual(feed.sections[0].items[0].destination, .friends)
         XCTAssertEqual(feed.sections[0].items[1].destination, .memory)
         XCTAssertFalse(feed.isEmpty)
+        XCTAssertEqual(feed.sections[0].items[1].sentence, "나초가 추억을 만들었어요")
+        XCTAssertEqual(HubActivityItem.subjectParticle("꿀벌"), "이")
+        XCTAssertEqual(HubActivityItem.subjectParticle("나비"), "가")
     }
 
     func testEmptyFeedAndSeen() throws {

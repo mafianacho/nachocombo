@@ -205,9 +205,17 @@ public struct HubActivityItem: Equatable {
         case "friend_request": return "\(who)님이 친구 요청을 보냈어요"
         case "friend_accepted": return "\(who)님과 친구가 됐어요"
         case "contact_joined": return "\(who)님이 나초를 시작했어요"
-        case "memory": return "\(who)가 추억을 만들었어요"
+        case "memory": return "\(who)\(HubActivityItem.subjectParticle(who)) 추억을 만들었어요"
         default: return "\(who)님의 대화 소식이 있어요"
         }
+    }
+
+    /// 이름 끝 글자에 받침이 있으면 「이」, 없으면 「가」.
+    static func subjectParticle(_ name: String) -> String {
+        guard let last = name.unicodeScalars.last else { return "가" }
+        let v = last.value
+        guard v >= 0xAC00 && v <= 0xD7A3 else { return "가" }
+        return (v - 0xAC00) % 28 == 0 ? "가" : "이"
     }
 
     /// 눌렀을 때 갈 섹션(앱 `activityDestination`).
