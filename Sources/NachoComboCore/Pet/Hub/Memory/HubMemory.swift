@@ -46,6 +46,7 @@ public struct HubMemoryEpisode: Equatable {
 public struct HubMemorySettings: Equatable {
     public var paused: Bool
     public var indicatorEnabled: Bool
+    public init(paused: Bool, indicatorEnabled: Bool) { self.paused = paused; self.indicatorEnabled = indicatorEnabled }
 }
 
 public enum HubMemoryKind: String { case fact, episode }
@@ -93,6 +94,9 @@ public enum HubMemoryRules {
 
 /// 앱(`memory.error.*`)과 같은 문구. 모르는 코드는 공용 한국어 문구(`PetAPIError.text`)를 쓴다.
 public enum HubMemoryText {
+    /// 로그인이 안 된 상태에서 요청하려 할 때.
+    public static let signedOut = PetAPIError(status: 401, code: "unauthorized", text: "로그인이 필요해요.")
+
     public static func error(_ e: PetAPIError) -> String {
         switch e.code ?? "" {
         case "not_found": return "이 기억은 이제 없어요."

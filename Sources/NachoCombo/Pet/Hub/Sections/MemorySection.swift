@@ -34,7 +34,7 @@ final class MemorySection: HubSectionBase {
                          decode: @escaping (PetHTTPResponse) -> Result<T, PetAPIError>,
                          done: @escaping (Result<T, PetAPIError>) -> Void) {
         guard let client = ctx.client else {
-            done(.failure(PetAPIError(status: 401, code: "unauthorized", text: "로그인이 필요해요.")))
+            done(.failure(HubMemoryText.signedOut))
             return
         }
         heldClient = client
@@ -480,13 +480,15 @@ final class MemorySection: HubSectionBase {
         let s = settings ?? HubMemorySettings(paused: false, indicatorEnabled: true)
         let paused = HubSwitchRow(title: "기억 일시 중지", detail: "켜면 모든 나초와 단톡방에서 새로 기억하지 않아요.", isOn: s.paused)
         let indicator = HubSwitchRow(title: "대화에 기억 표시", isOn: s.indicatorEnabled)
-        paused.onChange = { [weak self, weak paused] on in
-            self?.patchSettings(paused: on, indicator: nil) { ok in if !ok { paused?.toggle.state = on ? .off : .on } }
+        paused.onChange = { [weak self, weak paused] (on: Bool) in
+            self?.patchSettings(paused: on, indicator: nil) { ok in
+                if !ok { paused?.toggle.state = on ? NSControl.StateValue.off : NSControl.StateValue.on }
+            }
         }
-        indicator.onChange = { [weak self, weak indicator] on in
+        indicator.onChange = { [weak self, weak indicator] (on: Bool) in
             guard let self = self else { return }
             if on {
-                self.patchSettings(paused: nil, indicator: true) { ok in if !ok { indicator?.toggle.state = .off } }
+                self.patchSettings(paused: nil, indicator: true) { ok in if !ok { indicator?.toggle.state = NSControl.StateValue.off } }
             } else {
                 // 확인을 거친 뒤에만 끈다. 취소하면 켜진 채로 둔다.
                 indicator?.toggle.state = .on
