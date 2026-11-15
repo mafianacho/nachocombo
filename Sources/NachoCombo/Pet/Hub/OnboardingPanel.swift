@@ -52,6 +52,7 @@ final class OnboardingPanel: NSView {
                 p.action()
             })
             self.primary = pill
+            pill.setContentHuggingPriority(.required, for: .horizontal)
             pills.append(pill)
             buttons.append(pill)
         }
@@ -61,6 +62,7 @@ final class OnboardingPanel: NSView {
                 e.action()
             })
             self.extras.append(pill)
+            pill.setContentHuggingPriority(.required, for: .horizontal)
             pills.append(pill)
             buttons.append(pill)
         }

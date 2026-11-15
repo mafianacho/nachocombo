@@ -85,12 +85,14 @@ extension OnboardingHost {
         content.append(f)
         content.append(HubKit.label("전체 이름 말고 부르기 좋은 이름이면 충분해요.", font: PetTheme.caption, color: PetTheme.secondary))
         if !st.nameSuggestions.isEmpty {
-            let chips = st.nameSuggestions.prefix(4).map { name in
-                HubKit.secondaryButton(name) { [weak self, weak f] in
+            let chips = st.nameSuggestions.prefix(4).map { name -> PetPill in
+                let chip = HubKit.secondaryButton(name) { [weak self, weak f] in
                     self?.draft.name = name
                     f?.field.stringValue = name
                     self?.panel?.refreshEnabled()
                 }
+                chip.setContentHuggingPriority(.required, for: .horizontal)
+                return chip
             }
             content.append(HubKit.hstack(chips, spacing: Double(PetTokens.Space.s)))
         }
@@ -149,6 +151,7 @@ extension OnboardingHost {
         docViews[d.kind] = doc
         let toggle = HubKit.secondaryButton("보기") { [weak doc] in doc?.isHidden.toggle() }
         toggle.setAccessibilityLabel("\(d.title) 보기")
+        toggle.setContentHuggingPriority(.required, for: .horizontal)
         var views: [NSView] = []
         var check: OnboardingCheck?
         if let on = onToggle {
