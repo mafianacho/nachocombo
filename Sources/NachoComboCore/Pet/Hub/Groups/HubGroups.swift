@@ -231,6 +231,14 @@ public enum HubGroups {
         }
     }
 
+    /// 요청을 보낼 만한 사람(`friend_suggestions`: 연락처·초대로 알게 된 사람). 이미 친구인 사람은 요청 없이 바로 대화한다.
+    public static func suggestions(_ summary: HubObject) -> [HubFriend] {
+        summary.objs("friend_suggestions").compactMap { o in
+            guard let id = o.str("user_id") else { return nil }
+            return HubFriend(userID: id, name: o.str("display_name") ?? "알 수 없는 사람")
+        }
+    }
+
     public static func agents(_ list: HubObject) -> [HubAgentChoice] {
         list.objs("agents").compactMap { o in
             guard let id = o.str("id") ?? o.str("agent_id") else { return nil }
