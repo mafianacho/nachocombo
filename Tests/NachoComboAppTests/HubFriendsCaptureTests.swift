@@ -149,10 +149,10 @@ final class HubFriendsCaptureTests: XCTestCase {
         let all = HubSectionTestKit.joined(s.view)
         for t in ["민지", "@minji_1", "친구", "대표 나초", "초코", "12일", "함께 아는 친구", "친구 지우기", "차단", "이 친구에게 당부 적기"] { XCTAssertTrue(all.contains(t), "\(t)\n\(all)") }
         try HubSectionTestKit.capture(s, name: "friends-profile", in: self)
-        k.routes["GET /api/v1/users/\(U1)/profile"] = (200, profileJSON("none"))
+        k.http.routes["GET /api/v1/users/\(U1)/profile"] = (200, profileJSON("none"))
         s.go(.profile(U1))
         XCTAssertTrue(HubSectionTestKit.joined(s.view).contains("친구 요청 보내기"))
-        k.routes["GET /api/v1/users/\(U1)/profile"] = (404, "{\"error\":{\"code\":\"not_found\",\"message\":\"x\"}}")
+        k.http.routes["GET /api/v1/users/\(U1)/profile"] = (404, "{\"error\":{\"code\":\"not_found\",\"message\":\"x\"}}")
         s.go(.profile(U1))
         XCTAssertTrue(HubSectionTestKit.joined(s.view).contains("찾을 수 없어요."))
     }
