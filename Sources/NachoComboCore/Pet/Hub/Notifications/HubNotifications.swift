@@ -66,7 +66,7 @@ public enum HubNotificationsAPI {
 
     /// 사이드바 배지 수: 안 읽은 알림 수(불러온 목록 기준) + 활동 피드의 안 읽은 수.
     public static func badgeCount(notifications: [HubNotification], activityUnread: Int) -> Int {
-        notifications.filter { $0.isUnread }.count
+        notifications.filter { $0.isUnread }.count + max(0, activityUnread)
     }
 
     /// 앱처럼 사람 관련 종류는 활동 피드가 보여 주므로 알림 목록에서는 뺀다(한 사건이 두 번 보이지 않게).
