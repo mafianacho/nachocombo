@@ -40,6 +40,8 @@ public struct ChatTurn: Equatable, Identifiable {
     /// Seq of the stored user message / Nacho's answer (from `message` events).
     public var userSeq: Int?
     public var answerSeq: Int?
+    /// Who wrote the answer (`sender_name_snapshot`), shown in group rooms.
+    public var answerSender: String?
     /// "찾아보고 있어요" lines while the turn runs (interim messages, ADR-0021).
     public var progress: [String] = []
     public var tools: [ToolStep] = []
@@ -55,7 +57,16 @@ public struct ChatTurn: Equatable, Identifiable {
 /// Pure chat reducer: every server frame goes through `apply`, so the UI and the CLI render the same state.
 public struct ChatState: Equatable {
     public var phase: ConnectionPhase = .disconnected
+    /// The room the chat window shows (the default 1:1 room, or the one the user opened from the hub).
     public var roomID: String?
+    /// The 1:1 room of the Nacho (`ready.room_id`). The window shows another room only after `switchRoom`.
+    public var defaultRoomID: String?
+    /// The signed-in user (`ready.user_id`): tells my messages from other people's in a group room.
+    public var userID: String?
+    /// Name and kind of the room the user opened from the hub (nil while the default room is shown).
+    public var roomTitle: String?
+    public var roomKind: String?
+    public private(set) var viewingOtherRoom = false
     /// The Nacho this chat talks to (`ready.agent_id`); the connector binding is issued for it.
     public var agentID: String?
     public var agentName: String = "나초"
@@ -100,6 +111,59 @@ public struct ChatState: Equatable {
     }
 
     public var pendingCards: [PetCard] { cards.filter { $0.isPending } }
+
+    /// More than two parties talk here (group of people, or Nachos among themselves): messages show who spoke.
+    public var isGroupRoom: Bool { viewingOtherRoom && ["group", "character_pair"].contains(roomKind ?? "") }
+
+    /// Shown instead of a message the user erased.
+    public static let redactedText = "지운 메시지예요"
+
+    /// A message of mine: the user's own role, and in rooms with other people the sender is me.
+    public func isMine(_ m: ChatMessage) -> Bool {
+        guard m.role == "user" else { return false }
+        guard let sender = m.senderUserID, let me = userID, !sender.isEmpty, !me.isEmpty else { return true }
+        return sender == me
+    }
+
+    /// Opens another room in the window. Everything that belongs to the old room goes: its turns, record, cards, pending
+    /// task header and memory lines. The server keeps running what was started there; coming back loads the record again,
+    /// so a late answer shows up from the delta instead of mixing into this room.
+    public mutating func switchRoom(id: String, title: String?, kind: String?) {
+        guard !id.isEmpty else { return }
+        let other = id != defaultRoomID
+        if id == roomID, other == viewingOtherRoom { return }  // already there: keep what is shown
+        roomID = id
+        viewingOtherRoom = other
+        roomTitle = other ? title : nil
+        roomKind = other ? kind : nil
+        turns = []
+        history = []
+        historyLoaded = false
+        hasMoreHistory = false
+        cards = []
+        task = nil
+        taskActions = [:]
+        taskNotices = [:]
+        memoryNotes = []
+        activity = .idle
+        activeTool = nil
+        notice = nil
+    }
+
+    /// The server erased a message of mine (`POST …/redact`, or the `message` event that follows): the text goes away here too.
+    public mutating func applyRedaction(seq: Int, text: String) {
+        let shown = text.isEmpty ? ChatState.redactedText : text
+        for i in turns.indices where turns[i].userSeq == seq { turns[i].userText = shown }
+        for i in history.indices where history[i].seq == seq { history[i].text = shown; history[i].files = [] }
+    }
+
+    /// Events that belong to one room; those of another room than the open one are dropped.
+    private static func isRoomScoped(_ e: ServerEvent) -> Bool {
+        switch e {
+        case .turnStarted, .textDelta, .activity, .message, .toolStarted, .toolFinished, .card, .done, .error, .memory: return true
+        default: return false
+        }
+    }
 
     public mutating func beginTurn(text: String, clientMsgID: String, attachmentNames: [String] = []) {
         var turn = ChatTurn(clientMsgID: clientMsgID, userText: text)
@@ -173,16 +237,25 @@ public struct ChatState: Equatable {
         // The committed answer is authoritative for the final text.
         if !m.text.isEmpty { turns[i].assistantText = m.text }
         turns[i].answerSeq = m.seq
+        if let n = m.senderName, !n.isEmpty { turns[i].answerSender = n }
         turns[i].files = m.files
         turns[i].usedMemoryIDs = m.usedMemoryIDs
         if let t = m.taskID { turns[i].taskID = t }
     }
 
     public mutating func apply(_ frame: ServerFrame) {
+        if let fr = frame.roomID, !fr.isEmpty, let cur = roomID, fr != cur, ChatState.isRoomScoped(frame.event) { return }
         switch frame.event {
         case let .ready(info):
-            if roomID != nil, roomID != info.roomID { history = []; historyLoaded = false; hasMoreHistory = false }
-            roomID = info.roomID
+            userID = info.userID.isEmpty ? userID : info.userID
+            if !info.roomID.isEmpty { defaultRoomID = info.roomID }
+            if viewingOtherRoom {
+                // A reconnect: the window keeps the room the user opened; the caller fills the gap from its delta.
+                if roomID == defaultRoomID { viewingOtherRoom = false; roomTitle = nil; roomKind = nil }
+            } else {
+                if roomID != nil, roomID != info.roomID { history = []; historyLoaded = false; hasMoreHistory = false }
+                roomID = info.roomID
+            }
             agentID = info.agentID.isEmpty ? nil : info.agentID
             if !info.agentName.isEmpty { agentName = info.agentName }
             phase = .connected

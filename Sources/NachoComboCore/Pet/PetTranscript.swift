@@ -8,6 +8,10 @@ public enum PetChatItem: Equatable {
     /// First screen: a centred question and a few example requests (tap = put it in the input field).
     case hello(title: String, examples: [String])
     case mine(text: String, attachments: [String], past: Bool)
+    /// Group rooms: who spoke, right above the bubble that follows.
+    case sender(String)
+    /// The next bubble is a text message of mine the user may erase (`seq`, right-click menu). Draws nothing.
+    case redactable(seq: Int)
     case nacho(text: String, past: Bool, streaming: Bool)
     case line(PetChatLine)
     case files([PetFileChip], mine: Bool)
@@ -238,7 +242,7 @@ public enum PetTranscript {
     /// - Parameter cards: what the app keeps per card while the user answers it (ticks, number-key mark, sending, failure).
     public static func items(_ st: PetSessionState, undoSecondsLeft: (String) -> Int?,
                              selection: PetSelectionChatState = PetSelectionChatState(),
-                             cards local: [String: PetCardLocal] = [:], now: Date = Date()) -> [PetChatItem] {
+                             cards local: [String: PetCardLocal] = [:], now: Date = Date(), redactable: Bool = false) -> [PetChatItem] {
         let card: (PetCard) -> PetCardItem = { c in PetTranscript.card(c, local: local[c.id] ?? PetCardLocal(), now: now) }
         var out: [PetChatItem] = []
         let chat = st.chat
@@ -256,8 +260,12 @@ public enum PetTranscript {
                 if let p = planCard(taskID: t, chat: chat) { out.append(.card(p)); planShown.insert(t); continue }
             }
             if m.contentType == "system_note" { out.append(.note(m.text)); continue }
-            let mine = m.role == "user"
-            if !m.text.isEmpty { out.append(mine ? .mine(text: m.text, attachments: [], past: true) : .nacho(text: m.text, past: true, streaming: false)) }
+            let mine = chat.isMine(m)
+            if !m.text.isEmpty {
+                if !mine, chat.isGroupRoom { out.append(.sender(senderLabel(m, chat))) }
+                if mine, redactable, let seq = m.seq, m.contentType == "text", m.text != ChatState.redactedText { out.append(.redactable(seq: seq)) }
+                out.append(mine ? .mine(text: m.text, attachments: [], past: true) : .nacho(text: m.text, past: true, streaming: false))
+            }
             if !m.files.isEmpty { out.append(.files(m.files.map(chip), mine: mine)) }
         }
         if !chat.history.isEmpty, !chat.turns.isEmpty { out.append(.divider("이번 대화")) }
@@ -267,6 +275,7 @@ public enum PetTranscript {
         for turn in chat.turns {
             let request = st.selectionTurns[turn.clientMsgID]
             // A selection request shows its chip instead of the context file's name.
+            if redactable, let seq = turn.userSeq, !turn.userText.isEmpty, turn.userText != ChatState.redactedText { out.append(.redactable(seq: seq)) }
             out.append(.mine(text: turn.userText, attachments: request == nil ? turn.attachmentNames : [], past: false))
             if let r = request { out.append(.requestChip(r.chip)) }
             // What Nacho is doing on the way: tools and "still working on it" lines.
@@ -296,7 +305,10 @@ public enum PetTranscript {
             case .interrupted: failure = "연결이 끊겨 답이 끝나지 않았어요. 다시 연결되면 이어서 보여 드려요."
             }
             let streaming = turn.status == .streaming || turn.status == .sending
-            if !answer.isEmpty || streaming { out.append(.nacho(text: answer, past: false, streaming: streaming)) }
+            if !answer.isEmpty || streaming {
+                if chat.isGroupRoom { out.append(.sender(turn.answerSender ?? chat.agentName)) }
+                out.append(.nacho(text: answer, past: false, streaming: streaming))
+            }
             if let f = failure { out.append(.line(PetChatLine(kind: .danger, symbol: "exclamationmark.triangle", parts: [PetTextPart(f)]))) }
             if !turn.files.isEmpty { out.append(.files(turn.files.map(chip), mine: false)) }
             if let r = request, turn.status == .done, !answer.isEmpty {
@@ -340,6 +352,50 @@ public enum PetTranscript {
         if selection.intro { out.append(.selectionIntro) }
         if let p = selection.preview { out.append(.selectionPreview(p)) }
         return out
+    }
+
+    static func senderLabel(_ m: ChatMessage, _ chat: ChatState) -> String {
+        if let n = m.senderName?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty { return n }
+        return m.role == "user" ? "참가자" : chat.agentName
+    }
+
+    /// The chat header while a room other than the Nacho's own is open: its name, a line under it, and the way back.
+    public struct RoomHeader: Equatable {
+        public var title: String
+        public var subtitle: String
+        public var backLabel: String
+    }
+
+    public static func roomHeader(_ chat: ChatState) -> RoomHeader? {
+        guard chat.viewingOtherRoom else { return nil }
+        let t = chat.roomTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let sub: String
+        switch chat.roomKind ?? "" {
+        case "group": sub = "그룹 대화"
+        case "character_pair": sub = "나초끼리 대화"
+        case "character": sub = "나초와의 대화"
+        default: sub = "대화"
+        }
+        return RoomHeader(title: t.isEmpty ? "이름 없는 대화" : t, subtitle: sub, backLabel: "\(chat.agentName)와 대화")
+    }
+
+    /// The two questions before a message is erased for good. Step 1 asks; step 2 says what cannot be undone.
+    public static func redactConfirm(step: Int) -> PetChatLine {
+        if step <= 1 {
+            return PetChatLine(kind: .danger, symbol: "trash", parts: [
+                PetTextPart("이 메시지를 지울까요?"), PetTextPart(" · ", style: .secondary),
+                PetTextPart("지우기", link: PetLinks.url("redactnext")), PetTextPart(" · ", style: .secondary),
+                PetTextPart("취소", link: PetLinks.url("redactcancel"))])
+        }
+        return PetChatLine(kind: .danger, symbol: "trash", parts: [
+            PetTextPart("정말 지울까요? 되돌릴 수 없고, 나초의 기억과 검색에서도 빠져요."), PetTextPart(" · ", style: .secondary),
+            PetTextPart("정말 지우기", link: PetLinks.url("redactgo")), PetTextPart(" · ", style: .secondary),
+            PetTextPart("취소", link: PetLinks.url("redactcancel"))])
+    }
+
+    /// The input field's hint: the Nacho while its own room is open, else neutral (the room may be people).
+    public static func inputPlaceholder(_ chat: ChatState) -> String {
+        chat.viewingOtherRoom ? "메시지 쓰기…" : "나초에게 말하기…"
     }
 
     static func memoryLine(_ n: PetMemoryNote, _ undoSecondsLeft: (String) -> Int?) -> PetChatLine {

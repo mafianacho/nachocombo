@@ -55,11 +55,11 @@ extension RoomsSection {
         if room.canDelete {
             actions.append(HubKit.primaryButton("삭제", symbol: "trash", danger: true) { [self] in confirmDelete(room) })
         }
-        // 대화창에서 이어 말하기: 자리만 만든다. 대화창이 여러 방을 다루는 일은 U10이 한다.
-        let cont = HubKit.secondaryButton("대화창에서 이어 말하기", symbol: "arrow.up.right.square") { [self] in HubRooms.openInChat(roomID: room.id) }
+        // 대화창에서 이어 말하기: 대화창이 이 방을 열고, 머리에 방 이름을 보인다(U10).
+        let cont = HubKit.secondaryButton("대화창에서 이어 말하기", symbol: "arrow.up.right.square") { HubRooms.openInChat(room: room) }
         cont.isEnabled = HubRooms.continueInChatEnabled
         cont.alphaValue = HubRooms.continueInChatEnabled ? 1 : 0.4
-        cont.toolTip = "곧 열려요. 대화창에서 여러 방을 다루는 일은 다음 단계에서 해요."
+        cont.toolTip = "이 방을 대화창에서 열어요."
         actions.append(cont)
         var views: [NSView] = [back, title, info, buttonRow(actions)]
         if renameVisible && room.canRename { views.append(renameForm(room)) }

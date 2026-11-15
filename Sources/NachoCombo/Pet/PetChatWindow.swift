@@ -23,6 +23,12 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     // header (`.chat-head`)
     private let avatar = NSImageView()
     private let name = NSTextField(labelWithString: "나초")
+    /// Back to the Nacho's own room; shown only while a room from the hub is open.
+    private var roomBack: PetPill!
+    private var roomHeader: PetTranscript.RoomHeader?
+    /// Erasing a message of mine: which one and which of the two questions is on screen (nil = none).
+    /// The room is the one the question was asked in: a room switch drops the question (seqs repeat across rooms).
+    private var redactAsk: (room: String?, seq: Int, step: Int)?
     private let dot = PetBox()
     let status = NSTextField(labelWithString: "")
     private var tabButtons: [PetPill] = []
@@ -194,7 +200,11 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
                                      segRow.leadingAnchor.constraint(equalTo: seg.leadingAnchor, constant: 2), segRow.trailingAnchor.constraint(equalTo: seg.trailingAnchor, constant: -2)])
 
         segRow.setHuggingPriority(.required, for: .horizontal)
-        let row = NSStackView(views: [avatar, who, seg])
+        roomBack = PetPill(symbol: "chevron.left", iconSize: S.lineIcon, color: PetTheme.secondary, fill: PetTheme.color(\.surface),
+                           height: S.control - 6, radius: PetTokens.Radius.control - 2, width: S.control - 6)
+        roomBack.onClick = { [weak self] in self?.module?.returnToDefaultRoom() }
+        roomBack.isHidden = true
+        let row = NSStackView(views: [roomBack, avatar, who, seg])
         row.spacing = CGFloat(Sp.s)
         row.translatesAutoresizingMaskIntoConstraints = false
         head.addSubview(row)
@@ -505,7 +515,8 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         let signedIn = st.auth == .signedIn
         let selection = module.selectionChatState
         let head = PetTranscript.headerStatus(st, selection: selection)
-        status.stringValue = PetTranscript.headerLine(st, selection: selection)
+        applyRoomHeader(PetTranscript.roomHeader(st.chat))
+        status.stringValue = (roomHeader.map { $0.subtitle + " · " } ?? "") + PetTranscript.headerLine(st, selection: selection)
         status.toolTip = status.stringValue  // a truncated line can be read in full
         switch head.dot {
         case .ok: dot.fill = PetTheme.color(\.success)
@@ -533,10 +544,31 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         micButton.toolTip = listening ? "다 말하면 다시 누르세요" : "받아쓰기 (한국어)"
         micButton.setAccessibilityLabel(listening ? "받아쓰기 멈추기" : "받아쓰기")
         wave.isHidden = !listening
-        input.placeholderAttributedString = NSAttributedString(string: listening ? "듣고 있어요" : "나초에게 말하기…",
+        input.placeholderAttributedString = NSAttributedString(string: listening ? "듣고 있어요" : PetTranscript.inputPlaceholder(st.chat),
                                                                attributes: [.font: PetTheme.body, .foregroundColor: listening ? PetTheme.color(\.danger) : PetTheme.tertiary])
         renderPending(st.pending)
         if selectedTab == 0 { renderLog(st) } else { renderConnections() }
+    }
+
+    /// The header while a room from the hub is open: its name, a way back, and a room icon in place of the Nacho's face.
+    /// Internal so the off-screen capture tests can show it without a server.
+    func applyRoomHeader(_ h: PetTranscript.RoomHeader?) {
+        guard h != roomHeader || roomBack.isHidden == (h != nil) else { return }
+        roomHeader = h
+        name.stringValue = h?.title ?? "나초"
+        name.toolTip = h?.title
+        roomBack.isHidden = h == nil
+        roomBack.toolTip = h.map { "\($0.backLabel)로 돌아가기" }
+        roomBack.setAccessibilityLabel(h.map { "\($0.backLabel)로 돌아가기" } ?? "")
+        if h != nil {
+            avatar.image = PetTheme.symbol("person.2.fill", size: S.avatar * 0.5, weight: .medium)
+            avatar.contentTintColor = PetTheme.accent
+            avatar.imageScaling = .scaleNone
+        } else {
+            avatar.image = PetArt.image(named: "idle")
+            avatar.contentTintColor = nil
+            avatar.imageScaling = .scaleProportionallyUpOrDown
+        }
     }
 
     /// The round button: stop while Nacho answers and nothing is typed, else send (typed text waits for the answer's end).
@@ -571,8 +603,12 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         guard st.auth == .signedIn else { return }
         var items = PetTranscript.items(st, undoSecondsLeft: { [weak self] id in self?.undoSecondsLeft(id, st) },
                                         selection: module?.selectionChatState ?? PetSelectionChatState(),
-                                        cards: module?.cardLocal ?? [:])
+                                        cards: module?.cardLocal ?? [:], redactable: true)
         activeCardID = PetTranscript.activeCardID(items)
+        if let ask = redactAsk {
+            // The message must still be there to ask about (a room switch or a reload may have taken it away).
+            if ask.room == st.chat.roomID, items.contains(.redactable(seq: ask.seq)) { items.append(.line(PetTranscript.redactConfirm(step: ask.step))) } else { redactAsk = nil }
+        }
         if let n = noticeLine(st) { items.append(n) }
         guard show(items: items) else { return }
         // The undo countdown ("7초 안에 되돌리기") ticks every second while it lasts.
@@ -592,10 +628,14 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         while keep < min(items.count, shownItems.count), items[keep] == shownItems[keep] { keep += 1 }
         for v in shownViews[keep...] { logStack.removeArrangedSubview(v); v.removeFromSuperview() }
         shownViews.removeSubrange(keep...)
-        let maker = PetItemViews(width: logWidth, onLink: { [weak self] in self?.open($0) },
-                                 onExample: { [weak self] in self?.input.stringValue = $0; self?.focusInput(); self?.render() })
+        var maker = PetItemViews(width: logWidth, onLink: { [weak self] in self?.open($0) },
+                                 onExample: { [weak self] in self?.input.stringValue = $0; self?.focusInput(); self?.render() },
+                                 onRedact: { [weak self] seq in self?.askRedact(seq) })
+        // The seq a `.redactable` mark announces belongs to the bubble right after it.
+        if keep > 0, case let .redactable(seq) = items[keep - 1] { maker.redactSeq = seq }
         for item in items[keep...] {
             let v = maker.view(item)
+            if case let .redactable(seq) = item { maker.redactSeq = seq } else { maker.redactSeq = nil }
             logStack.addArrangedSubview(v)
             shownViews.append(v)
         }
@@ -630,8 +670,28 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         case "cardconfirm": if let id = q["id"] { module?.cardConfirm(id) }
         case "cardretry": if let id = q["id"] { module?.cardRetry(id) }
         case "micsettings": module?.openMicrophoneSettings()
+        case "redactnext": if let a = redactAsk { redactAsk = (a.room, a.seq, 2); render() }
+        case "redactcancel": redactAsk = nil; render()
+        case "redactgo": redactNow()
         default: _ = module?.selectionLink(url.host ?? "", q)
         }
+    }
+
+    // MARK: erasing a message of mine (two questions, then the server call)
+
+    func askRedact(_ seq: Int) {
+        redactAsk = (module?.state.chat.roomID, seq, 1)
+        render()
+    }
+
+    private func redactNow() {
+        guard let ask = redactAsk else { return }
+        redactAsk = nil
+        module?.redactMessage(seq: ask.seq, roomID: ask.room) { [weak self] refusal in
+            self?.flash(refusal ?? "메시지를 지웠어요.")
+            self?.render()
+        }
+        render()
     }
 
     /// `.pending .chip`: thumbnail, name, what Nacho can do with it, remove button.
