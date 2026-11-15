@@ -50,8 +50,19 @@ extension RoomsSection {
         case "table":
             let rowViews: [NSView] = b.rows.enumerated().map { idx, cells in
                 let cellWidth = max(80, RoomsSection.pageWidth / CGFloat(max(1, cells.count)) - 8)
+                // 칸마다 같은 너비의 상자에 담아 줄이 달라도 세로로 맞춘다.
                 let views: [NSView] = cells.map { c in
-                    idx == 0 ? rich(c, font: PetTheme.font(PetTokens.Font.body, PetTokens.Font.weightSemibold), width: cellWidth) : rich(c, width: cellWidth)
+                    let text = idx == 0 ? rich(c, font: PetTheme.font(PetTokens.Font.body, PetTokens.Font.weightSemibold), width: cellWidth) : rich(c, width: cellWidth)
+                    let box = NSView()
+                    box.translatesAutoresizingMaskIntoConstraints = false
+                    box.addSubview(text)
+                    NSLayoutConstraint.activate([
+                        box.widthAnchor.constraint(equalToConstant: cellWidth),
+                        text.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+                        text.topAnchor.constraint(equalTo: box.topAnchor),
+                        text.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+                    ])
+                    return box
                 }
                 let h = HubKit.hstack(views, spacing: Double(PetTokens.Space.m))
                 h.alignment = .top

@@ -80,7 +80,8 @@ final class RoomsSection: HubSectionBase {
             body.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             body.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
-        HubKit.fill(top, header)
+        // 입력 칸이 든 줄만 폭을 채운다. 단추 줄은 단추 크기 그대로 왼쪽에 붙인다.
+        HubKit.fill(top, header.filter { v in (v as? NSStackView)?.arrangedSubviews.contains { $0 is HubFormField } == true })
         return root
     }
 
