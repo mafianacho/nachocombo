@@ -20,7 +20,7 @@ final class HubTasksTests: XCTestCase {
         XCTAssertEqual(l.headers["Authorization"], "Bearer T")
         XCTAssertEqual(HubTasks.list(e, bearer: "T", agentID: "A1").url.absoluteString, "https://nacho.example.com/api/v1/tasks?agent_id=A1")
         let h = HubTasks.history(e, bearer: "T", next: [("before", "2026-11-01T00:00:00Z~abc")], limit: 20)
-        XCTAssertEqual(h.url.absoluteString, "https://nacho.example.com/api/v1/tasks/history?before=2026-11-01T00:00:00Z~abc&limit=20")
+        XCTAssertEqual(h.url.absoluteString, "https://nacho.example.com/api/v1/tasks/history?before=2026-11-01T00%3A00%3A00Z~abc&limit=20")
     }
 
     func testGetAndLogsRequests() {
