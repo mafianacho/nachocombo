@@ -18,7 +18,7 @@ final class SchedulesSection: HubSectionBase {
     /// 상세를 열 때 함께 읽은 남은 크레딧(확인창에 쓴다). 못 읽었으면 nil.
     private(set) var remainingCredits: Int?
     private(set) var runLog: HubScheduleRunLog?
-    private(set) var transferChoices: [HubAgentChoice] = []
+    private(set) var transferChoices: [HubScheduleAgentChoice] = []
     /// 쓰기가 가는 중이면 다른 쓰기는 막는다(같은 요청이 두 번 가지 않게).
     private(set) var busy = false
 
@@ -259,7 +259,7 @@ final class SchedulesSection: HubSectionBase {
         draw(views)
     }
 
-    func showTransfer(_ s: HubSchedule, choices: [HubAgentChoice]) {
+    func showTransfer(_ s: HubSchedule, choices: [HubScheduleAgentChoice]) {
         transferChoices = choices
         var views: [NSView] = [back("예약 상세", to: .detail(s.id)), HubKit.label("담당 바꾸기", font: PetTheme.title),
                                HubKit.label("승인 규칙은 따라가지 않아요. 바꾼 뒤 등록 내용을 다시 확인해 주세요.", color: PetTheme.secondary)]
@@ -350,7 +350,7 @@ final class SchedulesSection: HubSectionBase {
         }
     }
 
-    func transfer(to c: HubAgentChoice) {
+    func transfer(to c: HubScheduleAgentChoice) {
         guard let s = current else { return }
         write(.transfer, build: { HubSchedulesAPI.transfer($0, id: s.id, agentID: c.id, bearer: $1) }, decode: HubSchedulesAPI.decodeOk) { updated in
             self.ctx.toast("담당을 \(c.name)(으)로 바꿨어요. 승인 규칙은 따라가지 않으니 내용을 다시 확인해 주세요.", false)

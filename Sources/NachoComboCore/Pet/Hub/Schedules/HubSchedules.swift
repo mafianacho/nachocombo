@@ -82,7 +82,7 @@ public struct HubStartedTask: Equatable {
 }
 
 /// 담당 바꾸기에서 고를 수 있는 나초.
-public struct HubAgentChoice: Equatable {
+public struct HubScheduleAgentChoice: Equatable {
     public var id: String
     public var name: String
 }
@@ -188,11 +188,11 @@ public enum HubSchedulesAPI {
     }
 
     /// 담당 바꾸기 후보: active 나초 중 지금 담당(`excluding`)을 뺀다(앱과 같다).
-    public static func decodeAgentChoices(_ resp: PetHTTPResponse, excluding current: String) -> Result<[HubAgentChoice], PetAPIError> {
+    public static func decodeAgentChoices(_ resp: PetHTTPResponse, excluding current: String) -> Result<[HubScheduleAgentChoice], PetAPIError> {
         HubAPI.object(resp).map { o in
             o.objs("agents").compactMap { a in
                 guard let id = a.str("agent_id") ?? a.str("id"), id != current, a.str("status") == "active" else { return nil }
-                return HubAgentChoice(id: id, name: a.str("name") ?? "")
+                return HubScheduleAgentChoice(id: id, name: a.str("name") ?? "")
             }
         }
     }
