@@ -7,7 +7,7 @@ extension TrustSection {
         let pane = tabs.panes[2]
         pane.onRetry = { [weak self] in self?.loadRules() }
         pane.show(.loading)
-        call({ HubTrustAPI.approvalRules($0, bearer: $1) }) { [weak self] r in
+        callHub({ HubTrustAPI.approvalRules($0, bearer: $1) }) { [weak self] r in
             guard let self = self else { return }
             switch r.flatMap(HubTrustAPI.decodeApprovalRules) {
             case let .failure(e): pane.show(.failed(e.text))
@@ -59,7 +59,7 @@ extension TrustSection {
     func saveLimit(currency: String) {
         guard let field = limitField, field.validate() else { return }
         guard case let .success(value) = HubTrustAPI.parseLimit(field.value) else { return }
-        call({ HubTrustAPI.patchAccountLimit($0, value: value, currency: currency, bearer: $1) }) { [weak self] r in
+        callHub({ HubTrustAPI.patchAccountLimit($0, value: value, currency: currency, bearer: $1) }) { [weak self] r in
             guard let self = self else { return }
             switch r.flatMap(HubTrustAPI.decodePatchedRules) {
             case let .success(rules):
@@ -79,7 +79,7 @@ extension TrustSection {
             HubConfirmStep(title: "정말 지울까요?", message: "한 번 더 확인해요. 지운 규칙은 되살릴 수 없어요.", confirmTitle: "지우기"),
         ]) { [weak self] in
             guard let self = self else { return }
-            self.call({ HubTrustAPI.deleteRule($0, id: rule.id, bearer: $1) }) { r in
+            self.callHub({ HubTrustAPI.deleteRule($0, id: rule.id, bearer: $1) }) { r in
                 switch r.flatMap(HubAPI.empty) {
                 case .success: self.say("규칙을 지웠어요."); self.loadRules()
                 case let .failure(e):

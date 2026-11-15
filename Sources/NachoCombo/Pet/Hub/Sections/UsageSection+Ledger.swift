@@ -33,7 +33,7 @@ extension UsageSection {
     /// H2: 사용 내역(`GET /me/usage/ledger`). 다음 쪽은 `HubPage.nextQuery`를 그대로 붙인다.
     func showLedger(next: [(String, String)]?) {
         if next == nil { state.show(.loading) }
-        call({ HubUsageAPI.ledger($0, bearer: $1, next: next) }) { [weak self] r in
+        callHub({ HubUsageAPI.ledger($0, bearer: $1, next: next) }) { [weak self] r in
             guard let self = self else { return }
             switch r.flatMap(HubUsageAPI.decodeLedger) {
             case let .failure(e):

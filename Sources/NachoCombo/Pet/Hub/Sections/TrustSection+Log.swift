@@ -7,7 +7,7 @@ extension TrustSection {
         let pane = tabs.panes[1]
         pane.onRetry = { [weak self] in self?.loadLog(next: nil) }
         if next == nil { pane.show(.loading) }
-        call({ HubTrustAPI.accessLog($0, bearer: $1, next: next) }) { [weak self] r in
+        callHub({ HubTrustAPI.accessLog($0, bearer: $1, next: next) }) { [weak self] r in
             guard let self = self else { return }
             switch r.flatMap(HubTrustAPI.decodeAccessLog) {
             case let .failure(e):

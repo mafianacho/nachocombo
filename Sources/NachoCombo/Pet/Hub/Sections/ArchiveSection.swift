@@ -17,7 +17,7 @@ final class ArchiveSection: HubSectionBase {
     }
 
     func loadPage(cursor: String?) {
-        call({ HubArchiveAPI.list($0, bearer: $1, cursor: cursor) }) { [self] r in
+        callHub({ HubArchiveAPI.list($0, bearer: $1, cursor: cursor) }) { [self] r in
             switch r.flatMap(HubArchiveAPI.decodeList) {
             case let .failure(e):
                 if cursor == nil { state.show(.failed(e.text)) } else { say(e.text, error: true) }
@@ -96,7 +96,7 @@ final class ArchiveSection: HubSectionBase {
     // MARK: 저장(열기)
 
     func save(_ f: HubArchiveFile) {
-        call({ f.kind == "page" ? HubArchiveAPI.downloadPage($0, id: f.id, bearer: $1) : HubArchiveAPI.downloadMedia($0, id: f.id, bearer: $1) }) { [self] r in
+        callHub({ f.kind == "page" ? HubArchiveAPI.downloadPage($0, id: f.id, bearer: $1) : HubArchiveAPI.downloadMedia($0, id: f.id, bearer: $1) }) { [self] r in
             switch r {
             case let .failure(e): say(e.text, error: true)
             case let .success(resp): offerSave(f, resp)
@@ -141,7 +141,7 @@ final class ArchiveSection: HubSectionBase {
             HubConfirmStep(title: "정말 지울까요?", message: "한 번 더 확인해요. 지운 파일은 되돌릴 수 없어요.", confirmTitle: "지우기"),
         ]) { [weak self] in
             guard let self = self else { return }
-            self.call({ HubArchiveAPI.remove($0, id: f.id, bearer: $1) }) { r in
+            self.callHub({ HubArchiveAPI.remove($0, id: f.id, bearer: $1) }) { r in
                 switch r.flatMap(HubArchiveAPI.decodeDeleted) {
                 case .success:
                     self.say("지웠어요.")
@@ -157,7 +157,7 @@ final class ArchiveSection: HubSectionBase {
     // MARK: 만들기 옵션
 
     func showCreateOptions() {
-        call({ HubArchiveAPI.createOptions($0, bearer: $1) }) { [self] r in
+        callHub({ HubArchiveAPI.createOptions($0, bearer: $1) }) { [self] r in
             switch r.flatMap(HubArchiveAPI.decodeCreateOptions) {
             case let .failure(e): say(e.text, error: true)
             case let .success(o): drawCreateOptions(o)

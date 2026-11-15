@@ -5,7 +5,7 @@ import NachoComboCore
 extension UsageSection {
     func showPlans() {
         state.show(.loading)
-        call({ HubUsageAPI.plans($0, bearer: $1) }) { [weak self] r in
+        callHub({ HubUsageAPI.plans($0, bearer: $1) }) { [weak self] r in
             guard let self = self else { return }
             switch r.flatMap(HubUsageAPI.decodePlans) {
             case let .failure(e): self.state.show(.failed(e.text))

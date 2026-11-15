@@ -28,8 +28,8 @@ final class ExploreSection: HubSectionBase {
             case let (.failure(e), _), let (_, .failure(e)): self.state.show(.failed(e.text))
             }
         }
-        call({ HubExploreAPI.sections($0, bearer: $1) }) { secs = $0.flatMap(HubExploreAPI.decodeSections); finish() }
-        call({ HubTrustAPI.agents($0, bearer: $1) }) { ags = $0.flatMap(HubTrustAPI.decodeAgents); finish() }
+        callHub({ HubExploreAPI.sections($0, bearer: $1) }) { secs = $0.flatMap(HubExploreAPI.decodeSections); finish() }
+        callHub({ HubTrustAPI.agents($0, bearer: $1) }) { ags = $0.flatMap(HubTrustAPI.decodeAgents); finish() }
     }
 
     /// 화면 그리기만(시험·캡처가 직접 부른다).
@@ -73,7 +73,7 @@ final class ExploreSection: HubSectionBase {
         busy.insert(offer.id)
         draw()
         let msgID = HubAPI.newIdempotencyKey()
-        call({ HubExploreAPI.accept($0, offerID: offer.id, agentID: agent.id, clientMsgID: msgID, bearer: $1) }) { [self] r in
+        callHub({ HubExploreAPI.accept($0, offerID: offer.id, agentID: agent.id, clientMsgID: msgID, bearer: $1) }) { [self] r in
             busy.remove(offer.id)
             switch r.flatMap(HubExploreAPI.decodeAccepted) {
             case let .success(done):
@@ -87,7 +87,7 @@ final class ExploreSection: HubSectionBase {
     }
 
     func reject(_ offer: HubOffer) {
-        call({ HubExploreAPI.reject($0, offerID: offer.id, bearer: $1) }) { [self] r in
+        callHub({ HubExploreAPI.reject($0, offerID: offer.id, bearer: $1) }) { [self] r in
             switch r.flatMap(HubAPI.empty) {
             case .success:
                 lastRejected = offer
@@ -101,7 +101,7 @@ final class ExploreSection: HubSectionBase {
     }
 
     func undoReject(_ offer: HubOffer) {
-        call({ HubExploreAPI.undoReject($0, offerID: offer.id, bearer: $1) }) { [self] r in
+        callHub({ HubExploreAPI.undoReject($0, offerID: offer.id, bearer: $1) }) { [self] r in
             switch r.flatMap(HubAPI.empty) {
             case .success: lastRejected = nil; say("숨김을 되돌렸어요."); load()
             case let .failure(e): say(e.text, error: true)

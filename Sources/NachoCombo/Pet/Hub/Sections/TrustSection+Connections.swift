@@ -22,9 +22,9 @@ extension TrustSection {
                 pane.show(.failed(e.text))
             }
         }
-        call({ HubTrustAPI.connections($0, bearer: $1) }) { conns = $0.flatMap(HubTrustAPI.decodeConnections); finish() }
-        call({ HubTrustAPI.agents($0, bearer: $1) }) { ags = $0.flatMap(HubTrustAPI.decodeAgents); finish() }
-        call({ HubTrustAPI.sharing($0, bearer: $1) }) { shr = $0.flatMap(HubTrustAPI.decodeSharing); finish() }
+        callHub({ HubTrustAPI.connections($0, bearer: $1) }) { conns = $0.flatMap(HubTrustAPI.decodeConnections); finish() }
+        callHub({ HubTrustAPI.agents($0, bearer: $1) }) { ags = $0.flatMap(HubTrustAPI.decodeAgents); finish() }
+        callHub({ HubTrustAPI.sharing($0, bearer: $1) }) { shr = $0.flatMap(HubTrustAPI.decodeSharing); finish() }
     }
 
     /// 화면 그리기만(시험·캡처가 직접 부른다).
@@ -51,7 +51,7 @@ extension TrustSection {
     func openConnection(_ c: HubConnection) {
         let pane = tabs.panes[0]
         pane.show(.loading)
-        call({ HubTrustAPI.allowances($0, connectionID: c.id, bearer: $1) }) { [weak self] r in
+        callHub({ HubTrustAPI.allowances($0, connectionID: c.id, bearer: $1) }) { [weak self] r in
             guard let self = self else { return }
             switch r.flatMap(HubTrustAPI.decodeAllowances) {
             case let .failure(e): self.say(e.text, error: true); self.drawConnections()
@@ -81,7 +81,7 @@ extension TrustSection {
                 guard let self = self else { return }
                 var next = current.filter { $0.agentID != ag.id }
                 next.append(HubAllowance(agentID: ag.id, allowed: on, writeKinds: existing?.writeKinds))
-                self.call({ HubTrustAPI.putAllowances($0, connectionID: c.id, items: next, bearer: $1, idempotencyKey: HubAPI.newIdempotencyKey()) }) { r in
+                self.callHub({ HubTrustAPI.putAllowances($0, connectionID: c.id, items: next, bearer: $1, idempotencyKey: HubAPI.newIdempotencyKey()) }) { r in
                     switch r.flatMap(HubTrustAPI.decodeAllowances) {
                     case let .success(saved):
                         current = saved
@@ -107,7 +107,7 @@ extension TrustSection {
         let handler = HubSegmentHandler { [weak self, weak seg] idx in
             guard let self = self, idx < options.count else { return }
             let audience = options[idx]
-            self.call({ HubTrustAPI.putSharing($0, source: c.source, category: row.category, audience: audience, bearer: $1) }) { r in
+            self.callHub({ HubTrustAPI.putSharing($0, source: c.source, category: row.category, audience: audience, bearer: $1) }) { r in
                 switch r.flatMap(HubTrustAPI.decodeSharingRow) {
                 case let .success(saved):
                     self.sharing[c.source] = saved

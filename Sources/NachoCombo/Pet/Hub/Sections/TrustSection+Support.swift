@@ -3,9 +3,10 @@ import NachoComboCore
 
 /// U9 섹션(연결 보안·사용량·탐색·보관함)이 같이 쓰는 작은 도우미. 공용 기반은 고치지 않고 extension으로 둔다.
 extension HubSectionBase {
-    /// 요청을 보내고 메인 큐에서 결과를 준다. `HubClient`는 약한 참조(`[weak self]`)로 콜백을 잇기 때문에,
+    /// 요청을 보내고 메인 큐에서 결과를 준다. 이름이 `callHub`인 것은 GroupsSection의 `call(_:_:)`과 겹치지 않게 하려는 것이다.
+    /// `HubClient`는 약한 참조(`[weak self]`)로 콜백을 잇기 때문에,
     /// 사용자가 다른 섹션으로 옮겨 컨텍스트가 바뀌어도 결과가 버려지지 않도록 완료 때까지 클라이언트를 붙잡는다.
-    func call(_ build: @escaping (ServerEndpoint, String?) -> PetHTTPRequest,
+    func callHub(_ build: @escaping (ServerEndpoint, String?) -> PetHTTPRequest,
               done: @escaping (Result<PetHTTPResponse, PetAPIError>) -> Void) {
         guard let client = ctx.client else { done(.failure(.hubNotSignedIn)); return }
         let endpoint = client.endpoint
