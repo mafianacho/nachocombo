@@ -105,7 +105,7 @@ final class ComputerUseModule: NSObject, FeatureModule, PermissionPrompting {
         }
     }
 
-    private static func request(_ permission: OSPermission) {
+    static func request(_ permission: OSPermission) {
         switch permission {
         case .screenRecording:
             _ = CGRequestScreenCaptureAccess()
