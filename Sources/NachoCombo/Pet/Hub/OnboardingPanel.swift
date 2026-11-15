@@ -66,11 +66,11 @@ final class OnboardingPanel: NSView {
             pills.append(pill)
             buttons.append(pill)
         }
-        let buttonRow: NSView? = buttons.isEmpty ? nil : HubKit.hstack(buttons, spacing: Double(PetTokens.Space.s))
+        let buttonRow: NSView? = buttons.isEmpty ? nil : OnboardingPanel.row(buttons, spacing: Double(PetTokens.Space.s))
         if let r = buttonRow { views.append(r) }
         for v in views { stack.addArrangedSubview(v) }
         // 글·입력 칸은 스택 너비에 맞춘다(여러 줄 글이 줄바꿈되도록). 그림과 단추 줄은 제 크기대로.
-        HubKit.fill(stack, views.filter { $0 !== icon && $0 !== buttonRow })
+        HubKit.fill(stack, views.filter { $0 !== icon })
 
         self.enabledRule = enabledRule
         let wide = stack.widthAnchor.constraint(equalToConstant: OnboardingPanel.width)
@@ -92,6 +92,15 @@ final class OnboardingPanel: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// 단추들을 제 크기로 왼쪽에 모은다(끝에 늘어나는 빈칸을 둔다).
+    static func row(_ views: [NSView], spacing: Double = PetTokens.Space.m) -> NSStackView {
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.init(1), for: .horizontal)
+        return HubKit.hstack(views + [spacer], spacing: spacing)
+    }
 
     /// 오류 줄(서버 이유·검증 문구). nil이면 숨긴다.
     func setError(_ text: String?) {

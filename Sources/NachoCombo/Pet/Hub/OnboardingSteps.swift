@@ -94,7 +94,7 @@ extension OnboardingHost {
                 chip.setContentHuggingPriority(.required, for: .horizontal)
                 return chip
             }
-            content.append(HubKit.hstack(chips, spacing: Double(PetTokens.Space.s)))
+            content.append(OnboardingPanel.row(chips, spacing: Double(PetTokens.Space.s)))
         }
         return OnboardingPanel(symbol: "person.crop.circle", title: "나초가 뭐라고 부르면 좋을까요?", content: content,
                                primary: ("계속", { [weak self] in
@@ -163,9 +163,9 @@ extension OnboardingHost {
             views.append(HubKit.label(d.title))
         }
         views.append(toggle)
-        let row = HubKit.hstack(views, spacing: Double(PetTokens.Space.m))
+        let row = OnboardingPanel.row(views, spacing: Double(PetTokens.Space.m))
         let box = HubKit.vstack([row, doc], spacing: Double(PetTokens.Space.xs))
-        HubKit.fill(box, [doc])
+        HubKit.fill(box, [row, doc])
         return (box, check)
     }
 
