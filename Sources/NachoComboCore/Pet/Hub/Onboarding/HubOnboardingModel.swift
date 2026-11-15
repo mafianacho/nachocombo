@@ -192,6 +192,12 @@ public enum HubOnboardingRules {
         }
     }
 
+    /// 받침이 있으면 `withBatchim`, 없으면 `without`(앱 `{name:이}`·`{name:이야}` 문구 처리). 한글이 아니면 받침 없음으로 본다.
+    public static func particle(_ name: String, _ withBatchim: String, _ without: String) -> String {
+        guard let last = name.unicodeScalars.last, last.value >= 0xAC00, last.value <= 0xD7A3 else { return without }
+        return (last.value - 0xAC00) % 28 == 0 ? without : withBatchim
+    }
+
     public static let networkText = "연결을 확인하고 다시 눌러 주세요. 입력한 내용은 그대로 있어요."
     public static let joinFailedText = "등록하지 못했어요. 다시 눌러 주세요."
 }

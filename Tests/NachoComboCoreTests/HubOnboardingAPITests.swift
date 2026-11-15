@@ -190,6 +190,14 @@ final class HubOnboardingAPITests: XCTestCase {
         XCTAssertEqual(HubOnboardingRules.rejectionText(step: .name, code: "brand_new_code"), "문제가 생겨 진행하지 못했어요. 잠시 뒤에 다시 해 주세요.")
     }
 
+    func testParticleFollowsTheLastSyllable() {
+        XCTAssertEqual(HubOnboardingRules.particle("콤보", "이", "가"), "가")
+        XCTAssertEqual(HubOnboardingRules.particle("나초", "이", "가"), "가")
+        XCTAssertEqual(HubOnboardingRules.particle("달곰", "이", "가"), "이")
+        XCTAssertEqual(HubOnboardingRules.particle("Bob", "이", "가"), "가")
+        XCTAssertEqual(HubOnboardingRules.particle("", "이야", "야"), "야")
+    }
+
     func testPhoneNoticeSaysToFinishOnThePhoneApp() {
         XCTAssertTrue(HubOnboardingRules.phoneNotice.contains("휴대폰의 나초 앱에서"))
         XCTAssertTrue(HubOnboardingRules.phoneNotice.contains("마쳐"))

@@ -7,6 +7,12 @@ struct HubEnvironment {
     /// 로그인이 되어 있고 서버 주소가 있으면 요청 실행기.
     var client: () -> HubClient?
     var signIn: () -> Void
+    /// 로그인 뒤 가입이 덜 끝났는지 서버에 물어 온보딩을 띄운다(NACHO-277). 시험 창은 끈 채로 둔다.
+    var checksOnboarding = false
+    /// 가입을 마쳤다: 세션이 대화를 연다.
+    var onboardingFinished: () -> Void = {}
+    /// 온보딩 화면의 「로그아웃」.
+    var signOut: () -> Void = {}
 }
 
 /// 사이드바 한 줄.
@@ -90,6 +96,9 @@ final class PetHubWindow: NSWindow {
     private let toastHost = HubPassthroughView()
     private let signInView = NSView()
     private var wasSignedIn: Bool
+    /// 가입 확인(NACHO-277): 로그인할 때마다 처음부터. 끝나면 true.
+    private var onboardingCleared = false
+    private var onboardingHost: OnboardingHost?
     private(set) var selected: HubSectionID
     private var observer: NSObjectProtocol?
 
@@ -228,13 +237,27 @@ final class PetHubWindow: NSWindow {
         let now = env.isSignedIn()
         guard now != wasSignedIn else { return }
         wasSignedIn = now
+        if !now { onboardingCleared = false; onboardingHost = nil }
         render()
     }
 
     private func render() {
         for v in detail.subviews where v !== toastHost { v.removeFromSuperview() }
         let content: NSView
-        if env.isSignedIn() {
+        if env.isSignedIn(), env.checksOnboarding, !onboardingCleared {
+            let host = onboardingHost ?? OnboardingHost()
+            onboardingHost = host
+            host.onCleared = { [weak self] in
+                guard let self = self else { return }
+                self.onboardingCleared = true
+                self.onboardingHost = nil
+                self.env.onboardingFinished()
+                self.render()
+            }
+            host.onSignOut = env.signOut
+            host.activate(client: env.client())
+            content = host.view
+        } else if env.isSignedIn() {
             let section = sections[selected] ?? HubSections.make(selected)
             sections[selected] = section
             if let n = section as? NotificationsSection { connect(n) }
@@ -250,7 +273,7 @@ final class PetHubWindow: NSWindow {
             content.topAnchor.constraint(equalTo: detail.topAnchor),
             content.bottomAnchor.constraint(equalTo: detail.bottomAnchor),
         ])
-        if env.isSignedIn(), let section = sections[selected] { section.activate(makeContext()) }
+        if env.isSignedIn(), onboardingHost == nil, let section = sections[selected] { section.activate(makeContext()) }
     }
 
     /// 알림 섹션의 이동·배지를 창에 잇는다(섹션을 만들 때마다 같은 콜백으로 덮어쓴다).
