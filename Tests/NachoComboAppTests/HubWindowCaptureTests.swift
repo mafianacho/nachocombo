@@ -171,7 +171,8 @@ final class HubWindowCaptureTests: XCTestCase {
         var idx = b64.startIndex
         while idx < b64.endIndex {
             let end = b64.index(idx, offsetBy: chunk, limitedBy: b64.endIndex) ?? b64.endIndex
-            print("BENTO-CAPTURE \(name) \(i + 1)/\(n) \(b64[idx..<end])")
+            print("BENTO-CAPTURE \(name) \(i + 1)/\(n) \(b64[idx..<end]) .")
+            fflush(stdout)
             idx = end
             i += 1
         }
