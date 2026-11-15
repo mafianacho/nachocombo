@@ -248,7 +248,7 @@ public enum HubRoomsAPI {
 
     public static func decodeSearch(_ resp: PetHTTPResponse) -> Result<HubSearchPage, PetAPIError> {
         HubAPI.page(resp).map { p in
-            let items: [HubSearchItem] = p.items.compactMap { o in
+            let items: [HubSearchItem] = p.items.compactMap { o -> HubSearchItem? in
                 guard let id = o.str("id") else { return nil }
                 let segs = o.objs("segments").map { HubSearchSegment(text: $0.str("text") ?? "", match: $0.bool("match") ?? false) }
                 return HubSearchItem(id: id, kind: o.str("kind") ?? "chat", segments: segs, label: o.str("label") ?? "", dateLabel: o.str("date_label") ?? "",
@@ -273,7 +273,7 @@ public enum HubRoomsAPI {
     /// http/https 주소만 남긴다(`javascript:`·`file:` 같은 것은 누르게 두지 않는다).
     public static func decodeLinks(_ resp: PetHTTPResponse) -> Result<HubLinksPage, PetAPIError> {
         HubAPI.page(resp).map { p in
-            let items: [HubLinkItem] = p.items.compactMap { o in
+            let items: [HubLinkItem] = p.items.compactMap { o -> HubLinkItem? in
                 guard let u = o.str("url"), let url = URL(string: u), let s = url.scheme?.lowercased(), s == "http" || s == "https" else { return nil }
                 return HubLinkItem(seq: o.int("seq") ?? 0, url: u)
             }
@@ -283,7 +283,7 @@ public enum HubRoomsAPI {
 
     public static func decodeHistory(_ resp: PetHTTPResponse) -> Result<HubHistoryPage, PetAPIError> {
         HubAPI.page(resp).map { p in
-            let msgs: [HubMessage] = p.items.compactMap { o in
+            let msgs: [HubMessage] = p.items.compactMap { o -> HubMessage? in
                 guard let seq = o.int("seq"), o.bool("interim") != true else { return nil }
                 var ref: HubPageRef?
                 if let a = o.obj("attachment"), a.str("kind") == "page", a.bool("deleted") != true, let fid = a.str("file_id") {
