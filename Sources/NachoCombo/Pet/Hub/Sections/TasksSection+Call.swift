@@ -73,7 +73,6 @@ extension TasksSection {
         let during = c.state == "in_call"
         ctx.confirm([
             HubConfirmStep(title: "전화를 끊을까요?", message: during ? "지금 끊으면 통화가 여기서 끝나요." : "아직 연결되기 전이라 바로 취소돼요.", confirmTitle: "끊을게요"),
-            HubConfirmStep(title: "정말 끊을까요?", message: "끊으면 이 작업도 취소돼요. 되돌릴 수 없어요.", confirmTitle: "끊기"),
         ]) { [weak self] in
             self?.write({ HubTasks.callHangup(e, bearer: $0, taskID: c.taskID) }, failText: { _ in "끊지 못했어요. 다시 해 주세요" }) { _ in
                 self?.ctx.toast("전화를 끊었어요", false)
