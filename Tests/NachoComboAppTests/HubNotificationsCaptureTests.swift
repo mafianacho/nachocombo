@@ -87,11 +87,14 @@ final class HubNotificationsCaptureTests: XCTestCase {
     private func capture(_ section: NotificationsSection, dark: Bool, name: String) throws {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 752, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
         w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        w.contentView = section.view
-        section.view.layoutSubtreeIfNeeded()
-        section.view.displayIfNeeded()
-        let rep = try XCTUnwrap(section.view.bitmapImageRepForCachingDisplay(in: section.view.bounds))
-        section.view.cacheDisplay(in: section.view.bounds, to: rep)
+        let root = PetBox()
+        root.fill = PetTheme.color(\.window)
+        w.contentView = root
+        HubKit.pin(section.view, in: root)
+        root.layoutSubtreeIfNeeded()
+        root.displayIfNeeded()
+        let rep = try XCTUnwrap(root.bitmapImageRepForCachingDisplay(in: root.bounds))
+        root.cacheDisplay(in: root.bounds, to: rep)
         let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
         try emit(png, name: "notifications-\(name)-\(dark ? "dark" : "light")")
     }

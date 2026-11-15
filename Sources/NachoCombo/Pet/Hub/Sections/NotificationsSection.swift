@@ -34,7 +34,7 @@ final class NotificationsSection: HubSectionBase {
     private var client: HubClient?
     private let tabs = NSSegmentedControl(labels: Tab.allCases.map { $0.title }, trackingMode: .selectOne, target: nil, action: nil)
     private let bodyHost = NSView()
-    private var settingRows: [String: HubSwitchRow] = [:]
+    private var settingRows: [String: NotificationSwitchRow] = [:]
 
     init() {
         super.init(id: .notifications)
@@ -219,6 +219,7 @@ final class NotificationsSection: HubSectionBase {
             HubKit.label(unread > 0 ? "안 읽은 알림 \(unread)개" : "모두 읽었어요", font: PetTheme.caption, color: PetTheme.secondary, wrap: false),
             HubKit.secondaryButton("새로고침", symbol: "arrow.clockwise") { [weak self] in self?.reload() },
         ], spacing: Double(PetTokens.Space.m))
+        for v in head.arrangedSubviews { v.setContentHuggingPriority(.required, for: .horizontal) }
         parts.stack.addArrangedSubview(head)
         for n in notifications {
             let row = HubRow(title: n.title, subtitle: HubNotificationsAPI.shownBody(n), trailing: HubFormat.date(n.createdAt),
@@ -306,8 +307,7 @@ final class NotificationsSection: HubSectionBase {
                 var detail: String?
                 if !HubNotificationCatalog.canTurnOff(item.id) { detail = "끌 수 없어요." }
                 else if HubNotificationCatalog.needsWarning(item.id) { detail = "끄면 답이 필요한 일이 멈춰 있을 수 있어요." }
-                let row = HubSwitchRow(title: item.label, detail: detail, isOn: s.isOn(item.id))
-                row.toggle.isEnabled = HubNotificationCatalog.canTurnOff(item.id)
+                let row = NotificationSwitchRow(title: item.label, detail: detail, isOn: s.isOn(item.id), enabled: HubNotificationCatalog.canTurnOff(item.id))
                 row.onChange = { [weak self] on in self?.setItem(item.id, on) }
                 row.setAccessibilityIdentifier("hub-notification-setting-\(item.id)")
                 settingRows[item.id] = row
@@ -349,4 +349,38 @@ final class NotificationsSection: HubSectionBase {
             }
         }
     }
+}
+
+/// 제목·설명 + 오른쪽 끝 스위치 한 줄(공용 `HubSwitchRow`는 설명이 있으면 스위치가 글 바로 옆에 붙어 줄이 들쭉날쭉해서 이 섹션 안에 따로 둔다).
+final class NotificationSwitchRow: NSView {
+    let toggle = NSSwitch()
+    var onChange: ((Bool) -> Void)?
+
+    init(title: String, detail: String?, isOn: Bool, enabled: Bool) {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        let texts = HubKit.vstack([HubKit.label(title)], spacing: Double(PetTokens.Space.xxs))
+        if let d = detail, !d.isEmpty { texts.addArrangedSubview(HubKit.label(d, font: PetTheme.caption, color: PetTheme.secondary)) }
+        toggle.state = isOn ? .on : .off
+        toggle.isEnabled = enabled
+        toggle.target = self
+        toggle.action = #selector(changed)
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        toggle.setContentHuggingPriority(.required, for: .horizontal)
+        texts.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        addSubview(texts)
+        addSubview(toggle)
+        NSLayoutConstraint.activate([
+            texts.leadingAnchor.constraint(equalTo: leadingAnchor),
+            texts.topAnchor.constraint(equalTo: topAnchor),
+            texts.bottomAnchor.constraint(equalTo: bottomAnchor),
+            toggle.trailingAnchor.constraint(equalTo: trailingAnchor),
+            toggle.centerYAnchor.constraint(equalTo: centerYAnchor),
+            texts.trailingAnchor.constraint(lessThanOrEqualTo: toggle.leadingAnchor, constant: -CGFloat(PetTokens.Space.m)),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    @objc private func changed() { onChange?(toggle.state == .on) }
 }
