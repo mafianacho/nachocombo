@@ -5,7 +5,7 @@ import Foundation
 // 새 네트워크 층은 만들지 않는다: HubAPI(요청)·HubClient(실행·401 한 번 재시도)·PetAPIError(한국어 오류)를 그대로 쓴다.
 
 /// 사용자가 쓴 값이 규칙에 맞지 않을 때의 한국어 문구.
-public struct HubInputError: Error, Equatable {
+public struct HubRoomsInputError: Error, Equatable {
     public let text: String
     public init(_ text: String) { self.text = text }
 }
@@ -311,19 +311,19 @@ public enum HubRoomsAPI {
     // MARK: 입력 검증 (앱 규칙 그대로: title-rules.ts·use-search.ts)
 
     /// 이름: 앞뒤 공백 제거 → 비면 안 되고, 줄바꿈 금지, 40자(코드 포인트, 이모지 하나가 한 글자)까지.
-    public static func normalizeTitle(_ raw: String) -> Result<String, HubInputError> {
+    public static func normalizeTitle(_ raw: String) -> Result<String, HubRoomsInputError> {
         let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.isEmpty { return .failure(HubInputError("이름을 적어 주세요.")) }
-        if t.contains("\n") || t.contains("\r") { return .failure(HubInputError("이름에 줄바꿈은 쓸 수 없어요.")) }
-        if t.unicodeScalars.count > titleMax { return .failure(HubInputError("이름은 \(titleMax)자까지 쓸 수 있어요.")) }
+        if t.isEmpty { return .failure(HubRoomsInputError("이름을 적어 주세요.")) }
+        if t.contains("\n") || t.contains("\r") { return .failure(HubRoomsInputError("이름에 줄바꿈은 쓸 수 없어요.")) }
+        if t.unicodeScalars.count > titleMax { return .failure(HubRoomsInputError("이름은 \(titleMax)자까지 쓸 수 있어요.")) }
         return .success(t)
     }
 
     /// 검색어: 공백이나 가린 구간 글자(•)뿐이면 찾지 않는다(서버도 400).
-    public static func normalizeQuery(_ raw: String) -> Result<String, HubInputError> {
+    public static func normalizeQuery(_ raw: String) -> Result<String, HubRoomsInputError> {
         let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.unicodeScalars.allSatisfy({ $0 == "•" || CharacterSet.whitespacesAndNewlines.contains($0) }) {
-            return .failure(HubInputError("검색어를 입력해 주세요."))
+            return .failure(HubRoomsInputError("검색어를 입력해 주세요."))
         }
         return .success(t)
     }
