@@ -348,8 +348,7 @@ final class HubNachosCaptureTests: XCTestCase {
         XCTAssertTrue(all.contains("사용 중"), all)
         try HubSectionTestKit.capture(s, name: "nachos-voices", in: self)
         s.chooseVoice(try XCTUnwrap(s.agent(B)), HubVoice(HubObject(["voice_id": "bright", "label": "밝은 목소리"]))!)
-        XCTAssertEqual(k.http.sent.last?.method, "PATCH")
-        XCTAssertEqual(k.http.sent.last?.body, "{\"expected_version\":5,\"voice_id\":\"bright\"}")
+        XCTAssertEqual(k.http.sent.last { $0.method == "PATCH" }?.body, "{\"expected_version\":5,\"voice_id\":\"bright\"}")
     }
 
     func testTraitsListRefreshAndHideNeedsTwoConfirms() throws {

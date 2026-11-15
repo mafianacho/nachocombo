@@ -180,7 +180,7 @@ final class HubFriendsCaptureTests: XCTestCase {
         XCTAssertEqual(k.http.count("POST /api/v1/me/onboarding/invite/redeem"), 0)
         badCode.field.stringValue = "654321"
         s.redeem(badCode)
-        XCTAssertEqual(k.http.sent.last?.body, "{\"code\":\"654321\"}")
+        XCTAssertEqual(k.http.sent.last { $0.method == "POST" && $0.path.hasSuffix("/redeem") }?.body, "{\"code\":\"654321\"}")
         s.dismissSignup(person("aaaaaaaa-0000-0000-0000-000000000009", "영희"))
         XCTAssertEqual(k.http.count("POST /api/v1/social/invites/aaaaaaaa-0000-0000-0000-000000000009/dismiss"), 1)
     }

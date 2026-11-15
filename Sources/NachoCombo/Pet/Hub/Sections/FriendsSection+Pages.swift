@@ -254,8 +254,7 @@ extension FriendsSection {
         let text = field.value
         write({ HubFriendsAPI.putExclusions(e, bearer: $0, text: text, version: version) }, success: "저장했어요.", then: { [weak self] _ in self?.go(.sharing) },
               failure: { [weak self] err in
-                  self?.ctx.toast(HubFriendsText.message(err), true)
-                  if err.isVersionConflict { self?.go(.sharing) }
+                  self?.ctx.toast(HubFriendsText.message(err), true)   // 409면 `write`가 새로 불러온다
               })
     }
 
@@ -294,8 +293,7 @@ extension FriendsSection {
         let note = field.value
         write({ HubFriendsAPI.putPerson(e, bearer: $0, userID: n.userID, note: note, version: n.version) }, success: "저장했어요.", then: { [weak self] _ in self?.go(.person(n.userID)) },
               failure: { [weak self] err in
-                  self?.ctx.toast(HubFriendsText.message(err), true)
-                  if err.isVersionConflict { self?.go(.person(n.userID)) }
+                  self?.ctx.toast(HubFriendsText.message(err), true)   // 409면 `write`가 새로 불러온다
               })
     }
 }
