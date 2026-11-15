@@ -191,7 +191,7 @@ final class FriendsSection: HubSectionBase {
             HubConfirmStep(title: "\(p.displayName)님을 차단할까요?", message: "친구와 대기 중인 요청이 정리되고, 상대에게 알리지 않아요.", confirmTitle: "계속"),
             HubConfirmStep(title: "정말 차단할까요?", message: "차단한 사람과는 서로 찾을 수도 요청을 보낼 수도 없어요.", confirmTitle: "차단"),
         ]
-        ctx.confirm(Array(steps.prefix(1))) { [weak self] in
+        ctx.confirm(steps) { [weak self] in
             self?.write({ HubFriendsAPI.block(e, bearer: $0, userID: p.userID) }, success: "차단했어요.", then: { _ in self?.refreshSummary(then: .friends) })
         }
     }
