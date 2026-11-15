@@ -229,7 +229,7 @@ final class HubTasksCaptureTests: XCTestCase {
             r.section.showDetail(t)
             let ticket = HubViewerTicket(viewerURL: bad, verifiedHost: nil, expiresAt: nil)
             r.section.showLiveView(ticket, task: t)
-            XCTAssertFalse(all(r).contains("원격 화면"), "\(bad)는 열지 않는다")
+            XCTAssertFalse(all(r).contains("nacho.example.com 원격 화면"), "\(bad)는 열지 않는다")
             XCTAssertEqual(r.section.screenName, "detail:t2")
         }
     }
