@@ -80,7 +80,7 @@ final class WhatsNewCaptureTests: XCTestCase {
         XCTAssertNil(presenter.loadContent())
         XCTAssertFalse(presenter.isAvailable)
         presenter.showAgain()   // 창도 오류도 없다
-        presenter.showIfUpdated(tracker: WhatsNewTracker(defaults: UserDefaults(suiteName: "whatsnew-none-\(UUID().uuidString)")!))
+        presenter.showIfUpdated(freshInstall: false, tracker: WhatsNewTracker(defaults: UserDefaults(suiteName: "whatsnew-none-\(UUID().uuidString)")!))
     }
 
     private func snap(_ window: NSWindow, dark: Bool, name: String) throws {

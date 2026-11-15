@@ -22,6 +22,27 @@ final class WhatsNewGateTests: XCTestCase {
         XCTAssertEqual(o.store, "0.11.0")
     }
 
+    /// 0.10.x 사용자는 이 키가 생기기 전 버전이라 저장 값이 없다. 설정 파일이 이미 있으면(신규 설치 아님) 업데이트로 본다.
+    func testExistingInstallWithoutStoredValueIsAnUpdate() {
+        let o = WhatsNewGate.decide(lastSeen: nil, current: "0.11.0", hasContent: true, freshInstall: false)
+        XCTAssertTrue(o.show)
+        XCTAssertEqual(o.store, "0.11.0")
+    }
+
+    func testFreshInstallFlagStillHidesWithoutStoredValue() {
+        let o = WhatsNewGate.decide(lastSeen: nil, current: "0.11.0", hasContent: true, freshInstall: true)
+        XCTAssertFalse(o.show)
+        XCTAssertEqual(o.store, "0.11.0")
+    }
+
+    func testTrackerExistingInstallWithoutStoredValueShowsOnce() {
+        let d = defaults()
+        let tracker = WhatsNewTracker(defaults: d)
+        XCTAssertEqual(tracker.evaluate(current: "0.11.0", content: content(), freshInstall: false), content())
+        XCTAssertEqual(d.string(forKey: WhatsNewGate.defaultsKey), "0.11.0")
+        XCTAssertNil(tracker.evaluate(current: "0.11.0", content: content(), freshInstall: false), "두 번째 실행에는 보여 주지 않는다")
+    }
+
     func testUpdateWithContentShowsOnceAndStores() {
         let o = WhatsNewGate.decide(lastSeen: "0.10.0", current: "0.11.0", hasContent: true)
         XCTAssertTrue(o.show)
