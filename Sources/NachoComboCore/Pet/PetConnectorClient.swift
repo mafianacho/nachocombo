@@ -52,8 +52,15 @@ public enum ConnectorBinding {
 }
 
 public enum ConnectorFrames {
-    public static func hello(token: String) -> String {
-        encode(["type": "hello", "token": token, "capabilities": PetCommands.capabilities])
+    public static func hello(token: String) -> String { hello(token: token, capabilities: PetCommands.capabilities) }
+
+    public static func hello(token: String, capabilities: [[String: Any]]) -> String {
+        encode(["type": "hello", "token": token, "capabilities": capabilities])
+    }
+
+    /// Declares the capabilities again (an "always allow" switch or a switched-off action changed).
+    public static func capabilities(_ declaration: [[String: Any]]) -> String {
+        encode(["type": "capabilities", "capabilities": declaration])
     }
 
     public static func response(id: String, outcome: PetCommandOutcome) -> String {
@@ -120,10 +127,28 @@ public final class PetConnectorClient {
     private var generation = 0
     private var attempt = 0
     private var wanted = false
+    // "Always allow" (NACHO-138). `confirmedAllowed` is what the server believes: what the last hello said, or the last
+    // `capabilities` frame once the pong behind it proved the server read it (frames on one socket are handled in
+    // order). A content_out / input_inject request for a gadget in it that the user has since switched back to
+    // "approval every time" may have come without a card, so it is refused (`approval_revoked`) instead of run.
+    private let trust: GadgetTrust
+    private let tools: [GadgetTool]
+    private let dispatcher: GadgetToolDispatcher
+    private var trustToken: UUID?
+    private var confirmedAllowed: Set<GadgetID> = []
+    private var declaredDisabled: Set<String> = []
+    private var pendingPings: [(barrier: Bool, allowed: Set<GadgetID>)] = []
+    /// How long a re-declaration may stay unanswered before the connection is opened again (hello declares fresh).
+    public static let barrierSeconds: TimeInterval = 10
 
     public init(url: URL, token: String, executor: PetCommandExecuting, makeTransport: @escaping () -> WebSocketTransport,
                 policy: ReconnectPolicy = ReconnectPolicy(),
-                schedule: ((TimeInterval, @escaping () -> Void) -> Void)? = nil) {
+                schedule: ((TimeInterval, @escaping () -> Void) -> Void)? = nil,
+                trust: GadgetTrust = .shared, tools: [GadgetTool] = GadgetToolRegistry.all,
+                dispatcher: GadgetToolDispatcher = .shared) {
+        self.trust = trust
+        self.tools = tools
+        self.dispatcher = dispatcher
         self.url = url
         self.token = token
         self.executor = executor
@@ -133,10 +158,17 @@ public final class PetConnectorClient {
         self.schedule = schedule ?? { delay, work in q.asyncAfter(deadline: .now() + delay, execute: work) }
     }
 
+    deinit {
+        if let token = trustToken { trust.removeObserver(token) }
+    }
+
     public func flush() { queue.sync {} }
 
     public func connect() {
         queue.async {
+            if self.trustToken == nil {
+                self.trustToken = self.trust.observe { [weak self] in self?.queue.async { self?.redeclare() } }
+            }
             self.wanted = true
             self.attempt = 0
             self.open()
@@ -149,6 +181,7 @@ public final class PetConnectorClient {
             self.generation += 1
             self.transport?.close()
             self.transport = nil
+            if let token = self.trustToken { self.trust.removeObserver(token); self.trustToken = nil }
             self.set(.off)
         }
     }
@@ -176,13 +209,18 @@ public final class PetConnectorClient {
         guard gen == generation else { return }
         switch ev {
         case .opened:
-            transport?.send(ConnectorFrames.hello(token: token))
+            confirmedAllowed = trust.alwaysAllowed
+            declaredDisabled = trust.disabled
+            pendingPings = []
+            transport?.send(ConnectorFrames.hello(token: token, capabilities: declaration(allowed: confirmedAllowed)))
         case let .text(s):
             switch ConnectorFrames.decode(s) {
             case .ready:
                 attempt = 0
                 set(.ready)
                 schedulePing(gen)
+                // A switch changed between hello and ready: say so now.
+                if trust.alwaysAllowed != confirmedAllowed || trust.disabled != declaredDisabled { redeclare() }
             case let .request(id, capability, paramsJSON):
                 run(id: id, capability: capability, paramsJSON: paramsJSON, gen: gen)
             case let .error(code):
@@ -194,7 +232,12 @@ public final class PetConnectorClient {
                     set(.failed("커넥터 연결이 거절됐어요."))
                     onUnauthorized?()
                 }
-            case .pong, .other:
+            case .pong:
+                if !pendingPings.isEmpty {
+                    let answered = pendingPings.removeFirst()
+                    if answered.barrier { confirmedAllowed = answered.allowed }
+                }
+            case .other:
                 break
             }
         case let .closed(failure):
@@ -222,7 +265,50 @@ public final class PetConnectorClient {
         }
     }
 
+    private func declaration(allowed: Set<GadgetID>) -> [[String: Any]] {
+        PetCommands.capabilities(allowQuit: PetCommands.declaresQuitApp, alwaysAllowed: allowed, disabled: trust.disabled, tools: tools)
+    }
+
+    /// Sends the declaration again after an "always allow" switch (or a switched-off action) changed. A ping right
+    /// behind it tells when the server has read it; until then `confirmedAllowed` keeps the old belief.
+    private func redeclare() {
+        guard wanted, phase == .ready, let t = transport else { return }  // a connection that is not up declares fresh in hello
+        let allowed = trust.alwaysAllowed
+        declaredDisabled = trust.disabled
+        t.send(ConnectorFrames.capabilities(declaration(allowed: allowed)))
+        pendingPings.append((true, allowed))
+        t.send(ConnectorFrames.ping)
+        let gen = generation
+        schedule(PetConnectorClient.barrierSeconds) { [weak self] in
+            guard let self = self, self.wanted, gen == self.generation, self.pendingPings.contains(where: { $0.barrier }) else { return }
+            // The server never answered: stop guessing what it believes and open the connection again.
+            self.attempt = 0
+            self.open()
+        }
+    }
+
+    /// Why a request must not run right now; nil when it may.
+    private func refusal(for tool: GadgetTool, name: String) -> PetCommandOutcome? {
+        if !trust.disabled.isDisjoint(with: tool.connectorNames) { return .actionDisabled(name) }
+        // Declared without approval (server belief) but no longer always allowed: no card ran for this call.
+        if tool.risk.isTrustable, confirmedAllowed.contains(tool.gadget), !trust.isAlwaysAllowed(tool.gadget) {
+            return .approvalRevoked(tool.gadget)
+        }
+        return nil
+    }
+
     private func run(id: String, capability: String, paramsJSON: String, gen: Int) {
+        if let tool = GadgetToolRegistry.connectorTool(named: capability, in: tools) {
+            if let refused = refusal(for: tool, name: capability) {
+                handled.append("\(capability.prefix(64)):refused")
+                transport?.send(ConnectorFrames.response(id: id, outcome: refused))
+                return
+            }
+            if tool.legacyConnectorName == nil {
+                runRegistered(tool, id: id, capability: capability, paramsJSON: paramsJSON, gen: gen)
+                return
+            }
+        }
         let params = paramsJSON.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0, options: [.fragmentsAllowed]) }
         switch PetCommands.parse(capability: capability, params: params) {
         case let .failure(problem):
@@ -244,9 +330,32 @@ public final class PetConnectorClient {
         }
     }
 
+    /// A registry tool that is not one of the migrated `PetCommand`s: its gadget runner (through the dispatcher).
+    private func runRegistered(_ tool: GadgetTool, id: String, capability: String, paramsJSON: String, gen: Int) {
+        let params = paramsJSON.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0, options: [.fragmentsAllowed]) }
+        var arguments: [String: JSONValue] = [:]
+        if let p = params, !(p is NSNull) {
+            guard let o = p as? [String: Any], case .object(let parsed)? = JSONValue(jsonObject: o) else {
+                handled.append("\(capability.prefix(64)):refused")
+                transport?.send(ConnectorFrames.response(id: id, error: PetCommandProblem.badParams("parameters must be an object").message))
+                return
+            }
+            arguments = parsed
+        }
+        dispatcher.run(tool, arguments: arguments, exit: .connector) { [weak self] outcome in
+            guard let self = self else { return }
+            self.queue.async {
+                self.handled.append("\(capability):\(outcome.ok ? "ok" : "failed")")
+                guard gen == self.generation else { return }
+                self.transport?.send(ConnectorFrames.response(id: id, outcome: outcome))
+            }
+        }
+    }
+
     private func schedulePing(_ gen: Int) {
         schedule(30) { [weak self] in
             guard let self = self, gen == self.generation, self.phase == .ready else { return }
+            self.pendingPings.append((false, []))
             self.transport?.send(ConnectorFrames.ping)
             self.schedulePing(gen)
         }

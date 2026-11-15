@@ -392,7 +392,7 @@ final class ToolDetailView: NSView {
             let stop = commandButton("Emergency Stop (\(ComputerUseModule.emergencyLabel))", "panel-computer-use-emergency",
                                      .computerUseEmergencyStop)
             stop.setAccessibilityHelp("Refuses every call at once and turns Computer Use off")
-            let note = UI.wrapLabel("Keys, tool groups and the port are in the settings window. With no tool group on, no tool is offered.",
+            let note = UI.wrapLabel("The MCP server, its keys and tool groups are in Settings ▸ MCP.",
                                     width: inner)
             return [statusLine, UI.hstack([stop], spacing: 8), note]
         }

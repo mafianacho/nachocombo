@@ -1,9 +1,10 @@
 import AppKit
 import NachoComboCore
 
-/// The Computer Use part of the settings window: address and port, the LAN mode (switch, connection URLs, TLS
-/// fingerprint, warnings, firewall hint, sleep guard, Bonjour), permission guidance, tool group switches
-/// (high-risk ones separate, with a confirmation), API keys (shown once, revocable) and the call log.
+/// The body of Settings ▸ MCP (NACHO-195): the MCP server switch, address and port, the LAN mode (switch, connection
+/// URLs, TLS fingerprint, warnings, firewall hint, sleep guard, Bonjour), the Computer Use tool group switches
+/// (high-risk ones separate, with a confirmation), the per-gadget exposure switches, API keys (shown once, revocable),
+/// client examples and the call log. The Computer Use gadget's own screen is `ComputerUseGadgetCard` (one switch).
 /// It only edits settings and keys; starting/stopping stays with the module manager.
 ///
 /// Not run on a Mac yet - written to compile.
@@ -13,11 +14,6 @@ final class ComputerUseCard: NSObject {
     private let manager: ModuleManager
     private let width: CGFloat
 
-    /// Opens the System Settings pane of one permission.
-    var openPermissionPane: ((OSPermission) -> Void)?
-    var recheckPermissions: (() -> Void)?
-    /// Clears this app's Accessibility entry and asks again; returns a problem to show, or nil.
-    var resetAccessibility: (() -> String?)?
     /// A group switch or the port changed: the owner re-applies the running module.
     var settingsChanged: (() -> Void)?
     var emergencyStop: (() -> Void)?
@@ -27,15 +23,12 @@ final class ComputerUseCard: NSObject {
     private let endpointLabel: NSTextField
     private let portField = NSTextField()
     private let portMessage: NSTextField
-    private let permissionRow = NSStackView()
-    private var permissionButtons: [OSPermission: NSButton] = [:]
-    // Permission diagnostics: what macOS says about this very copy, so a stale or misplaced grant can be told apart.
     private let blockedLabel: NSTextField
-    private let diagnosticsBox = NSStackView()
-    private let diagnosticsLabel: NSTextField
-    private let locationLabel: NSTextField
-    private let resetMessage: NSTextField
-    private let resetButton = NSButton(title: "Reset Accessibility Permission…", target: nil, action: nil)
+    // MCP server switch and per-gadget exposure (NACHO-195)
+    private let serverSwitch = NSSwitch()
+    private let serverNote: NSTextField
+    private var gadgetChecks: [GadgetID: NSButton] = [:]
+    private let localExampleLabel = NSTextField(wrappingLabelWithString: "")
     private let keyList = NSStackView()
     private var keyListSignature = ""
     private let newKeyField = NSTextField()
@@ -75,9 +68,7 @@ final class ComputerUseCard: NSObject {
         fingerprintChangedLabel = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
         logLabel = UI.wrapLabel("", width: width, style: .caption1, color: UI.secondaryText)
         blockedLabel = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
-        diagnosticsLabel = UI.wrapLabel("", width: width, style: .caption1, color: UI.secondaryText)
-        locationLabel = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
-        resetMessage = UI.wrapLabel("", width: width, style: .callout, color: .labelColor)
+        serverNote = UI.wrapLabel("", width: width - 60, style: .caption1, color: UI.secondaryText)
         view = NSStackView()
         super.init()
         build()
@@ -105,33 +96,27 @@ final class ComputerUseCard: NSObject {
         let portRow = UI.hstack([portTitle, portField, portApply], spacing: 8)
         portMessage.isHidden = true
 
-        // permissions: one button per permission that is actually missing, plus a re-check
-        permissionRow.orientation = .horizontal
-        permissionRow.spacing = 8
-        for permission in OSPermission.allCases {
-            let button = NSButton(title: "Open \(permission.displayName) Settings", target: self, action: #selector(openPaneClicked(_:)))
-            button.identifier = NSUserInterfaceItemIdentifier(permission.rawValue)
-            button.setAccessibilityIdentifier("computer-use-open-\(permission.rawValue)")
-            permissionButtons[permission] = button
-            permissionRow.addArrangedSubview(button)
-        }
-        let recheck = NSButton(title: "Check Permissions Again", target: self, action: #selector(recheckClicked))
-        recheck.setAccessibilityIdentifier("computer-use-recheck")
-        permissionRow.addArrangedSubview(recheck)
-        permissionRow.isHidden = true
+        // MCP server switch: the port for external clients, independent of the Computer Use gadget (Nacho's own).
+        serverSwitch.setAccessibilityLabel("MCP server")
+        serverSwitch.setAccessibilityIdentifier("mcp-server-switch")
+        serverSwitch.target = self
+        serverSwitch.action = #selector(serverToggled(_:))
+        serverNote.setAccessibilityIdentifier("mcp-server-note")
+        let serverTitle = UI.label("MCP Server", style: .callout, weight: .semibold)
+        let serverRow = UI.hstack([UI.vstack([serverTitle, serverNote], spacing: 2), UI.spacer(), serverSwitch], spacing: 8)
+        serverRow.widthAnchor.constraint(equalToConstant: width).isActive = true
 
+        view.addArrangedSubview(serverRow)
         view.addArrangedSubview(endpointLabel)
         view.addArrangedSubview(portRow)
         view.addArrangedSubview(portMessage)
         buildLANSection()
-        view.addArrangedSubview(permissionRow)
         blockedLabel.setAccessibilityIdentifier("computer-use-blocked-groups")
         blockedLabel.isHidden = true
         view.addArrangedSubview(blockedLabel)
-        buildDiagnostics()
 
         // normal tool groups
-        view.addArrangedSubview(sectionTitle("Tool Groups (tools in groups that are off are not listed and calls to them are refused)"))
+        view.addArrangedSubview(sectionTitle("Computer Use Tool Groups (served while the Computer Use gadget is on; tools in groups that are off are not listed and calls to them are refused)"))
         for group in ToolGroup.allCases where !group.isHighRisk { view.addArrangedSubview(groupRow(group)) }
 
         // high risk
@@ -140,6 +125,10 @@ final class ComputerUseCard: NSObject {
         view.addArrangedSubview(danger)
         view.setCustomSpacing(12, after: view.arrangedSubviews[view.arrangedSubviews.count - 2])
         for group in ToolGroup.allCases where group.isHighRisk { view.addArrangedSubview(groupRow(group)) }
+
+        // per-gadget exposure
+        view.addArrangedSubview(sectionTitle("Gadget Tools (each gadget's MCP tools are listed and callable only while its switch is on)"))
+        for gadget in GadgetID.allCases where gadget != .computer { view.addArrangedSubview(gadgetRow(gadget)) }
 
         // keys
         view.addArrangedSubview(sectionTitle("API Keys (Authorization: Bearer …)"))
@@ -161,11 +150,17 @@ final class ComputerUseCard: NSObject {
         view.addArrangedSubview(UI.wrapLabel("A key is shown only once, when it is created. This app stores only its hash. Whoever holds a key can control this Mac with the enabled tools, so revoke it right away if it leaks.",
                                             width: width, style: .callout))
 
+        // client example (the LAN box has its own, with the fingerprint steps)
+        view.addArrangedSubview(sectionTitle("Client Connection Example"))
+        configureSelectable(localExampleLabel, style: .caption1)
+        localExampleLabel.setAccessibilityIdentifier("mcp-client-example")
+        view.addArrangedSubview(localExampleLabel)
+
         // emergency stop and log
         emergencyButton.target = self
         emergencyButton.action = #selector(emergencyClicked)
         emergencyButton.setAccessibilityIdentifier("computer-use-emergency")
-        emergencyButton.setAccessibilityHelp("Immediately refuses all calls and turns Computer Use off")
+        emergencyButton.setAccessibilityHelp("Immediately refuses all calls, closes the MCP server and turns Computer Use off")
         view.addArrangedSubview(emergencyButton)
         view.addArrangedSubview(sectionTitle("Recent Calls (only the tool name, time and key name are logged, never typed content or screens)"))
         logLabel.setAccessibilityIdentifier("computer-use-log")
@@ -315,9 +310,9 @@ final class ComputerUseCard: NSObject {
         case .failed(let message):
             status = "Did not open: \(message)"
         case .off:
-            status = manager.settings.isEnabled(.computerUse)
+            status = config.serverEnabled
                 ? "Waiting for the server to start."
-                : "Computer Use is off, so the port is closed. When it is on, it opens at this address."
+                : "The MCP server is off, so the port is closed. When it is on, it opens at this address."
         }
         setWrapped(lanStatusLabel, status, style: .caption1, color: UI.secondaryText)
 
@@ -400,68 +395,6 @@ final class ComputerUseCard: NSObject {
         board.setString(text, forType: .string)
     }
 
-    private func buildDiagnostics() {
-        diagnosticsBox.orientation = .vertical
-        diagnosticsBox.alignment = .leading
-        diagnosticsBox.spacing = 6
-        diagnosticsBox.addArrangedSubview(sectionTitle("Permission Diagnostics (this copy of the app)"))
-        diagnosticsLabel.setAccessibilityIdentifier("computer-use-permission-diagnostics")
-        diagnosticsBox.addArrangedSubview(diagnosticsLabel)
-        locationLabel.setAccessibilityIdentifier("computer-use-location-warning")
-        diagnosticsBox.addArrangedSubview(locationLabel)
-        resetButton.target = self
-        resetButton.action = #selector(resetClicked)
-        resetButton.setAccessibilityIdentifier("computer-use-reset-accessibility")
-        diagnosticsBox.addArrangedSubview(resetButton)
-        resetMessage.isHidden = true
-        diagnosticsBox.addArrangedSubview(resetMessage)
-        diagnosticsBox.isHidden = true
-        view.addArrangedSubview(diagnosticsBox)
-    }
-
-    /// Shown while a needed permission is missing or the copy runs from a place that confuses permissions.
-    private func refreshDiagnostics(enabled: Bool, missing: [OSPermission]) {
-        let bundle = Bundle.main
-        let location = AppLocationDiagnosis.diagnose(bundlePath: bundle.bundleURL.path, home: NSHomeDirectory())
-        let axTrusted = ComputerUseModule.hasPermission(.accessibility)
-        let screen = ComputerUseModule.hasPermission(.screenRecording)
-        diagnosticsBox.isHidden = !enabled || (missing.isEmpty && module.blockedGroups.isEmpty && location.warnings.isEmpty)
-        guard !diagnosticsBox.isHidden else { return }
-        let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
-        var lines = [
-            "App: \(location.path)",
-            "Bundle ID: \(bundle.bundleIdentifier ?? "-") · Version \(version)",
-            "Accessibility (AXIsProcessTrusted): \(axTrusted ? "allowed" : "not allowed") · Screen Recording: \(screen ? "allowed" : "not allowed")",
-            "Signature requirement: \(CodeSignature.designatedRequirement ?? "unknown")",
-        ]
-        if CodeSignature.requirementIsPerBuild {
-            lines.append("This build's permission is tied to this exact build, so an entry left from another version stays switched on in System Settings but does not apply. Use Reset below.")
-        }
-        setWrapped(diagnosticsLabel, lines.joined(separator: "\n"), style: .caption1, color: UI.secondaryText)
-        if let warning = location.warnings.first {
-            locationLabel.attributedStringValue = UI.notice(AppLocationDiagnosis.message(for: warning),
-                                                            tint: warning == .outsideApplications ? .systemOrange : .systemRed,
-                                                            style: .callout)
-            locationLabel.isHidden = false
-        } else {
-            locationLabel.isHidden = true
-        }
-        resetButton.isHidden = axTrusted
-    }
-
-    @objc private func resetClicked() {
-        guard confirm("Reset the Accessibility permission of Nacho Combo?",
-                      "This removes Nacho Combo from the Accessibility list (Window Snap, App Switcher and Mouse Tune lose it too) and asks again. Then turn Nacho Combo on in System Settings ▸ Privacy & Security ▸ Accessibility. If macOS asks for your password, that is System Settings, not this app.",
-                      "Reset") else { return }
-        if let problem = resetAccessibility?() {
-            resetMessage.attributedStringValue = UI.notice(problem, tint: .systemOrange, style: .callout)
-        } else {
-            resetMessage.attributedStringValue = UI.notice("Reset. Turn Nacho Combo on in the Accessibility list; the server picks it up within a few seconds.",
-                                                           tint: .systemGreen, style: .callout)
-        }
-        resetMessage.isHidden = false
-    }
-
     private func sectionTitle(_ text: String) -> NSView {
         let label = UI.wrapLabel(text, width: width, style: .callout, color: .labelColor)
         label.font = UI.font(.callout, weight: .semibold)
@@ -483,6 +416,19 @@ final class ComputerUseCard: NSObject {
         return column
     }
 
+    private func gadgetRow(_ gadget: GadgetID) -> NSView {
+        let check = NSButton(checkboxWithTitle: gadget.displayName, target: self, action: #selector(gadgetToggled(_:)))
+        check.font = UI.font(.callout, weight: .medium)
+        check.identifier = NSUserInterfaceItemIdentifier(gadget.rawValue)
+        check.setAccessibilityIdentifier("mcp-gadget-\(gadget.rawValue)")
+        check.setAccessibilityLabel("MCP tools of \(gadget.displayName)")
+        gadgetChecks[gadget] = check
+        let count = GadgetToolRegistry.all.filter { $0.gadget == gadget && $0.exits.contains(.mcp) }.count
+        let column = UI.vstack([check], spacing: 1)
+        column.addArrangedSubview(indented(UI.wrapLabel("\(count) tool\(count == 1 ? "" : "s")", width: width - 20, style: .caption1)))
+        return column
+    }
+
     /// Description lines hang under the checkbox title, not under the box.
     private func indented(_ content: NSView) -> NSView {
         let gap = NSView()
@@ -500,10 +446,23 @@ final class ComputerUseCard: NSObject {
 
     // MARK: state
 
-    func refresh(state: ModuleState) {
-        lastState = state
+    func refresh(state gadgetState: ModuleState) {
+        lastState = gadgetState
         let config = manager.settings.computerUse
-        let enabled = manager.settings.isEnabled(.computerUse)
+        // What the port is doing: the gadget's own state (needs a permission...) does not describe the server.
+        let state: ModuleState
+        if module.isRunning { state = .running }
+        else if !config.serverEnabled { state = .off }
+        else if case .failed = module.lastResult { state = module.lastResult }
+        else if case .needsPermission = gadgetState, manager.settings.isEnabled(.computerUse) { state = gadgetState }
+        else { state = .off }
+
+        serverSwitch.state = config.serverEnabled ? .on : .off
+        setWrapped(serverNote, "Lets MCP clients that hold an API key connect to this Mac. It does not depend on the Computer Use gadget: Nacho keeps working when this is off.",
+                   style: .caption1, color: UI.secondaryText)
+        for (gadget, check) in gadgetChecks { check.state = config.isGadgetEnabled(gadget) ? .on : .off }
+        let example = localClientExample(url: plannedLocalURL(config))
+        if localExampleLabel.stringValue != example { localExampleLabel.stringValue = example }
 
         for (group, check) in groupChecks { check.state = config.isEnabled(group) ? .on : .off }
         if portField.currentEditor() == nil { portField.stringValue = "\(config.port)" }
@@ -524,16 +483,10 @@ final class ComputerUseCard: NSObject {
         case .failed:
             setWrapped(endpointLabel, "The server is not open (error). Address: \(plannedURL)")
         case .off:
-            setWrapped(endpointLabel, enabled ? "Waiting for the server to start. Address: \(plannedURL)" : "Off, so the port is closed. When on, it opens at \(plannedURL).")
+            setWrapped(endpointLabel, config.serverEnabled ? "Waiting for the server to start. Address: \(plannedURL)" : "The MCP server is off, so the port is closed. When it is on, it opens at \(plannedURL).")
         }
 
-        // Permission guidance: only the missing ones.
-        var missing: [OSPermission] = []
-        if case .needsPermission = state { missing = module.missingPermissions }
-        if case .running = state, !module.blockedGroups.isEmpty { missing = module.missingPermissions }
-        permissionRow.isHidden = missing.isEmpty && !isNeedsPermission(state)
-        for (permission, button) in permissionButtons { button.isHidden = !missing.contains(permission) }
-        if case .running = state, !module.blockedGroups.isEmpty {
+        if module.isRunning, !module.blockedGroups.isEmpty {
             let groups = module.blockedGroups.map { $0.displayName }.joined(separator: ", ")
             let perms = module.lastMissing.map { $0.displayName }.joined(separator: ", ")
             blockedLabel.attributedStringValue = UI.notice("Open without \(groups): those tools wait for \(perms) and join by themselves once it is allowed.",
@@ -542,9 +495,8 @@ final class ComputerUseCard: NSObject {
         } else {
             blockedLabel.isHidden = true
         }
-        refreshDiagnostics(enabled: enabled, missing: missing)
 
-        emergencyButton.isEnabled = module.isRunning
+        emergencyButton.isEnabled = module.isActive
 
         // Rebuild the key rows only when something visible changed.
         let records = module.keys.records
@@ -556,9 +508,19 @@ final class ComputerUseCard: NSObject {
         renderLog()
     }
 
-    private func isNeedsPermission(_ state: ModuleState) -> Bool {
-        if case .needsPermission = state { return true }
-        return false
+    private func plannedLocalURL(_ config: ComputerUseSettings) -> String {
+        ComputerUseLAN.urls(mode: .localOnly, bindAddress: config.bindAddress, port: config.port).first ?? ""
+    }
+
+    /// A plain-HTTP example for this Mac; the key is read from an environment variable, never written out.
+    private func localClientExample(url: String) -> String {
+        let header = "-H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream'"
+        let body = "-d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'"
+        return [
+            "On this Mac (pass the key through an environment variable):",
+            "curl \(url) -H \"Authorization: Bearer $NACHO_KEY\" \(header) \(body)",
+            "In an MCP client that supports HTTP servers: URL \(url), header Authorization: Bearer <your key>.",
+        ].joined(separator: "\n")
     }
 
     private func rebuildKeyList(_ records: [APIKeyRecord]) {
@@ -602,6 +564,17 @@ final class ComputerUseCard: NSObject {
     }
 
     // MARK: actions
+
+    @objc private func serverToggled(_ sender: NSSwitch) {
+        manager.setComputerUse { $0.serverEnabled = sender.state == .on }
+        settingsChanged?()
+    }
+
+    @objc private func gadgetToggled(_ sender: NSButton) {
+        guard let raw = sender.identifier?.rawValue, let gadget = GadgetID(rawValue: raw) else { return }
+        manager.setComputerUse { $0.setGadgetEnabled(gadget, sender.state == .on) }
+        settingsChanged?()
+    }
 
     @objc private func groupToggled(_ sender: NSButton) {
         guard let raw = sender.identifier?.rawValue, let group = ToolGroup(rawValue: raw) else { return }
@@ -687,12 +660,6 @@ final class ComputerUseCard: NSObject {
         }
     }
 
-    @objc private func openPaneClicked(_ sender: NSButton) {
-        guard let raw = sender.identifier?.rawValue, let permission = OSPermission(rawValue: raw) else { return }
-        openPermissionPane?(permission)
-    }
-
-    @objc private func recheckClicked() { recheckPermissions?() }
     @objc private func emergencyClicked() { emergencyStop?() }
 
     @objc private func createKeyClicked() {
@@ -753,18 +720,7 @@ final class ComputerUseCard: NSObject {
 
     /// The only place the plaintext key is ever visible. It is not stored; closing the dialog drops it.
     private func reveal(_ issued: IssuedKey, title: String) {
-        let alert = NSAlert()
-        alert.messageText = "\(title) was created"
-        alert.informativeText = "This key is shown only once, now. You cannot see it again after closing, so copy it somewhere safe. Pass it to the MCP client in an Authorization: Bearer <key> header."
-        let field = NSTextField(string: issued.token)
-        field.isEditable = false
-        field.isSelectable = true
-        field.isBezeled = true
-        field.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        field.frame = NSRect(x: 0, y: 0, width: 420, height: 24)
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Copy and Close")
-        alert.addButton(withTitle: "Close Without Copying")
+        let alert = ComputerUseCard.revealAlert(title: title, token: issued.token)
         if alert.runModal() == .alertFirstButtonReturn {
             let board = NSPasteboard.general
             board.clearContents()
@@ -775,5 +731,22 @@ final class ComputerUseCard: NSObject {
                 if NSPasteboard.general.changeCount == count { NSPasteboard.general.clearContents() }
             }
         }
+    }
+
+    /// The dialog that shows a new key once (a separate function so a capture can show it with the value masked).
+    static func revealAlert(title: String, token: String) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = "\(title) was created"
+        alert.informativeText = "This key is shown only once, now. You cannot see it again after closing, so copy it somewhere safe. Pass it to the MCP client in an Authorization: Bearer <key> header."
+        let field = NSTextField(string: token)
+        field.isEditable = false
+        field.isSelectable = true
+        field.isBezeled = true
+        field.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        field.frame = NSRect(x: 0, y: 0, width: 420, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Copy and Close")
+        alert.addButton(withTitle: "Close Without Copying")
+        return alert
     }
 }

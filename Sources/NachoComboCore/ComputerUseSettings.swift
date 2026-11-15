@@ -114,6 +114,13 @@ public struct ComputerUseSettings: Codable, Equatable {
     public var allowedHosts: [String]
     /// Default `localOnly`. Files written before LAN mode existed, and unknown values, load as `localOnly`.
     public var listenMode: ComputerUseListenMode
+    /// NachoCombo MCP gadget switches (`GadgetID` raw value → on), all off by default. A gadget's MCP tools are listed
+    /// and callable only while its switch is on. Computer Use tools keep the tool group switches above instead.
+    public var enabledGadgets: [String: Bool]
+    /// The MCP server switch (Settings ▸ MCP): whether the port is open for external clients. It is independent of the
+    /// Computer Use gadget switch, which is Nacho's own (NACHO-195). Off by default; files from before the split are
+    /// migrated by `AppSettings` (a gadget that was on keeps its server on).
+    public var serverEnabled: Bool
 
     /// Address the server binds to in LAN mode (every interface; the peer address check keeps public peers out).
     public static let lanBindAddress = "0.0.0.0"
@@ -125,15 +132,17 @@ public struct ComputerUseSettings: Codable, Equatable {
     public var requiresTLS: Bool { listenMode == .lan }
 
     public init(port: Int = ComputerUseSettings.defaultPort, enabledGroups: [String: Bool] = [:], allowedHosts: [String] = [],
-                listenMode: ComputerUseListenMode = .localOnly) {
+                listenMode: ComputerUseListenMode = .localOnly, enabledGadgets: [String: Bool] = [:], serverEnabled: Bool = false) {
+        self.serverEnabled = serverEnabled
         self.listenMode = listenMode
+        self.enabledGadgets = enabledGadgets
         self.port = ComputerUseSettings.isValidPort(port) ? port : ComputerUseSettings.defaultPort
         self.bindAddress = "127.0.0.1"
         self.enabledGroups = enabledGroups
         self.allowedHosts = allowedHosts
     }
 
-    private enum CodingKeys: String, CodingKey { case port, bindAddress, enabledGroups, allowedHosts, listenMode }
+    private enum CodingKeys: String, CodingKey { case port, bindAddress, enabledGroups, allowedHosts, listenMode, enabledGadgets, serverEnabled }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -145,6 +154,10 @@ public struct ComputerUseSettings: Codable, Equatable {
         allowedHosts = try c.decodeIfPresent([String].self, forKey: .allowedHosts) ?? []
         // Missing, null or any unknown / wrongly typed value: stay local. Never fail the whole settings file over it.
         listenMode = (try? c.decodeIfPresent(ComputerUseListenMode.self, forKey: .listenMode)) ?? .localOnly
+        // Files from before NachoCombo MCP, and wrongly typed values: every gadget switch off.
+        enabledGadgets = (try? c.decodeIfPresent([String: Bool].self, forKey: .enabledGadgets)) ?? [:]
+        // Missing (a file from before the MCP menu) or wrongly typed: closed. `AppSettings` opens it for a gadget that was on.
+        serverEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .serverEnabled)) ?? false
     }
 
     public static func isValidPort(_ port: Int) -> Bool { (1024...65535).contains(port) }
@@ -159,10 +172,89 @@ public struct ComputerUseSettings: Codable, Equatable {
 
     public var enabledToolGroups: [ToolGroup] { ToolGroup.allCases.filter { isEnabled($0) } }
 
+    /// The NachoCombo MCP switch of one gadget (off by default). `computer` has no switch of its own: its tools sit
+    /// under the tool groups.
+    public func isGadgetEnabled(_ gadget: GadgetID) -> Bool { gadget != .computer && (enabledGadgets[gadget.rawValue] ?? false) }
+
+    public mutating func setGadgetEnabled(_ gadget: GadgetID, _ enabled: Bool) {
+        guard gadget != .computer else { return }
+        enabledGadgets[gadget.rawValue] = enabled
+    }
+
+    /// Whether the MCP exit offers this registry tool right now: its tool group switch (Computer Use tools) or its
+    /// gadget switch (every other gadget).
+    public func offers(_ tool: GadgetTool) -> Bool {
+        guard tool.exits.contains(.mcp) else { return false }
+        if let group = tool.mcpGroup { return isEnabled(group) }
+        return isGadgetEnabled(tool.gadget)
+    }
+
     /// OS permissions needed by the groups that are switched on right now (and only those).
     public var requiredPermissions: [OSPermission] {
         var needed = Set<OSPermission>()
         for group in enabledToolGroups { needed.formUnion(group.requiredPermissions) }
         return needed.sorted()
+    }
+
+    // MARK: Computer Use gadget (Nacho) and the MCP server are independent switches
+
+    /// The tool groups Nacho uses; they are switched on when the gadget is first switched on. The high-risk groups
+    /// (AppleScript, shell, files, process control) are never part of it.
+    public static let gadgetDefaultGroups: [ToolGroup] = ToolGroup.allCases.filter { !$0.isHighRisk }
+
+    /// Switching the gadget on switches the default groups on, but only for settings that never chose a group. A
+    /// user who switched groups off on purpose (explicit entries) keeps that choice.
+    public func applyingGadgetDefaults() -> ComputerUseSettings {
+        guard enabledGroups.isEmpty else { return self }
+        var copy = self
+        for group in ComputerUseSettings.gadgetDefaultGroups { copy.setEnabled(group, true) }
+        return copy
+    }
+
+    /// The same settings with every Computer Use tool group off (the server then lists only gadget tools).
+    public func withoutComputerGroups() -> ComputerUseSettings {
+        var copy = self
+        for group in ToolGroup.allCases { copy.setEnabled(group, false) }
+        return copy
+    }
+
+    /// What the external port does right now. Nacho's own path never depends on it (`nachoPathAvailable`).
+    public enum ServerDecision: Equatable {
+        /// The port is closed.
+        case closed
+        /// Open; the Computer Use tool groups are served (the gadget is on).
+        case openWithComputerTools
+        /// Open; only gadget tools are served, because the Computer Use gadget is off.
+        case openGadgetToolsOnly
+    }
+
+    public func serverDecision(gadgetOn: Bool, emergencyStopped: Bool) -> ServerDecision {
+        guard serverEnabled, !emergencyStopped else { return .closed }
+        return gadgetOn ? .openWithComputerTools : .openGadgetToolsOnly
+    }
+
+    /// Whether Nacho may use Computer Use: the gadget is on and the emergency stop has not fired. The MCP server
+    /// switch plays no part.
+    public static func nachoPathAvailable(gadgetOn: Bool, emergencyStopped: Bool) -> Bool { gadgetOn && !emergencyStopped }
+}
+
+/// The OS permissions behind the Computer Use gadget's single switch: Nacho's tools see the screen (Screen Recording)
+/// and drive apps (Accessibility). Switching the gadget on asks only for the ones that are missing.
+public enum ComputerUseGadgetPermissions {
+    /// In the order the system dialogs are raised.
+    public static let required: [OSPermission] = [.accessibility, .screenRecording]
+
+    public static func missing(granted: (OSPermission) -> Bool) -> [OSPermission] {
+        required.filter { !granted($0) }
+    }
+
+    /// What to request right now: the missing permissions that were not requested since the switch was turned on.
+    public static func toRequest(granted: (OSPermission) -> Bool, alreadyRequested: Set<OSPermission> = []) -> [OSPermission] {
+        missing(granted: granted).filter { !alreadyRequested.contains($0) }
+    }
+
+    /// The one line shown for a missing permission (nothing for one that is granted).
+    public static func line(for permission: OSPermission) -> String {
+        "\(permission.displayName) permission is needed"
     }
 }

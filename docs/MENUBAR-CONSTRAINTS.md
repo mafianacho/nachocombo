@@ -28,3 +28,15 @@
 - No automatic selection of icons to hide, no list or search of other apps' icons, no second bar below the menu bar:
   all of these need Accessibility, Screen Recording and private APIs.
 - On a Mac with a camera notch, icons that end up under the notch cannot be shown.
+
+## MCP / Nacho tools (NACHO-148)
+Tools `menubar_status`, `menubar_list_items` (read), `menubar_tidy`, `menubar_set_collapsed`, `menubar_show_hidden` (change); guide
+`nachocombo://gadgets/menubar/guide`, prompt `menubar_organize`.
+- **Reading** other apps' items uses the public Accessibility API (`AXExtrasMenuBar` of each running app: position, size, title). It needs the
+  Accessibility permission; without it the result is `permission_needed`. Zones (`visible` / `hidden` / `always_hidden`) come from the x of the
+  organizer's own divider windows; items pushed off screen by a folded divider still report their (off-screen) position.
+- **Folding** only drives the gadget's own dividers (as before). `menubar_tidy` = fold now and drop the always-hidden view.
+- **Hiding / showing ONE other app's item: no tool.** The only public route is synthesizing a ⌘-drag with CGEvent from the item's AX position to
+  the left of the divider. It needs the Accessibility permission to post events, moves the real pointer, and depends on item positions and
+  drag behaviour that differ by macOS version (macOS 26/27 changed the menu bar window layout), which cannot be checked without a real Mac.
+  So the guide tells the user to ⌘-drag by hand. If a tool is wanted, NACHO-148 asks for a decision (risk `input_inject`, real-Mac check first).

@@ -8,7 +8,8 @@ import NachoComboCore
 /// and read as text. A window can also float live, an area can be recorded to a movie on the Desktop, and any pixel's
 /// color can be picked. Needs the Screen Recording permission (checked, never bypassed). Nothing leaves the Mac.
 final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
-    enum Purpose { case float, copyText, live, record }
+    /// `nacho`: the picture goes to `nachoDone` (NACHO-149 `capture_ask`), no floating window.
+    enum Purpose { case float, copyText, live, record, nacho }
 
     var allowPermissionPrompt = false
     let id = ModuleID.captureFloat
@@ -19,6 +20,8 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
     private(set) var floats: [FloatingCaptureWindow] = []
     private var selection: RegionSelectionController?
     private var promptedSinceEnabled = false
+    /// The waiting `captureForNacho` answer (one at a time).
+    private var nachoDone: ((CGImage?) -> Void)?
     private(set) var captureCount = 0
     private(set) var lastResult = "-"
     private(set) var running = false
@@ -58,6 +61,7 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
         promptedSinceEnabled = false
         selection?.cancel()
         selection = nil
+        finishNacho(nil)
         closeAll()
         locked = false
         hidden = false
@@ -75,6 +79,7 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
         case .live: hint = "Click a window to float it live · Space: an area instead · Esc: cancel"
         case .record: hint = "Drag over the area to record · Space: pick a window · Esc: cancel"
         case .float: hint = "Drag to capture an area · Space: pick a window · Esc: cancel"
+        case .nacho: hint = "Drag over what Nacho should see · Space: pick a window · Esc: cancel"
         }
         let controller = RegionSelectionController(windowMode: windowMode || purpose == .live, hint: hint)
         controller.onFinish = { [weak self] result in
@@ -85,7 +90,9 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
             case (.area(let rect)?, .live): self.capture(cocoaRect: rect, purpose: .float)
             case (.area(let rect)?, _): self.capture(cocoaRect: rect, purpose: purpose)
             case (.window(let number, let frame)?, _): self.captureWindow(number, frame: frame, purpose: purpose)
-            case (nil, _): self.lastResult = "cancelled"
+            case (nil, _):
+                self.lastResult = "cancelled"
+                if purpose == .nacho { self.finishNacho(nil) }
             }
         }
         selection = controller
@@ -120,6 +127,7 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
         let cgRect = RegionSelection.captureRect(fromCocoa: cocoaRect, primaryScreenHeight: primary.frame.height)
         guard let image = CGWindowListCreateImage(cgRect, .optionOnScreenOnly, kCGNullWindowID, [.bestResolution]) else {
             lastResult = "error:capture-failed"
+            if purpose == .nacho { finishNacho(nil) }
             return
         }
         if scale == 1 { lastArea = cocoaRect }
@@ -133,6 +141,7 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
             guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, number,
                                                       [.boundsIgnoreFraming, .bestResolution]) else {
                 self.lastResult = "error:window-capture-failed"
+                if purpose == .nacho { self.finishNacho(nil) }
                 return
             }
             self.deliver(image, frame: frame, purpose: purpose, scale: 1, liveWindow: purpose == .live ? number : nil)
@@ -145,6 +154,8 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
         switch purpose {
         case .copyText:
             TextRecognizer.copyText(in: image, near: NSPoint(x: frame.midX, y: frame.midY))
+        case .nacho:
+            finishNacho(image)
         case .float, .live, .record:
             let size = CGSize(width: (frame.width * scale).rounded(), height: (frame.height * scale).rounded())
             var origin = frame.origin
@@ -293,6 +304,35 @@ final class CaptureFloatModule: NSObject, FeatureModule, PermissionPrompting {
         floats.forEach { hidden ? $0.orderOut(nil) : $0.orderFrontRegardless() }
         onChange?()
     }
+
+    // MARK: for Nacho (NACHO-149)
+
+    /// One capture for Nacho: the user drags an area (or picks a window), or the whole screen under the pointer.
+    /// `done` gets the picture, or nil when cancelled / failed / busy. Called once, on the main thread.
+    func captureForNacho(screen: Bool, done: @escaping (CGImage?) -> Void) {
+        guard running, nachoDone == nil, selection == nil else { return done(nil) }
+        guard CaptureFloatModule.hasAccess() else { permissionLost(); return done(nil) }
+        nachoDone = done
+        if screen {
+            let point = NSEvent.mouseLocation
+            guard let display = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else {
+                return finishNacho(nil)
+            }
+            capture(cocoaRect: display.frame, purpose: .nacho)
+        } else {
+            beginSelection(purpose: .nacho)
+            if selection == nil { finishNacho(nil) }
+        }
+    }
+
+    private func finishNacho(_ image: CGImage?) {
+        let done = nachoDone
+        nachoDone = nil
+        done?(image)
+    }
+
+    /// Pixel sizes of the open pinned captures (no pictures).
+    var pinnedSizes: [(width: Int, height: Int)] { floats.map { (width: $0.cgImage.width, height: $0.cgImage.height) } }
 
     func closeAll() {
         for window in floats { window.onClosed = nil; window.orderOut(nil); window.close() }

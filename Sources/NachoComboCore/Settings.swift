@@ -101,6 +101,8 @@ public struct AppSettings: Codable, Equatable {
              computerUse, checkForUpdates, autoInstallUpdates, bento
     }
 
+    private struct ServerSwitchProbe: Decodable { let serverEnabled: Bool? }
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decode(Int.self, forKey: .version)
@@ -124,6 +126,10 @@ public struct AppSettings: Codable, Equatable {
         customCombos = (try? c.decodeIfPresent([SavedCombo].self, forKey: .customCombos)) ?? []
         // A broken Computer Use section falls back to its defaults (everything off), never to something more open.
         computerUse = (try? c.decodeIfPresent(ComputerUseSettings.self, forKey: .computerUse)) ?? ComputerUseSettings()
+        // NACHO-195: the MCP server got its own switch. A file written before it has none: where the gadget was on,
+        // the server was open, so it stays on (nothing stops working after the update). The next save writes the key.
+        let storedSwitch = (try? c.decodeIfPresent(ServerSwitchProbe.self, forKey: .computerUse))?.serverEnabled
+        if storedSwitch == nil, enabledModules[ModuleID.computerUse.rawValue] == true { computerUse.serverEnabled = true }
         checkForUpdates = (try? c.decodeIfPresent(Bool.self, forKey: .checkForUpdates)) ?? true
         autoInstallUpdates = (try? c.decodeIfPresent(Bool.self, forKey: .autoInstallUpdates)) ?? true
         // A broken board falls back to the default board; nothing else in the file is lost.

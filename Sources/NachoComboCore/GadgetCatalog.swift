@@ -474,30 +474,27 @@ public extension GadgetCatalog {
 
     static let computerUse = GadgetInfo(
         id: .computerUse,
-        tagline: "Lets an MCP client that holds your key see and control this Mac. Experimental, off by default.",
+        tagline: "Lets Nacho look at the screen and use the mouse and keyboard for you. Experimental, off by default.",
         features: [
-            f("server.rack", "MCP Server", "A Model Context Protocol server on this Mac (127.0.0.1 by default). Clients must send a key you made here."),
-            f("key", "Your Keys", "Make, name and revoke keys. Only a hash is kept on disk; the key itself is shown once."),
-            f("switch.2", "Tool Groups", "Screen, Apps & Windows, Input, Clipboard, Open and System Info: each group has its own switch and all start off."),
-            f("exclamationmark.shield", "High-Risk Tools Apart", "AppleScript, shell commands, reading and writing files and force-quitting processes are separate groups that ask before they turn on."),
-            f("stop.circle", "Emergency Stop", "⌃⌥⌘. refuses every call at once and turns the gadget off."),
-            f("wifi", "LAN Mode (Optional)", "Other computers on the same private network can connect over TLS with a pinned self-signed certificate."),
-            f("list.bullet.rectangle", "Call Log", "Every call is listed with its tool, its client and whether it was allowed."),
-        ],
+            f("server.rack", "MCP Server Is Separate", "The server for outside MCP clients has its own switch, keys and tool groups in Settings ▸ MCP. Turning it off does not stop Nacho."),
+            f("key", "Asks for Permissions", "Switching it on asks macOS only for the permissions that are missing (Accessibility, Screen Recording)."),
+            f("switch.2", "Tool Groups", "Switching it on turns on the groups Nacho uses: Screen, Apps & Windows, Input, Clipboard, Open and System Info."),
+            f("exclamationmark.shield", "High-Risk Tools Apart", "AppleScript, shell commands, reading and writing files and force-quitting processes stay off and ask before they turn on (Settings ▸ MCP)."),
+            f("stop.circle", "Emergency Stop", "⌃⌥⌘. refuses every call at once, closes the MCP server and turns the gadget off."),
+                    ],
         tips: [t("⌃⌥⌘.", "", "Emergency stop: refuse every call and turn the gadget off")],
         permissions: [
             GadgetPermissionNeed(permission: .screenRecording,
-                                 reason: "Only when the Screen group is on, so a client can take screenshots.",
+                                 reason: "So Nacho can take screenshots. macOS is asked when you switch the gadget on, and only if it is missing.",
                                  optional: true, purpose: "takes screenshots for the MCP client"),
             GadgetPermissionNeed(permission: .accessibility,
-                                 reason: "Only when the Input or Apps & Windows group is on, so a client can click, type and move windows.",
+                                 reason: "So Nacho can click, type and move windows. macOS is asked when you switch the gadget on, and only if it is missing.",
                                  optional: true, purpose: "clicks, types and moves windows for the MCP client"),
         ],
-        permissionNote: "No permission is needed until you switch a tool group on; then only that group's permission is asked for. With Run AppleScript on, macOS asks about each app it controls (Automation).",
+        permissionNote: "Switching the gadget on asks only for the permissions that are missing. With Run AppleScript on (Settings ▸ MCP), macOS asks about each app it controls (Automation).",
         limits: [
             "Experimental: not yet tried on a real Mac. See docs/COMPUTER-USE-MCP.md for what is unverified.",
-            "Anyone who holds a key can control this Mac while the gadget is on. Keep keys secret and revoke the ones you do not use.",
-            "LAN mode needs TLS and a key; it only accepts clients from private addresses and never opens without encryption.",
+            "Nacho asks you before each use. Anyone who holds an MCP key can control this Mac while the server is on: keep keys secret and revoke the ones you do not use (Settings ▸ MCP).",
             "Combos never switch this gadget on or off.",
         ])
 }

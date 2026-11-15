@@ -561,7 +561,7 @@ final class GadgetDetailView: NSView {
                                      width: GadgetDetailView.cardInner, style: .subheadline))
         case .computerUse:
             rows.append(row([button("Emergency Stop", symbol: "stop.circle", .computerUseEmergencyStop, enabled: on), UI.spacer()]))
-            rows.append(UI.wrapLabel("Keys, tool groups, the port and LAN mode are on the Settings tab. With no tool group on, no tool is offered.",
+            rows.append(UI.wrapLabel("This switch is for Nacho. The MCP server for outside clients, its keys and tool groups are in Settings ▸ MCP.",
                                      width: GadgetDetailView.cardInner, style: .subheadline))
         }
         return rows
