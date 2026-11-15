@@ -242,6 +242,77 @@ final class HubNotificationsCaptureTests: XCTestCase {
         XCTAssertEqual(box.toasts.last?.0, "이 알림은 끌 수 없어요.")
     }
 
+    // MARK: 창 연결(사이드바 배지·섹션 이동)
+
+    private func makeWindow(_ http: FakeHTTP) -> (PetHubWindow, NotificationsSection) {
+        let client = HubClient(endpoint: ServerEndpoint(base: URL(string: "https://nacho.example.com")!), http: http, tokens: { _, done in done("fake-token") })
+        let env = HubEnvironment(isSignedIn: { true }, client: { client }, signIn: {})
+        let w = PetHubWindow(env: env, autosaveName: nil, initial: .notifications)
+        return (w, w.currentSection as! NotificationsSection)
+    }
+
+    private func find<T: NSView>(_ type: T.Type, _ v: NSView, where ok: (T) -> Bool) -> T? {
+        if let t = v as? T, ok(t) { return t }
+        for s in v.subviews { if let r = find(type, s, where: ok) { return r } }
+        return nil
+    }
+
+    private func sidebarRow(_ w: PetHubWindow) throws -> HubSidebarRow {
+        try XCTUnwrap(find(HubSidebarRow.self, try XCTUnwrap(w.contentView)) { $0.sectionID == .notifications })
+    }
+
+    func testSidebarBadgeMatchesBadgeCountAndShrinksAfterRead() throws {
+        let http = standard()
+        let (w, s) = makeWindow(http)
+        let row = try sidebarRow(w)
+        XCTAssertEqual(s.badge, 3)
+        XCTAssertTrue(texts(row).contains("3"), "사이드바 배지는 badgeCount와 같다: \(texts(row))")
+        XCTAssertEqual(row.accessibilityLabel(), "알림·활동, 안 읽음 3개")
+        s.open(try XCTUnwrap(s.notifications.first { $0.id == "n2" }))
+        XCTAssertEqual(s.badge, 2)
+        XCTAssertTrue(texts(row).contains("2"))
+        XCTAssertFalse(texts(row).contains("3"))
+    }
+
+    func testSidebarBadgeHiddenWhenNothingUnread() throws {
+        let http = standard()
+        http.routes["GET /api/v1/me/notifications"] = (200, "[]")
+        http.routes["GET /api/v1/activity"] = (200, "{\"sections\":[],\"activity_unread_count\":0}")
+        let (w, _) = makeWindow(http)
+        let row = try sidebarRow(w)
+        XCTAssertFalse(texts(row).contains("0"))
+        XCTAssertEqual(row.accessibilityLabel(), "알림·활동")
+    }
+
+    func testTapGoesToDestinationSectionAndNoDestinationStays() throws {
+        let http = standard()
+        http.routes["GET /api/v1/me/notifications"] = (200, "[" + n("t1", title: "작업", read: false, at: "2026-11-15T09:00:00Z", data: "{\"task_id\":\"t1\"}")
+            + "," + n("z1", kind: "something_new", title: "새 소식", read: false, at: "2026-11-15T08:00:00Z") + "]")
+        http.routes["POST /api/v1/me/notifications/t1/read"] = (200, "{\"ok\":true}")
+        http.routes["POST /api/v1/me/notifications/z1/read"] = (200, "{\"ok\":true}")
+        let (w, s) = makeWindow(http)
+        s.open(try XCTUnwrap(s.notifications.first { $0.id == "z1" }))
+        XCTAssertEqual(w.selected, .notifications, "갈 곳이 없으면 그대로")
+        XCTAssertTrue(http.keys().contains("POST /api/v1/me/notifications/z1/read"), "읽음 요청은 간다")
+        s.open(try XCTUnwrap(s.notifications.first { $0.id == "t1" }))
+        XCTAssertEqual(w.selected, .tasks)
+        XCTAssertTrue(http.keys().contains("POST /api/v1/me/notifications/t1/read"))
+    }
+
+    func testWindowCaptureWithSidebarBadge() throws {
+        let (w, _) = makeWindow(standard())
+        for dark in [false, true] {
+            w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            w.setContentSize(PetHubWindow.defaultSize)
+            let root = try XCTUnwrap(w.contentView)
+            root.layoutSubtreeIfNeeded()
+            root.displayIfNeeded()
+            let rep = try XCTUnwrap(root.bitmapImageRepForCachingDisplay(in: root.bounds))
+            root.cacheDisplay(in: root.bounds, to: rep)
+            try emit(try XCTUnwrap(rep.representation(using: .png, properties: [:])), name: "notifications-window-badge-\(dark ? "dark" : "light")")
+        }
+    }
+
     private func emit(_ png: Data, name: String) throws {
         try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         try png.write(to: outDir.appendingPathComponent("\(name).png"))
