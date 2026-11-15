@@ -48,6 +48,12 @@ public struct HubAllowance: Equatable {
     public var allowed: Bool
     /// nil이면 계정 범위 그대로.
     public var writeKinds: [String]?
+
+    public init(agentID: String, allowed: Bool, writeKinds: [String]?) {
+        self.agentID = agentID
+        self.allowed = allowed
+        self.writeKinds = writeKinds
+    }
 }
 
 public struct HubSharingRow: Equatable {
@@ -56,6 +62,14 @@ public struct HubSharingRow: Equatable {
     public var category: String
     public var audience: HubAudience
     public var sharePlansFreeOnly: Bool
+
+    public init(source: String, label: String, category: String, audience: HubAudience, sharePlansFreeOnly: Bool) {
+        self.source = source
+        self.label = label
+        self.category = category
+        self.audience = audience
+        self.sharePlansFreeOnly = sharePlansFreeOnly
+    }
 }
 
 /// 접근 기록 한 묶음(서버 `AccessGroup`). 화면에 쓰는 칸만 옮긴다 — `context`·`target_label`·`requests[]`는 옮기지 않는다.
@@ -105,6 +119,11 @@ public struct HubApprovalRules: Equatable {
     public var limitValue: Int?
     public var limitCurrency: String
     public var limitUsed: Int
+}
+
+public extension PetAPIError {
+    /// 로그인이 안 된 채 요청하려 할 때(앱 쪽에서 쓴다).
+    static let hubNotSignedIn = PetAPIError(status: 401, code: "unauthorized", text: "로그인이 필요해요.")
 }
 
 public enum HubTrustAPI {

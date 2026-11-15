@@ -7,7 +7,7 @@ extension HubSectionBase {
     /// 사용자가 다른 섹션으로 옮겨 컨텍스트가 바뀌어도 결과가 버려지지 않도록 완료 때까지 클라이언트를 붙잡는다.
     func call(_ build: @escaping (ServerEndpoint, String?) -> PetHTTPRequest,
               done: @escaping (Result<PetHTTPResponse, PetAPIError>) -> Void) {
-        guard let client = ctx.client else { done(.failure(PetAPIError(status: 401, code: "unauthorized", text: "로그인이 필요해요."))); return }
+        guard let client = ctx.client else { done(.failure(.hubNotSignedIn)); return }
         let endpoint = client.endpoint
         client.send({ build(endpoint, $0) }) { result in
             withExtendedLifetime(client) {}
