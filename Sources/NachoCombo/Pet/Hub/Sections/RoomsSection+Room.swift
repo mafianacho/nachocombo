@@ -129,17 +129,22 @@ extension RoomsSection {
 
     // MARK: 삭제 (B7, 이중 확인)
 
-    func confirmDelete(_ room: HubRoom) {
+    /// 두 번 거치는 확인창의 문구(시험·캡처가 같은 문구를 쓴다).
+    func deleteSteps(_ room: HubRoom) -> [HubConfirmStep] {
         let body: String
         switch room.kind {
         case "group": body = "방장이라 이 방이 모든 사람에게서 지워져요. 되돌릴 수 없어요."
         case "direct": body = "이 대화의 내용이 모두 지워져요. 되돌릴 수 없어요."
         default: body = "이 대화를 목록에서 지워요. 되돌릴 수 없어요."
         }
-        ctx.confirm([
+        return [
             HubConfirmStep(title: "이 대화를 삭제할까요?", message: "‘\(room.displayTitle)’\n\(body)", confirmTitle: "계속"),
             HubConfirmStep(title: "정말 삭제할까요?", message: "한 번 더 확인해요. 지우면 되돌릴 수 없어요.", confirmTitle: "삭제"),
-        ]) { [self] in deleteRoom(room) }
+        ]
+    }
+
+    func confirmDelete(_ room: HubRoom) {
+        ctx.confirm(deleteSteps(room)) { [self] in deleteRoom(room) }
     }
 
     func deleteRoom(_ room: HubRoom) {
@@ -176,7 +181,7 @@ extension RoomsSection {
         let more: ([NSView], Bool, @escaping () -> Void) -> Void = { [self] rows, hasMore, loadMore in
             let all = existing + rows
             if all.isEmpty { setBody(host, to: emptyNote(emptyText(tab))); return }
-            let list = HubListView()
+            let list = HubListView(frame: .zero)
             list.setRows(all, hasMore: hasMore)
             list.onLoadMore = loadMore
             setBody(host, to: list)

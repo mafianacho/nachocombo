@@ -192,7 +192,7 @@ final class RoomsSection: HubSectionBase {
         if rooms.isEmpty {
             body = emptyNote(listTab == .stored ? "넣어둔 대화가 없어요. 대화에서 ‘보관’을 고르면 여기에 모여요." : "아직 대화가 없어요.")
         } else {
-            let list = HubListView()
+            let list = HubListView(frame: .zero)
             list.setRows(rooms.map(roomRow), hasMore: next != nil)
             list.onLoadMore = { [self] in loadMoreRooms() }
             body = list
@@ -260,7 +260,7 @@ final class RoomsSection: HubSectionBase {
         if items.isEmpty {
             body = emptyNote("찾는 말이 없어요.")
         } else {
-            let list = HubListView()
+            let list = HubListView(frame: .zero)
             list.setRows(items.map(searchRow), hasMore: next != nil)
             list.onLoadMore = { [self] in loadMoreSearch() }
             body = list
