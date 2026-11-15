@@ -73,6 +73,8 @@ enum HubKit {
     static func scrollingStack(spacing: Double = Sp.m, inset: Double = Sp.l) -> (scroll: NSScrollView, stack: NSStackView) {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .overlay
+        scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false
