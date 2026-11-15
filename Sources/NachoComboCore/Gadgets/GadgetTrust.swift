@@ -6,8 +6,8 @@ import Foundation
 // The switches live in their own small file next to settings.json (`gadget-trust.json`, like the workspaces file);
 // every change notifies the observers, and the connector declares its capabilities again.
 //
-// `disabled` is the extension point for NACHO-131 (the Connections tab switches single actions off): connector names
-// in it are neither declared nor run. Memory only here; NACHO-131 decides where it is stored.
+// `disabled` is where the Connections tab (NACHO-131 / NACHO-239) switches single Mac actions off: connector names in
+// it are neither declared nor run. It is stored in the same file as the "always allow" switches, so a restart keeps it.
 
 public final class GadgetTrust {
     /// The app-wide switches. In memory until `attach(url:)` (the app delegate does that at launch), so tests that
@@ -25,7 +25,7 @@ public final class GadgetTrust {
     public init(url: URL? = nil, trustable: @escaping () -> Set<GadgetID> = { GadgetToolRegistry.trustableGadgets() }) {
         self.trustable = trustable
         self.url = url
-        if url != nil { allowed = loadFromDisk() }
+        if url != nil { (allowed, off) = loadFromDisk() }
     }
 
     public static var defaultURL: URL {
@@ -38,8 +38,9 @@ public final class GadgetTrust {
         lock.lock()
         self.url = url
         let loaded = loadFromDisk()
-        let changed = loaded != allowed
-        allowed = loaded
+        let changed = loaded.allowed != allowed || loaded.disabled != off
+        allowed = loaded.allowed
+        off = loaded.disabled
         lock.unlock()
         if changed { notify() }
     }
@@ -66,16 +67,28 @@ public final class GadgetTrust {
         return changed
     }
 
-    /// Connector names the user switched off (NACHO-131 fills this).
+    /// Connector names the user switched off in the Connections tab. Stored; the setter notifies the observers.
     public var disabled: Set<String> {
         get { lock.lock(); defer { lock.unlock() }; return off }
         set {
             lock.lock()
             let changed = newValue != off
             off = newValue
+            if changed { saveToDisk() }
             lock.unlock()
             if changed { notify() }
         }
+    }
+
+    /// Whether the user left this action on. Every name the connector knows the tool by counts.
+    public func isActionEnabled(_ tool: GadgetTool) -> Bool { disabled.isDisjoint(with: tool.connectorNames) }
+
+    /// Switches one Mac action on or off. The canonical connector name is stored (`combo_<gadget>_<action>`); switching on
+    /// removes every name the tool answers to, so an old name saved by an earlier build cannot keep it off.
+    public func setActionEnabled(_ tool: GadgetTool, _ enabled: Bool) {
+        var names = disabled
+        if enabled { names.subtract(tool.connectorNames) } else { names.insert(tool.connectorName) }
+        disabled = names
     }
 
     /// Called (on the thread that changed the switch) after `alwaysAllowed` or `disabled` changed.
@@ -102,18 +115,31 @@ public final class GadgetTrust {
     private struct Stored: Codable {
         var version: Int?
         var alwaysAllowed: [String]
+        /// Version 2: connector names switched off in the Connections tab. Absent in a version 1 file.
+        var disabled: [String]?
     }
 
-    private func loadFromDisk() -> Set<GadgetID> {
+    static let maxDisabled = 256
+
+    /// A connector name is `[A-Za-z0-9_-]{1,64}` (the MCP/connector naming rule); anything else in the file is dropped.
+    static func isConnectorName(_ s: String) -> Bool {
+        !s.isEmpty && s.count <= 64 && s.unicodeScalars.allSatisfy {
+            ($0.value >= 0x30 && $0.value <= 0x39) || ($0.value >= 0x41 && $0.value <= 0x5A) || ($0.value >= 0x61 && $0.value <= 0x7A)
+                || $0 == "_" || $0 == "-"
+        }
+    }
+
+    private func loadFromDisk() -> (allowed: Set<GadgetID>, disabled: Set<String>) {
         guard let url = url, let data = try? Data(contentsOf: url), let stored = try? JSONDecoder().decode(Stored.self, from: data)
-        else { return [] }
+        else { return ([], []) }
         let ok = trustable()
-        return Set(stored.alwaysAllowed.compactMap { GadgetID(rawValue: $0) }.filter { ok.contains($0) })
+        let names = (stored.disabled ?? []).filter(GadgetTrust.isConnectorName).prefix(GadgetTrust.maxDisabled)
+        return (Set(stored.alwaysAllowed.compactMap { GadgetID(rawValue: $0) }.filter { ok.contains($0) }), Set(names))
     }
 
     private func saveToDisk() {
         guard let url = url else { return }
-        let stored = Stored(version: 1, alwaysAllowed: allowed.map { $0.rawValue }.sorted())
+        let stored = Stored(version: 2, alwaysAllowed: allowed.map { $0.rawValue }.sorted(), disabled: off.sorted())
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(stored).write(to: url, options: .atomic)
