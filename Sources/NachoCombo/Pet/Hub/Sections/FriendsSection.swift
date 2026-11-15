@@ -107,7 +107,13 @@ final class FriendsSection: HubSectionBase {
             let tap: () -> Void = { [weak self] in self?.openTab(s) }
             return s == current ? HubKit.primaryButton(title, onClick: tap) : HubKit.secondaryButton(title, onClick: tap)
         }
-        return PetFlow.rows(pills, maxWidth: 700, gap: Double(PetTokens.Space.s))
+        // 탭 단추는 글자 크기만큼만 차지하고 남는 자리는 빈 칸이 받는다.
+        for p in pills { p.setContentHuggingPriority(.required, for: .horizontal) }
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        let row = HubKit.hstack(pills + [spacer], spacing: Double(PetTokens.Space.s))
+        return row
     }
 
     /// 탭을 누르면 그 탭의 데이터를 새로 받는다.
