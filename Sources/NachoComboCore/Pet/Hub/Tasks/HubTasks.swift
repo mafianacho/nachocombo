@@ -39,6 +39,9 @@ public struct HubTask {
     public var counterpart: String? { raw.obj("call")?.str("counterpart_label") }
     public var callState: String? { raw.obj("call")?.str("call_state") }
     public var awaySummary: String? { raw.str("away_summary") }
+    public var pendingRequestID: String? { raw.str("pending_request_id") }
+    /// 브라우저·로그인 카드를 기다리는 작업만 원격 화면(라이브 뷰)을 연다.
+    public var canOpenLiveView: Bool { state == "waiting" && ["browser", "login"].contains(waitReason ?? "") && pendingRequestID != nil }
 
     public var stepLine: String? {
         guard let s = raw.obj("current_step"), let text = s.str("text"), !text.isEmpty else { return nil }
@@ -367,10 +370,13 @@ public enum HubTasks {
         return HubTask(HubObject(t))
     }
 
-    public static func continueFailureText(_ resp: PetHTTPResponse) -> String {
-        if PetServerError.code(resp.body) == "estimate_changed" { return "계획이 바뀌었어요. 확인하고 다시 눌러 주세요." }
-        return HubAPI.error(resp).text
+    public static let estimateChangedText = "계획이 바뀌었어요. 확인하고 다시 눌러 주세요."
+
+    public static func continueFailureText(_ e: PetAPIError) -> String {
+        e.code == "estimate_changed" ? estimateChangedText : e.text
     }
+
+    public static func continueFailureText(_ resp: PetHTTPResponse) -> String { continueFailureText(HubAPI.error(resp)) }
 
     /// 429의 `Retry-After`(초).
     public static func retryAfterSeconds(_ resp: PetHTTPResponse) -> Int? {
