@@ -229,6 +229,43 @@ final class HubAccountAPITests: XCTestCase {
         XCTAssertEqual(failure(out!)?.isVersionConflict, true)
     }
 
+    func testClientConfigNeedsNoToken() {
+        let r = HubAccountAPI.clientConfig(e)
+        XCTAssertEqual(r.url.absoluteString, "https://nacho.example.com/client/config")
+        XCTAssertNil(r.headers["Authorization"])
+    }
+
+    func testSubmitUserReportSendsOnceWithOneIdempotencyKeyAcross401() {
+        let http = FakeHTTP([resp(401, "{\"error\":{\"code\":\"unauthorized\",\"message\":\"x\"}}"), resp(201, "{\"status\":\"ok\"}")])
+        let client = HubClient(endpoint: e, http: http, tokens: { _, done in done("T") })
+        var out: Result<Void, PetAPIError>?
+        HubAccountAPI.submitUserReport(client: client, userID: "u-9", description: "나쁜 말", completion: { out = $0 })
+        XCTAssertEqual(http.sent.count, 2)
+        XCTAssertEqual(http.sent[0].url.path, "/api/v1/users/u-9/report")
+        XCTAssertEqual(http.sent[0].headers["Idempotency-Key"], http.sent[1].headers["Idempotency-Key"])
+        XCTAssertNotNil(http.sent[0].headers["Idempotency-Key"])
+        XCTAssertNotNil(out.flatMap { try? $0.get() })
+    }
+
+    func testSubmitUserReportChecksInputBeforeSending() {
+        let http = FakeHTTP([])
+        let client = HubClient(endpoint: e, http: http, tokens: { _, done in done("T") })
+        var out: Result<Void, PetAPIError>?
+        HubAccountAPI.submitUserReport(client: client, userID: "u-9", description: "  ", completion: { out = $0 })
+        XCTAssertEqual(failure(out!)?.text, "신고 내용을 입력해 주세요.")
+        HubAccountAPI.submitUserReport(client: client, userID: "u-9", description: String(repeating: "a", count: 1001), completion: { out = $0 })
+        XCTAssertEqual(failure(out!)?.text, "신고 내용은 1000자까지 쓸 수 있어요.")
+        XCTAssertTrue(http.sent.isEmpty)
+    }
+
+    func testSubmitUserReportServerErrorIsKorean() {
+        let http = FakeHTTP([resp(404, "{\"error\":{\"code\":\"not_found\",\"message\":\"m\"}}")])
+        let client = HubClient(endpoint: e, http: http, tokens: { _, done in done("T") })
+        var out: Result<Void, PetAPIError>?
+        HubAccountAPI.submitUserReport(client: client, userID: "u-9", description: "x", completion: { out = $0 })
+        XCTAssertEqual(failure(out!)?.isNotFound, true)
+    }
+
     func testPrivacyUnauthorizedRetriesOnceThenParses() {
         let http = FakeHTTP([resp(401, "{\"error\":{\"code\":\"unauthorized\",\"message\":\"x\"}}"),
                              resp(200, "{\"memory_paused\":false,\"memory_indicator_enabled\":true,\"phone_discoverable\":false}")])

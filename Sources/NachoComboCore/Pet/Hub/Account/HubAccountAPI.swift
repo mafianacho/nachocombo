@@ -113,6 +113,25 @@ public enum HubAccountAPI {
         return HubAPI.post(e, "/api/v1/users/\(seg)/report", bearer: bearer, json: ["description": description], idempotencyKey: idempotencyKey)
     }
 
+    /// 비인증. 법적 문서 주소(`legal_docs`)를 읽는다.
+    public static func clientConfig(_ e: ServerEndpoint) -> PetHTTPRequest { HubAPI.get(e, "/client/config", bearer: nil) }
+
+    /// 사용자 신고 공개 함수(친구·탐색 등 다른 섹션이 부른다). 입력을 검사한 뒤에만 보낸다. 멱등 키는 한 번 만들어 401 재시도에도 같다.
+    public static func submitUserReport(client: HubClient, userID: String, description: String, completion: @escaping (Result<Void, PetAPIError>) -> Void) {
+        switch AccountRules.userReport(description) {
+        case .empty:
+            completion(.failure(PetAPIError(status: 0, code: "invalid_input", text: "신고 내용을 입력해 주세요.")))
+        case .tooLong:
+            completion(.failure(PetAPIError(status: 0, code: "invalid_input", text: "신고 내용은 \(AccountRules.userReportMax)자까지 쓸 수 있어요.")))
+        case let .ok(text):
+            let key = HubAPI.newIdempotencyKey()
+            let e = client.endpoint
+            client.send({ reportUser(e, userID: userID, bearer: $0, description: text, idempotencyKey: key) }) { r in
+                completion(r.flatMap { parseCreated($0) })
+            }
+        }
+    }
+
     // MARK: responses
 
     private static func profile(_ u: HubObject, authProvider: String? = nil) -> AccountProfile {
