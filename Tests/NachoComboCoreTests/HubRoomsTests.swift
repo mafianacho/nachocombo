@@ -190,9 +190,9 @@ final class HubRoomsTests: XCTestCase {
 
     func testTitleRules() {
         XCTAssertEqual(try? HubRoomsAPI.normalizeTitle("  여행  ").get(), "여행")
-        XCTAssertEqual(HubRoomsAPI.normalizeTitle("   ").failure, "이름을 적어 주세요.")
-        XCTAssertEqual(HubRoomsAPI.normalizeTitle("가\n나").failure, "이름에 줄바꿈은 쓸 수 없어요.")
-        XCTAssertEqual(HubRoomsAPI.normalizeTitle(String(repeating: "가", count: 41)).failure, "이름은 40자까지 쓸 수 있어요.")
+        XCTAssertEqual(HubRoomsAPI.normalizeTitle("   ").failure?.text, "이름을 적어 주세요.")
+        XCTAssertEqual(HubRoomsAPI.normalizeTitle("가\n나").failure?.text, "이름에 줄바꿈은 쓸 수 없어요.")
+        XCTAssertEqual(HubRoomsAPI.normalizeTitle(String(repeating: "가", count: 41)).failure?.text, "이름은 40자까지 쓸 수 있어요.")
         XCTAssertNotNil(try? HubRoomsAPI.normalizeTitle(String(repeating: "가", count: 40)).get())
         // 이모지 하나는 한 글자(코드 포인트)로 센다.
         XCTAssertNotNil(try? HubRoomsAPI.normalizeTitle(String(repeating: "😀", count: 40)).get())
@@ -200,9 +200,9 @@ final class HubRoomsTests: XCTestCase {
 
     func testSearchQueryRules() {
         XCTAssertEqual(try? HubRoomsAPI.normalizeQuery("  비밀 ").get(), "비밀")
-        XCTAssertEqual(HubRoomsAPI.normalizeQuery("").failure, "검색어를 입력해 주세요.")
-        XCTAssertEqual(HubRoomsAPI.normalizeQuery(" \t ").failure, "검색어를 입력해 주세요.")
-        XCTAssertEqual(HubRoomsAPI.normalizeQuery("•••").failure, "검색어를 입력해 주세요.", "가린 구간 글자(•)만으로는 찾지 않는다")
+        XCTAssertEqual(HubRoomsAPI.normalizeQuery("").failure?.text, "검색어를 입력해 주세요.")
+        XCTAssertEqual(HubRoomsAPI.normalizeQuery(" \t ").failure?.text, "검색어를 입력해 주세요.")
+        XCTAssertEqual(HubRoomsAPI.normalizeQuery("•••").failure?.text, "검색어를 입력해 주세요.", "가린 구간 글자(•)만으로는 찾지 않는다")
         XCTAssertNotNil(try? HubRoomsAPI.normalizeQuery("•a").get())
     }
 
