@@ -118,7 +118,9 @@ final class HubAccountCaptureTests: XCTestCase {
         for dark in [false, true] {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
             w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            let root = try XCTUnwrap(w.contentView)
+            let root = PetBox()
+            root.fill = PetTheme.color(\.window)
+            w.contentView = root
             HubKit.pin(r.section.view, in: root)
             root.layoutSubtreeIfNeeded()
             root.displayIfNeeded()

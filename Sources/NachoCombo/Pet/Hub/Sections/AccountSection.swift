@@ -126,10 +126,27 @@ final class AccountSection: HubSectionBase, NSTextFieldDelegate, NSTextViewDeleg
         return g
     }
 
+    /// 단추는 글자 크기에 맞춰 폭을 정한다(정하지 않으면 칸 너비만큼 늘어난다).
+    func primary(_ title: String, symbol: String? = nil, danger: Bool = false, _ action: @escaping () -> Void) -> PetPill {
+        sized(HubKit.primaryButton(title, symbol: symbol, danger: danger, onClick: action), title: title, symbol: symbol,
+              font: PetTheme.font(PetTokens.Font.body, PetTokens.Font.weightMedium))
+    }
+
+    func secondary(_ title: String, symbol: String? = nil, _ action: @escaping () -> Void) -> PetPill {
+        sized(HubKit.secondaryButton(title, symbol: symbol, onClick: action), title: title, symbol: symbol, font: PetTheme.body)
+    }
+
+    private func sized(_ p: PetPill, title: String, symbol: String?, font: NSFont) -> PetPill {
+        let text = (title as NSString).size(withAttributes: [.font: font]).width
+        let icon = symbol == nil ? 0 : PetTokens.Size.icon + Sp.xs
+        p.widthAnchor.constraint(equalToConstant: ceil(text + CGFloat(Sp.l * 2 + icon)) + 6).isActive = true
+        return p
+    }
+
     func buttonRow(_ buttons: [NSView]) -> NSStackView { HubKit.hstack(buttons, spacing: Sp.s) }
 
     func backBar() -> NSView {
-        buttonRow([HubKit.secondaryButton("계정·설정", symbol: "chevron.left") { [weak self] in self?.showMain() }])
+        buttonRow([secondary("계정·설정", symbol: "chevron.left") { [weak self] in self?.showMain() }])
     }
 
     // MARK: 첫 화면
@@ -157,7 +174,7 @@ final class AccountSection: HubSectionBase, NSTextFieldDelegate, NSTextViewDeleg
             row("문제 신고", "", .issue),
             row("약관·법적 고지", "", .legal),
         ]))
-        views.append(buttonRow([HubKit.secondaryButton("로그아웃", symbol: "rectangle.portrait.and.arrow.right") { [weak self] in self?.confirmSignOut() }]))
+        views.append(buttonRow([secondary("로그아웃", symbol: "rectangle.portrait.and.arrow.right") { [weak self] in self?.confirmSignOut() }]))
         present(views)
     }
 
@@ -179,7 +196,7 @@ final class AccountSection: HubSectionBase, NSTextFieldDelegate, NSTextViewDeleg
     func privacyViews() -> [NSView] {
         guard let pv = privacy else {
             let note = HubKit.label(privacyFailed ? "설정을 불러오지 못했어요. 눌러서 다시 시도해 주세요." : "", color: PetTheme.secondary)
-            let retry = HubKit.secondaryButton("다시 시도", symbol: "arrow.clockwise") { [weak self] in self?.reload() }
+            let retry = secondary("다시 시도", symbol: "arrow.clockwise") { [weak self] in self?.reload() }
             return [card([note, buttonRow([retry])])]
         }
         func sw(_ title: String, _ detail: String, _ on: Bool, _ key: PrivacyKey) -> HubSwitchRow {
@@ -187,7 +204,7 @@ final class AccountSection: HubSectionBase, NSTextFieldDelegate, NSTextViewDeleg
             r.onChange = { [weak self, weak r] v in self?.setPrivacy(key, v, row: r) }
             return r
         }
-        let del = HubKit.secondaryButton("연락처 매칭 자료 삭제", symbol: "trash") { [weak self] in self?.confirmDeleteContacts() }
+        let del = secondary("연락처 매칭 자료 삭제", symbol: "trash") { [weak self] in self?.confirmDeleteContacts() }
         return [card([
             sw("전화번호로 나를 찾을 수 있게", "켜면 내 전화번호를 아는 사람이 나를 찾을 수 있어요.", pv.phoneDiscoverable, .discoverable),
             sw("기억 일시 중지", "켜면 모든 나초와 단톡방에서 새로 기억하지 않아요.", pv.memoryPaused, .memoryPaused),
@@ -237,14 +254,14 @@ final class AccountSection: HubSectionBase, NSTextFieldDelegate, NSTextViewDeleg
     func dataViews() -> [NSView] {
         var inner: [NSView] = [
             HubKit.label("대화, 기억, 일, 사용 내역이 들어 있는 파일을 받아요.", color: PetTheme.secondary),
-            buttonRow([HubKit.secondaryButton("내 데이터 내려받기", symbol: "square.and.arrow.down") { [weak self] in self?.exportData() }]),
+            buttonRow([secondary("내 데이터 내려받기", symbol: "square.and.arrow.down") { [weak self] in self?.exportData() }]),
         ]
         if let d = deletion, d.status == .scheduled {
             let when = HubFormat.date(d.purgeAt).map { "\($0)에 모두 지워져요." } ?? "곧 모두 지워져요."
             inner.append(HubKit.label("계정 삭제가 예약돼 있어요. " + when + " 그전에 취소하면 계정이 돌아와요.", color: PetTheme.color(\.danger)))
-            inner.append(buttonRow([HubKit.primaryButton("삭제 취소") { [weak self] in self?.cancelDeletion() }]))
+            inner.append(buttonRow([primary("삭제 취소") { [weak self] in self?.cancelDeletion() }]))
         } else if accountDeleteEnabled {
-            inner.append(buttonRow([HubKit.primaryButton("계정 삭제", symbol: "trash", danger: true) { [weak self] in self?.startDelete() }]))
+            inner.append(buttonRow([primary("계정 삭제", symbol: "trash", danger: true) { [weak self] in self?.startDelete() }]))
         } else {
             inner.append(HubKit.label("계정 삭제는 휴대폰의 나초 앱에서 할 수 있어요.", color: PetTheme.secondary))
         }

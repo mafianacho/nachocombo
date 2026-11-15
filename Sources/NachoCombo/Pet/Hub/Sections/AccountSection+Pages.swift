@@ -54,7 +54,7 @@ extension AccountSection {
             }
         }
         var save: PetPill!
-        save = HubKit.primaryButton("저장") { [weak self, weak f] in
+        save = primary("저장") { [weak self, weak f] in
             guard let self = self, let f = f, f.validate(), case let .ok(v) = AccountRules.name(f.field.stringValue) else { return }
             self.savePatch(["display_name": v]) { f.showServerError($0) }
         }
@@ -131,12 +131,12 @@ extension AccountSection {
                 render()
             }
         }
-        retry = HubKit.secondaryButton("다시 확인", symbol: "arrow.clockwise") { [weak self] in
+        retry = secondary("다시 확인", symbol: "arrow.clockwise") { [weak self] in
             self?.handleFailed = false
             render()
             ask()
         }
-        save = HubKit.primaryButton("저장") { [weak self, weak f] in
+        save = primary("저장") { [weak self, weak f] in
             guard let self = self, let f = f else { return }
             let v = f.field.stringValue
             guard AccountRules.canSaveHandle(AccountRules.handleState(input: v, current: current, check: self.handleCheck, checkFailed: self.handleFailed)) else { return }
@@ -184,7 +184,7 @@ extension AccountSection {
             }
             if case let .ok(v) = c { self?.setEnabledPill(save, v != p.birthday) } else { self?.setEnabledPill(save, false) }
         }
-        save = HubKit.primaryButton("저장") { [weak self] in
+        save = primary("저장") { [weak self] in
             guard let self = self, case let .ok(v) = check() else { return }
             self.savePatch(["birthday": v]) { message.stringValue = $0 }
         }
@@ -234,7 +234,7 @@ extension AccountSection {
             count.textColor = over ? PetTheme.color(\.danger) : PetTheme.secondary
             if case .ok = AccountRules.issueDescription(raw) { self?.setEnabledPill(send, true) } else { self?.setEnabledPill(send, false) }
         }
-        send = HubKit.primaryButton("보내기", symbol: "paperplane") { [weak self] in
+        send = primary("보내기", symbol: "paperplane") { [weak self] in
             guard let self = self, let e = self.endpoint, case let .ok(body) = AccountRules.issueDescription(text.string), !self.saving else { return }
             let idx = categories.indexOfSelectedItem
             let category: String? = idx > 0 ? AccountRules.issueCategories[idx - 1] : nil
