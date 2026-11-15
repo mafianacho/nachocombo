@@ -665,6 +665,19 @@ public final class PetSession {
             }
         }
     }
+
+    /// Calls of the Connections tab with a fresh token; nil when signed out or the server address is not usable.
+    /// `body` runs on the session queue.
+    public func withConnectionsAPI(_ body: @escaping (ConnectionsAPI?) -> Void) {
+        queue.async {
+            guard let endpoint = self.settings.endpoint else { body(nil); return }
+            let http = self.http
+            self.auth.validAccessToken { tok in
+                guard case let .success(token) = tok else { body(nil); return }
+                body(ConnectionsAPI(endpoint: endpoint, fetcher: http, token: { token }))
+            }
+        }
+    }
 }
 
 // MARK: - server features besides the socket (history, recovery, usage, dictation, memory, cards)
