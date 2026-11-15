@@ -193,6 +193,8 @@ final class RoomsSection: HubSectionBase {
         ])
         let go = HubKit.primaryButton("검색", symbol: "magnifyingglass") { [self] in searchSubmitted() }
         let search = HubKit.hstack([searchForm, go])
+        search.distribution = .fill
+        searchForm.field.widthAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
         searchForm.setContentHuggingPriority(.defaultLow, for: .horizontal)
         go.setContentHuggingPriority(.required, for: .horizontal)
         go.widthAnchor.constraint(equalToConstant: 92).isActive = true   // 단추 폭은 정해 두고 입력 칸이 나머지를 쓴다

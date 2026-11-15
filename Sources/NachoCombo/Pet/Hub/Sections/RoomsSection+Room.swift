@@ -87,7 +87,10 @@ extension RoomsSection {
         form.setContentHuggingPriority(.defaultLow, for: .horizontal)
         save.setContentHuggingPriority(.required, for: .horizontal)
         save.widthAnchor.constraint(equalToConstant: 72).isActive = true
-        return HubKit.hstack([form, save])
+        let row = HubKit.hstack([form, save])
+        row.distribution = .fill
+        form.field.widthAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
+        return row
     }
 
     func rename(_ room: HubRoom, to title: String, form: HubFormField?) {
