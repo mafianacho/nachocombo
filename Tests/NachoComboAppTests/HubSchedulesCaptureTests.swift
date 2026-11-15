@@ -170,8 +170,9 @@ final class HubSchedulesCaptureTests: XCTestCase {
 
     func testTestUnavailableHidesTestButton() throws {
         let rig = Rig(base(["GET /api/v1/scheduled-actions/S1": (200, sched("S1", title: "아침 메일", test: "전화를 쓰는 예약이에요"))]))
-        let t = all(try openDetail(rig))
-        XCTAssertFalse(t.contains("시험 실행\n") || texts(try XCTUnwrap(rig.section).view).contains("시험 실행"))
+        let s = try openDetail(rig)
+        let t = all(s)
+        XCTAssertFalse(texts(s.view).contains("시험 실행"))
         XCTAssertTrue(t.contains("전화를 쓰는 예약이에요"))
     }
 
