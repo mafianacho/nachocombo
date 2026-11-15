@@ -46,6 +46,9 @@ final class PetSettingsCard: NSObject {
         accountButton.setAccessibilityIdentifier("pet-account-button")
         view.addArrangedSubview(UI.sectionTitle("Nacho Account"))
         view.addArrangedSubview(UI.hstack([account, UI.spacer(), accountButton], spacing: 8))
+        let hub = NSButton(title: "나초 앱 열기…", target: self, action: #selector(hubClicked))
+        hub.setAccessibilityIdentifier("pet-open-hub")
+        view.addArrangedSubview(hub)
 
         view.addArrangedSubview(UI.sectionTitle("Server"))
         for mode in PetServerMode.allCases { serverPopup.addItem(withTitle: mode.displayName) }
@@ -163,4 +166,6 @@ final class PetSettingsCard: NSObject {
     }
 
     @objc private func resetClicked() { module.resetPosition() }
+
+    @objc private func hubClicked() { module.openHub() }
 }
