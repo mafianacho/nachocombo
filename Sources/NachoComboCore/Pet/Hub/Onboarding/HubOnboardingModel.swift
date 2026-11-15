@@ -78,6 +78,8 @@ public struct HubOnboardingState: Equatable {
     public var consentTerms: Bool?
     public var consentPrivacy: Bool?
     public var consentMarketing: Bool?
+    public var consentThirdParty: Bool?
+    public var consentAiTransfer: Bool?
     public var consentVersion: String?
     public var characterName: String?
     public var voice: String?
@@ -162,9 +164,10 @@ public enum HubOnboardingRules {
         terms && privacy && thirdParty && aiTransfer
     }
 
-    /// 스펙 `submit consent`의 값: `{terms, privacy, marketing, consent_version}`.
-    public static func consentValue(terms: Bool, privacy: Bool, marketing: Bool, version: String) -> [String: Any] {
-        ["terms": terms, "privacy": privacy, "marketing": marketing, "consent_version": version]
+    /// 스펙 `submit consent`의 값: `{terms, privacy, third_party, ai_transfer, marketing, consent_version}`.
+    /// 가입 중에는 필수 넷이 모두 true여야 서버가 받는다(빠지면 `invalid_input`). `marketing_night`은 보내지 않는다(서버가 그대로 둔다).
+    public static func consentValue(terms: Bool, privacy: Bool, thirdParty: Bool, aiTransfer: Bool, marketing: Bool, version: String) -> [String: Any] {
+        ["terms": terms, "privacy": privacy, "third_party": thirdParty, "ai_transfer": aiTransfer, "marketing": marketing, "consent_version": version]
     }
 
     // MARK: 서버 거절 이유 → 한국어

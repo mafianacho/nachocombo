@@ -251,7 +251,7 @@ final class HubOnboardingCaptureTests: XCTestCase {
         r.http.on("GET /api/v1/me/onboarding", 200, state("guide"))
         press("계속", r)
         XCTAssertEqual(r.http.bodies("POST /api/v1/me/onboarding/submit"),
-                       ["{\"step\":\"consent\",\"value\":{\"consent_version\":\"2026-11-01\",\"marketing\":false,\"privacy\":true,\"terms\":true}}"])
+                       ["{\"step\":\"consent\",\"value\":{\"ai_transfer\":true,\"consent_version\":\"2026-11-01\",\"marketing\":false,\"privacy\":true,\"terms\":true,\"third_party\":true}}"])
         XCTAssertTrue(shows(r, "나초는 실제로 일을 해요"))
     }
 
@@ -361,7 +361,7 @@ final class HubOnboardingCaptureTests: XCTestCase {
         r.http.on("GET /api/v1/me/onboarding", 200, state("done", flags: "\"terms\":true,\"privacy\":true,\"marketing\":true", back: false))
         press("동의하고 계속", r)
         XCTAssertEqual(r.http.bodies("POST /api/v1/me/onboarding/submit"),
-                       ["{\"step\":\"consent\",\"value\":{\"consent_version\":\"2026-11-01\",\"marketing\":true,\"privacy\":true,\"terms\":true}}"])
+                       ["{\"step\":\"consent\",\"value\":{\"ai_transfer\":true,\"consent_version\":\"2026-11-01\",\"marketing\":true,\"privacy\":true,\"terms\":true,\"third_party\":true}}"])
         XCTAssertEqual(r.cleared, 1)
     }
 

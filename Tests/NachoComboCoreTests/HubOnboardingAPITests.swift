@@ -39,9 +39,9 @@ final class HubOnboardingAPITests: XCTestCase {
     }
 
     func testConsentValueHasTheSpecKeysAndTheDocumentVersion() {
-        let v = HubOnboardingRules.consentValue(terms: true, privacy: true, marketing: false, version: "2026-11-01")
+        let v = HubOnboardingRules.consentValue(terms: true, privacy: true, thirdParty: true, aiTransfer: true, marketing: false, version: "2026-11-01")
         XCTAssertEqual(body(HubOnboardingAPI.submit(e, bearer: "T", step: .consent, value: v)),
-                       "{\"step\":\"consent\",\"value\":{\"consent_version\":\"2026-11-01\",\"marketing\":false,\"privacy\":true,\"terms\":true}}")
+                       "{\"step\":\"consent\",\"value\":{\"ai_transfer\":true,\"consent_version\":\"2026-11-01\",\"marketing\":false,\"privacy\":true,\"terms\":true,\"third_party\":true}}")
     }
 
     func testBackWaitlistsAndRedeem() {

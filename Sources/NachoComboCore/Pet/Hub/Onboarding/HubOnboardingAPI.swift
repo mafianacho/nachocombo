@@ -49,6 +49,7 @@ public enum HubOnboardingAPI {
                 step: HubOnboardingStep(raw: step), canGoBack: o.bool("can_go_back") ?? false, accountStatus: status,
                 displayName: o.str("display_name"), nameSuggestions: o.strs("name_suggestions"), birthday: o.str("birthday"),
                 consentTerms: flags?.bool("terms"), consentPrivacy: flags?.bool("privacy"), consentMarketing: flags?.bool("marketing"),
+                consentThirdParty: flags?.bool("third_party"), consentAiTransfer: flags?.bool("ai_transfer"),
                 consentVersion: o.str("consent_version"), characterName: o.str("character_name"), voice: o.str("voice"), voices: voices,
                 inviteWaitlistJoined: o.bool("invite_waitlist_joined") ?? false, regionWaitlistJoined: o.bool("region_waitlist_joined") ?? false,
                 inviteOnly: o.bool("invite_only") ?? false, invitedBy: o.str("invited_by"), regionName: o.str("region_name")))
@@ -87,7 +88,8 @@ public enum HubOnboardingGate {
     }
 
     /// 서버는 현재 문서 버전으로 동의한 것만 true로 준다: 새 버전이면 false로 읽힌다. 말이 없으면(nil) 묻지 않는다.
+    /// 필수 넷(terms·privacy·third_party·ai_transfer) 중 하나라도 false면 다시 묻는다(앱 `needsReconsent`).
     public static func needsReconsent(_ s: HubOnboardingState) -> Bool {
-        s.consentTerms == false || s.consentPrivacy == false
+        s.consentTerms == false || s.consentPrivacy == false || s.consentThirdParty == false || s.consentAiTransfer == false
     }
 }

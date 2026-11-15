@@ -172,6 +172,7 @@ extension OnboardingHost {
     private func consentPanel(_ st: HubOnboardingState) -> OnboardingPanel {
         seed("consent") {
             draft.terms = st.consentTerms ?? false; draft.privacy = st.consentPrivacy ?? false
+            draft.thirdParty = st.consentThirdParty ?? false; draft.aiTransfer = st.consentAiTransfer ?? false
             draft.marketing = st.consentMarketing ?? false
         }
         var checks: [String: OnboardingCheck] = [:]
@@ -214,9 +215,10 @@ extension OnboardingHost {
         return OnboardingPanel(symbol: "doc.text", title: "약관을 확인해 주세요", content: [list],
                                primary: ("계속", { [weak self] in
                                    guard let self = self, let version = st.consentVersion, !version.isEmpty else { return }
-                                   // 서버 스펙의 값은 terms·privacy·marketing·consent_version. 제3자 제공·AI 전송은 화면에서 필수로 받는다.
+                                   // 서버 스펙의 값은 terms·privacy·third_party·ai_transfer(가입 중 모두 필수)·marketing·consent_version.
                                    self.flow?.submit(.consent, value: HubOnboardingRules.consentValue(
-                                       terms: self.draft.terms, privacy: self.draft.privacy, marketing: self.draft.marketing, version: version))
+                                       terms: self.draft.terms, privacy: self.draft.privacy, thirdParty: self.draft.thirdParty,
+                                       aiTransfer: self.draft.aiTransfer, marketing: self.draft.marketing, version: version))
                                }), extras: back(st),
                                enabledRule: { [weak self] in
                                    guard let d = self?.draft else { return false }

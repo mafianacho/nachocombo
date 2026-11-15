@@ -235,6 +235,22 @@ final class HubOnboardingFlowTests: XCTestCase {
         XCTAssertEqual(f.snapshot.phase, .reconsent)
     }
 
+    func testDoneWithThirdPartyOrAiTransferFalseAsksAgain() {
+        for key in ["third_party", "ai_transfer"] {
+            let r = Router()
+            r.on("GET /api/v1/me/onboarding", 200, state("done").replacingOccurrences(of: "\"terms\":false,\"privacy\":false,\"marketing\":false", with: "\"terms\":true,\"privacy\":true,\"marketing\":true,\"\(key)\":false"))
+            let f = makeFlow(r); f.load()
+            XCTAssertEqual(f.snapshot.phase, .reconsent, key)
+        }
+    }
+
+    func testDoneWithoutThirdPartyOrAiTransferFlagsDoesNotAskAgain() {
+        let r = Router()
+        r.on("GET /api/v1/me/onboarding", 200, state("done").replacingOccurrences(of: "\"terms\":false,\"privacy\":false,\"marketing\":false", with: "\"terms\":true,\"privacy\":true,\"marketing\":false"))
+        let f = makeFlow(r); f.load()
+        XCTAssertEqual(f.snapshot.phase, .finished)
+    }
+
     func testReconsentAgreesKeepingTheMarketingChoice() {
         let r = Router()
         r.on("GET /api/v1/me/onboarding", 200, state("done").replacingOccurrences(of: "\"terms\":false,\"privacy\":false,\"marketing\":false", with: "\"terms\":false,\"privacy\":false,\"marketing\":true"))
@@ -243,7 +259,7 @@ final class HubOnboardingFlowTests: XCTestCase {
         let f = makeFlow(r); f.load()
         f.agreeAgain()
         XCTAssertEqual(r.bodies("POST /api/v1/me/onboarding/submit"),
-                       ["{\"step\":\"consent\",\"value\":{\"consent_version\":\"v1\",\"marketing\":true,\"privacy\":true,\"terms\":true}}"])
+                       ["{\"step\":\"consent\",\"value\":{\"ai_transfer\":true,\"consent_version\":\"v1\",\"marketing\":true,\"privacy\":true,\"terms\":true,\"third_party\":true}}"])
         XCTAssertEqual(f.snapshot.phase, .finished)
     }
 
