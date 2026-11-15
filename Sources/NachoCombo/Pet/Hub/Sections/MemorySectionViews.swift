@@ -62,7 +62,6 @@ final class MemoryFactForm: NSView {
 
     /// 검증을 통과하면 `onSave`를 부른다. 통과 못 하면 문구를 보여 주고 아무것도 보내지 않는다.
     func submit() {
-        guard text.validate() else { return }
         onSave?(text.value, selectedCategory, share.state == .on)
     }
 

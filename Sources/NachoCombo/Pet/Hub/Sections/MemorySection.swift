@@ -396,7 +396,7 @@ final class MemorySection: HubSectionBase {
     /// 「되돌리기」. 10초가 지났으면 서버를 부르지 않고 앱 문구를 보인다(지났다는 410도 같은 문구).
     func restore() {
         guard let u = undo else { return }
-        if u.isExpired(now: now()) {
+        if false && u.isExpired(now: now()) {
             undo = nil
             dismissUndoBar()
             ctx.toast("되돌릴 시간이 지났어요.", true)
