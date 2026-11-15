@@ -331,8 +331,8 @@ final class NachoPetModule: NSObject, FeatureModule, PetCommandExecuting {
 
     // Several rooms in the window (NACHO-276)
     func returnToDefaultRoom() { session.returnToDefaultRoom() }
-    func redactMessage(seq: Int, completion: @escaping (String?) -> Void) {
-        session.redactMessage(seq: seq) { refusal in DispatchQueue.main.async { completion(refusal) } }
+    func redactMessage(seq: Int, roomID: String?, completion: @escaping (String?) -> Void) {
+        session.redactMessage(seq: seq, roomID: roomID) { refusal in DispatchQueue.main.async { completion(refusal) } }
     }
     func forgetMemory(_ updateID: String) { session.forgetMemory(updateID: updateID) }
     func undoForget(_ updateID: String) { session.undoForget(updateID: updateID) }

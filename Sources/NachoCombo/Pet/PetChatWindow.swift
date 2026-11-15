@@ -27,7 +27,8 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     private var roomBack: PetPill!
     private var roomHeader: PetTranscript.RoomHeader?
     /// Erasing a message of mine: which one and which of the two questions is on screen (nil = none).
-    private var redactAsk: (seq: Int, step: Int)?
+    /// The room is the one the question was asked in: a room switch drops the question (seqs repeat across rooms).
+    private var redactAsk: (room: String?, seq: Int, step: Int)?
     private let dot = PetBox()
     let status = NSTextField(labelWithString: "")
     private var tabButtons: [PetPill] = []
@@ -606,7 +607,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         activeCardID = PetTranscript.activeCardID(items)
         if let ask = redactAsk {
             // The message must still be there to ask about (a room switch or a reload may have taken it away).
-            if items.contains(.redactable(seq: ask.seq)) { items.append(.line(PetTranscript.redactConfirm(step: ask.step))) } else { redactAsk = nil }
+            if ask.room == st.chat.roomID, items.contains(.redactable(seq: ask.seq)) { items.append(.line(PetTranscript.redactConfirm(step: ask.step))) } else { redactAsk = nil }
         }
         if let n = noticeLine(st) { items.append(n) }
         guard show(items: items) else { return }
@@ -669,7 +670,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         case "cardconfirm": if let id = q["id"] { module?.cardConfirm(id) }
         case "cardretry": if let id = q["id"] { module?.cardRetry(id) }
         case "micsettings": module?.openMicrophoneSettings()
-        case "redactnext": if let a = redactAsk { redactAsk = (a.seq, 2); render() }
+        case "redactnext": if let a = redactAsk { redactAsk = (a.room, a.seq, 2); render() }
         case "redactcancel": redactAsk = nil; render()
         case "redactgo": redactNow()
         default: _ = module?.selectionLink(url.host ?? "", q)
@@ -679,14 +680,14 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
     // MARK: erasing a message of mine (two questions, then the server call)
 
     func askRedact(_ seq: Int) {
-        redactAsk = (seq, 1)
+        redactAsk = (module?.state.chat.roomID, seq, 1)
         render()
     }
 
     private func redactNow() {
         guard let ask = redactAsk else { return }
         redactAsk = nil
-        module?.redactMessage(seq: ask.seq) { [weak self] refusal in
+        module?.redactMessage(seq: ask.seq, roomID: ask.room) { [weak self] refusal in
             self?.flash(refusal ?? "메시지를 지웠어요.")
             self?.render()
         }

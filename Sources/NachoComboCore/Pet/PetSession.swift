@@ -731,11 +731,14 @@ extension PetSession {
     }
 
     /// Erases my message `seq` in the open room (`POST /rooms/{id}/messages/{seq}/redact`). The text is replaced at once on
-    /// success. Completion gets nil, or the Korean reason.
-    public func redactMessage(seq: Int, completion: @escaping (String?) -> Void) {
+    /// success. Completion gets nil, or the Korean reason. `roomID` is the room the user asked in: when the window has
+    /// moved to another room since, nothing is erased (the same seq there is someone else's message).
+    public func redactMessage(seq: Int, roomID expected: String? = nil, completion: @escaping (String?) -> Void) {
         queue.async {
             guard self.state.auth == .signedIn else { completion(AuthProblem.signedOut.koreanMessage); return }
-            guard seq > 0, let room = self.state.chat.roomID, !room.isEmpty else { completion("지울 메시지를 찾지 못했어요."); return }
+            guard seq > 0, let room = self.state.chat.roomID, !room.isEmpty, expected == nil || expected == room else {
+                completion("지울 메시지를 찾지 못했어요."); return
+            }
             self.withCalls { calls in
                 guard let calls = calls else { completion(AuthProblem.signedOut.koreanMessage); return }
                 calls.redact(roomID: room, seq: seq) { r in

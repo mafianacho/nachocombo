@@ -309,6 +309,21 @@ final class PetMultiRoomSessionTests: XCTestCase {
         XCTAssertEqual(session.snapshot.auth, .signedOut)
     }
 
+    func testRedactAskedInARoomThatIsNoLongerOpenSendsNothing() {
+        // The user asked in g1, then the window moved to g2 (same seq exists there): nothing may be erased in g2.
+        session.openRoom(id: "g1", title: "첫 방", kind: "group"); settle()
+        session.openRoom(id: "g2", title: "둘째 방", kind: "group"); settle()
+        http.on("POST", "/api/v1/rooms/g2/messages/9/redact", 200, #"{"id":"m9","seq":9,"role":"user","text":""}"#)
+        var out: String? = "unset"
+        let e = expectation(description: "redact")
+        session.redactMessage(seq: 9, roomID: "g1") { out = $0; e.fulfill() }
+        wait(for: [e], timeout: 5)
+        settle()
+        XCTAssertEqual(out, PetMultiRoomSessionTests.notFoundText)
+        XCTAssertTrue(http.sent("POST", "/api/v1/rooms/g2/messages/9/redact").isEmpty)
+        XCTAssertTrue(http.sent("POST", "/api/v1/rooms/g1/messages/9/redact").isEmpty)
+    }
+
     func testRedactWithoutARoomOrSeqSendsNothing() {
         XCTAssertNotNil(redact(0))
         XCTAssertTrue(http.sent("POST", "/api/v1/rooms/home/messages/0/redact").isEmpty)
