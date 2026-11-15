@@ -59,6 +59,10 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
     /// A line above the list or detail: what just happened or what failed. Cleared on the next screen.
     var message: (text: String, failed: Bool)?
     var confirmingDisconnect = false
+    /// NACHO-151: the gadget whose "always allow" waits for the user's yes.
+    var confirmingAlwaysAllow: GadgetID?
+    /// NACHO-151: tools/connectors with a server request in flight; their switch is locked until it ends.
+    var busy: Set<String> = []
 
     private var headKey = ""
     private var catalogTimer: DispatchWorkItem?
@@ -117,6 +121,7 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
         searchField.stringValue = ""
         message = nil
         confirmingDisconnect = false
+        confirmingAlwaysAllow = nil
         stopPolling()
         reload()
         startWatching()
@@ -276,6 +281,7 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
         screen = .list
         message = nil
         confirmingDisconnect = false
+        confirmingAlwaysAllow = nil
         stopPolling()
         render()
     }
@@ -284,6 +290,7 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
         screen = .detail(ref)
         message = nil
         confirmingDisconnect = false
+        confirmingAlwaysAllow = nil
         render()
         if case let .connector(id) = ref, let c = overview?.connections.first(where: { $0.id == id }), detailInfo[c.source] == nil {
             host.connectionsAPI { [weak self] api in
@@ -351,7 +358,8 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
     }
 
     private func toggleTool(_ id: String, on: Bool) {
-        guard var o = overview, let i = o.tools.firstIndex(where: { $0.id == id }), !o.tools[i].locked else { render(); return }
+        guard var o = overview, let i = o.tools.firstIndex(where: { $0.id == id }), !o.tools[i].locked, !busy.contains(id) else { render(); return }
+        busy.insert(id)
         let before = o.tools[i].userEnabled
         o.tools[i].userEnabled = on
         overview = o
@@ -371,6 +379,7 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
     }
 
     private func applyTool(_ id: String, _ row: ToolRow) {
+        busy.remove(id)
         guard var o = overview, let i = o.tools.firstIndex(where: { $0.id == id }) else { return }
         o.tools[i].userEnabled = row.userEnabled
         o.tools[i].locked = row.locked
@@ -381,6 +390,7 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
     /// The call failed: the switch goes back to what it was and the reason is shown.
     private func undoTool(_ id: String, to value: Bool, _ failure: ConnectionsFailure) {
         DispatchQueue.main.async {
+            self.busy.remove(id)
             guard var o = self.overview, let i = o.tools.firstIndex(where: { $0.id == id }) else { return }
             o.tools[i].userEnabled = value
             if failure == .locked { o.tools[i].locked = true }
@@ -391,7 +401,8 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
     }
 
     private func toggleConnector(_ id: String, on: Bool) {
-        guard var o = overview, let i = o.connections.firstIndex(where: { $0.id == id }) else { return }
+        guard var o = overview, let i = o.connections.firstIndex(where: { $0.id == id }), !busy.contains(id) else { render(); return }
+        busy.insert(id)
         let before = o.connections[i].enabled
         let version = o.connections[i].version
         o.connections[i].enabled = on
@@ -403,7 +414,7 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
                 DispatchQueue.main.async {
                     guard let self = self else { return }
                     switch result {
-                    case .success: self.reload()
+                    case .success: self.busy.remove(id); self.reload()
                     case let .failure(f): self.undoConnector(id, to: before, f)
                     }
                 }
@@ -413,6 +424,7 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
 
     private func undoConnector(_ id: String, to value: Bool, _ failure: ConnectionsFailure) {
         DispatchQueue.main.async {
+            self.busy.remove(id)
             guard var o = self.overview, let i = o.connections.firstIndex(where: { $0.id == id }) else { return }
             o.connections[i].enabled = value
             self.overview = o
@@ -440,6 +452,22 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
 
     // MARK: detail
 
+    /// "이 가젯은 항상 허용": turning it on asks first; turning it off is at once (the connector declares again by itself).
+    func setAlwaysAllow(_ g: GadgetID, on: Bool) {
+        message = nil
+        if on { confirmingAlwaysAllow = g } else {
+            confirmingAlwaysAllow = nil
+            host.trust.setAlwaysAllowed(g, false)
+        }
+        render()
+    }
+
+    func confirmAlwaysAllow(_ g: GadgetID) {
+        confirmingAlwaysAllow = nil
+        if !host.trust.setAlwaysAllowed(g, true) { message = ("이 가젯은 항상 허용을 켤 수 없어요.", true) }
+        render()
+    }
+
     private func detail(for ref: ConnectionsRef) -> ConnectionsDetail? {
         switch ref {
         case let .tool(id):
@@ -449,7 +477,7 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
             return ConnectionsDetailBuilder.connector(c, tools: o.tools, info: detailInfo[c.source])
         case let .gadget(g):
             guard let state = gadgets.first(where: { $0.id == g }) else { return nil }
-            return ConnectionsDetailBuilder.gadget(state, disabled: host.trust.disabled)
+            return ConnectionsDetailBuilder.gadget(state, disabled: host.trust.disabled, alwaysAllowed: host.trust.alwaysAllowed)
         }
     }
 
@@ -493,6 +521,7 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
         }
         for f in d.facts { body.addArrangedSubview(factRow(f)) }
         if let scope = d.scope, case let .connector(id) = ref { body.addArrangedSubview(scopeRow(scope, id: id)) }
+        if let aa = d.alwaysAllow { body.addArrangedSubview(alwaysAllowArea(aa)) }
         if !d.abilitiesTitle.isEmpty {
             body.addArrangedSubview(sectionHeader(d.abilitiesTitle, count: d.abilities.isEmpty ? nil : d.abilities.count))
             if d.abilities.isEmpty { body.addArrangedSubview(Parts.label(d.emptyAbilities, font: PetTheme.caption, color: PetTheme.tertiary, width: contentWidth)) }
@@ -514,6 +543,10 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
         let textWidth = contentWidth - CGFloat(2 * Sp.m) - reserved
         var lines: [NSView] = [Parts.label(a.title, width: textWidth)]
         if let n = a.note { lines.append(Parts.label(n, font: PetTheme.caption, color: PetTheme.tertiary, width: textWidth)) }
+        if let r = a.riskText {
+            let strong = a.risk == .destructive
+            lines.append(Parts.label(r, font: PetTheme.caption, color: strong ? PetTheme.color(\.warning) : PetTheme.secondary, width: textWidth))
+        }
         let texts = Parts.vstack(lines, spacing: 1)
         texts.setHuggingPriority(NSLayoutConstraint.Priority(200), for: .horizontal)
         var views: [NSView] = [texts]
@@ -523,6 +556,25 @@ final class PetConnectionsView: NSStackView, NSSearchFieldDelegate {
         let row = Parts.hstack(views, spacing: Sp.s)
         row.widthAnchor.constraint(equalToConstant: contentWidth - CGFloat(2 * Sp.m)).isActive = true
         return Parts.card(row, fill: PetTheme.color(\.surface), width: contentWidth, padding: Sp.m)
+    }
+
+    private func alwaysAllowArea(_ aa: ConnectionsAlwaysAllow) -> NSView {
+        let width = contentWidth - CGFloat(2 * Sp.m)
+        let textWidth = width - 44 - CGFloat(Sp.s)
+        let texts = Parts.vstack([Parts.label(aa.title, width: textWidth), Parts.label(aa.note, font: PetTheme.caption, color: PetTheme.tertiary, width: textWidth)], spacing: 1)
+        texts.setHuggingPriority(NSLayoutConstraint.Priority(200), for: .horizontal)
+        let asking = confirmingAlwaysAllow == aa.gadget
+        let sw = PetToggle(on: aa.isOn || asking, label: aa.title) { [weak self] on in self?.setAlwaysAllow(aa.gadget, on: on) }
+        let row = Parts.hstack([texts, sw], spacing: Sp.s)
+        row.widthAnchor.constraint(equalToConstant: width).isActive = true
+        var parts: [NSView] = [row]
+        if asking {
+            parts.append(Parts.label(aa.confirmText, font: PetTheme.caption, color: PetTheme.text, width: width))
+            let cancel = Parts.pill("취소") { [weak self] in self?.confirmingAlwaysAllow = nil; self?.render() }
+            let ok = Parts.pill(aa.confirmButton, color: PetTheme.color(\.onAccent), fill: PetTheme.accent) { [weak self] in self?.confirmAlwaysAllow(aa.gadget) }
+            parts.append(Parts.hstack([cancel, ok], spacing: Sp.s))
+        }
+        return Parts.card(Parts.vstack(parts, spacing: Sp.s), fill: PetTheme.color(\.surface), width: contentWidth, padding: Sp.m)
     }
 
     private func scopeRow(_ scope: ConnectionsScopeChoice, id: String) -> NSView {

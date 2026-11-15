@@ -17,7 +17,7 @@ final class ConnectionsTabCaptureTests: XCTestCase {
     }
 
     final class FakeHost: PetConnectionsHost {
-        let trust = GadgetTrust(trustable: { [] })
+        let trust = GadgetTrust(trustable: { GadgetToolRegistry.trustableGadgets() })
         var macLinkText = "연결됨"
         var overview = ConnectorOverview()
         var gadgetMap: [String: String] = ["windowSnap": "on", "clipboard": "off", "captureFloat": "waiting for permission",
@@ -239,6 +239,33 @@ final class ConnectionsTabCaptureTests: XCTestCase {
 
         v.toggleAction(window.connectorName, on: true)
         XCTAssertTrue(host.trust.disabled.isEmpty)
+    }
+
+    /// NACHO-151: risk text, "항상 허용" off → asks → on → off again, and one action switched off.
+    func testAlwaysAllowSwitchAskAndRisk() throws {
+        let host = FakeHost()
+        let v = makeView(host)
+        v.goDetail(.gadget(.clipboard))
+        var all = texts(v).joined(separator: "\n")
+        XCTAssertTrue(all.contains("이 가젯은 항상 허용"), all)
+        XCTAssertTrue(all.contains("보내기 전에 매번 물어봐요"), all)
+        try capture(v, name: "always-allow-off")
+
+        v.setAlwaysAllow(.clipboard, on: true)
+        XCTAssertFalse(host.trust.isAlwaysAllowed(.clipboard), "nothing changes before the user says yes")
+        all = texts(v).joined(separator: "\n")
+        XCTAssertTrue(all.contains("묻지 않고"), all)
+        try capture(v, name: "always-allow-confirm")
+
+        v.confirmAlwaysAllow(.clipboard)
+        XCTAssertTrue(host.trust.isAlwaysAllowed(.clipboard))
+        try capture(v, name: "always-allow-on")
+
+        let tool = try XCTUnwrap(GadgetToolRegistry.all.first { $0.gadget == .clipboard && $0.exits.contains(.connector) })
+        v.toggleAction(tool.connectorName, on: false)
+        try capture(v, name: "always-allow-action-off")
+        v.setAlwaysAllow(.clipboard, on: false)
+        XCTAssertFalse(host.trust.isAlwaysAllowed(.clipboard))
     }
 
     func testTurningAnActionOnAsksForItsMacPermissionOnlyThen() throws {
