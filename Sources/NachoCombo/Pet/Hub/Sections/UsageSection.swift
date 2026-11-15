@@ -1,8 +1,11 @@
 import AppKit
 import NachoComboCore
 
-/// 사용량·요금제(H1 읽기): `GET /api/v1/me/usage`를 HubAPI로 불러 보여 준다. 요금제 변경·내역(H2, U9)은 여기 없다.
+/// 사용량·요금제(H1 읽기): `GET /api/v1/me/usage`를 HubAPI로 불러 보여 준다. 사용 내역·요금제 보기(U9)는 UsageSection+Ledger/Plans에 있다. 구매는 없다.
 final class UsageSection: HubSectionBase {
+    /// 사용 내역 목록(더 보기용). `UsageSection+Ledger.swift`가 쓴다.
+    var ledgerList: HubListView?
+
     init() { super.init(id: .usage) }
 
     override func load() {
@@ -46,6 +49,8 @@ final class UsageSection: HubSectionBase {
         }
         let detail = HubDetailView(title: "사용량", fields: fields, actions: [
             HubKit.secondaryButton("새로고침", symbol: "arrow.clockwise") { [weak self] in self?.reload() },
+            HubKit.secondaryButton("사용 내역", symbol: "list.bullet") { [weak self] in self?.showLedger(next: nil) },
+            HubKit.secondaryButton("요금제 보기", symbol: "square.stack") { [weak self] in self?.showPlans() },
         ])
         HubKit.pin(detail, in: host)
         state.show(.content)
