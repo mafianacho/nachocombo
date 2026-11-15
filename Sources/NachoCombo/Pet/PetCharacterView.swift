@@ -352,6 +352,7 @@ final class PetCharacterView: NSView {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(title: "나초와 대화") { module.openChat() })
         menu.addItem(ClosureMenuItem(title: "파일 주기…") { module.pickFiles() })
+        menu.addItem(ClosureMenuItem(title: "나초 앱 열기…") { module.openHub() })
         menu.addItem(.separator())
         if module.state.auth == .signedIn {
             menu.addItem(ClosureMenuItem(title: "로그아웃") { module.signOut() })
