@@ -489,6 +489,11 @@ groups you switched on.
 
 ### Nacho Pet
 
+**New in 0.11.0:** a Nacho app window (account, notifications, conversations, groups, tasks, schedules, memory, Nachos,
+friends, connection security, usage, explore, archive), several chat rooms at once, signing up for Nacho from the Mac,
+a three-section Connections tab (tools, connectors, gadgets) and a What's new window. Voice calls, buying credits and card
+login stay in the phone app. See [the v0.11.0 notes](docs/release-notes/v0.11.0.md).
+
 > **Not yet tried on a real Mac.** The Core (login, chat, uploads, commands, history, tasks, memory, dictation) is covered
 > by `swift test` and a real round trip against the mock server (`scripts/pet-roundtrip.sh`); the macOS part has only been
 > compiled in CI. The server calls follow nacho-server's spec; `scripts/check-server-contract.sh <nacho-server>` checks
