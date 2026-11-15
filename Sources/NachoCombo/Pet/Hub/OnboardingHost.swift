@@ -61,7 +61,8 @@ final class OnboardingHost: NSObject, NSTextFieldDelegate {
         case .finished:
             if sawHatch, !cleared { showGreeting(s) } else { finish() }
         default:
-            let k = "\(s.phase)-\(s.state?.step.raw ?? "")"
+            // 대기 등록 여부가 바뀌면 화면 글도 바뀌므로 키에 넣는다.
+            let k = "\(s.phase)-\(s.state?.step.raw ?? "")-\(s.state?.inviteWaitlistJoined == true)-\(s.state?.regionWaitlistJoined == true)"
             if k != key || panel == nil { build(s, key: k) }
             panel?.setBusy(s.busy)
             panel?.setError(s.errorText)
