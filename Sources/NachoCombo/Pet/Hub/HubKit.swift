@@ -1,12 +1,12 @@
 import AppKit
 import NachoComboCore
 
+fileprivate typealias Sp = PetTokens.Space
+fileprivate typealias Rad = PetTokens.Radius
+
 /// 나초 앱 창(허브)의 공용 화면 부품. 색·크기·글꼴은 모두 `PetTheme`/`PetTokens`에서 가져온다(라이트·다크 둘 다 따른다).
 /// 섹션은 이 부품만 조합한다. 이 파일은 공용이라 섹션 이슈가 고치지 않는다(필요하면 자기 파일에 extension).
 enum HubKit {
-    typealias Sp = PetTokens.Space
-    typealias Rad = PetTokens.Radius
-
     static func label(_ text: String, font: NSFont = PetTheme.body, color: NSColor = PetTheme.text, wrap: Bool = true) -> NSTextField {
         let f = wrap ? NSTextField(wrappingLabelWithString: text) : NSTextField(labelWithString: text)
         f.font = font
@@ -365,7 +365,7 @@ final class HubSwitchRow: NSView {
         toggle.translatesAutoresizingMaskIntoConstraints = false
         let row = HubKit.hstack([texts, toggle], spacing: Double(Sp.m))
         HubKit.pin(row, in: self)
-        texts.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        texts.setContentHuggingPriority(NSLayoutConstraint.Priority.defaultLow, for: NSLayoutConstraint.Orientation.horizontal)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
