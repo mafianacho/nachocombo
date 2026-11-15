@@ -9,7 +9,7 @@ extension HubSectionBase {
     /// `HubClient`는 실행기를 약하게 쥐므로, 완료 콜백이 실행기를 붙잡아 사용자가 다른 섹션으로 옮겨도 결과(토스트·목록 갱신)가 버려지지 않게 한다.
     func hubSend(_ build: @escaping (String?) -> PetHTTPRequest, _ done: @escaping (Result<PetHTTPResponse, PetAPIError>) -> Void) {
         guard let client = ctx?.client else {
-            let e = PetAPIError(status: 401, code: "unauthorized", text: "로그인이 필요해요.")
+            let e = PetAPIError.hubSignedOut
             DispatchQueue.main.async { done(.failure(e)) }
             return
         }

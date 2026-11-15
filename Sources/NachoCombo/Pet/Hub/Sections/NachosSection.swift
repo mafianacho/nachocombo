@@ -9,7 +9,7 @@ final class NachosSection: HubSectionBase {
         case list, create, detail(String), edit(String), voices(String), traits(String), photos(String), limits(String)
     }
 
-    private(set) var screen: Screen = .list
+    var screen: Screen = .list
     private(set) var list: HubAgentList?
     var templates: [HubAgentTemplate] = []
     /// 사진 화면이 마지막으로 받은 값(확인창에 오늘 남은 장수를 보여 줄 때 쓴다).

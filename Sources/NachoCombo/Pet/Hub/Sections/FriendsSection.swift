@@ -10,7 +10,7 @@ final class FriendsSection: HubSectionBase {
         case person(String)    // 사람별 당부(G5)
     }
 
-    private(set) var screen: Screen = .friends
+    var screen: Screen = .friends
     private(set) var summary: HubSocialSummary?
     var invite: HubInviteInfo?
     var sharing: HubSharing?

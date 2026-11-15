@@ -511,3 +511,10 @@ public enum HubRelationship {
         }
     }
 }
+
+public extension PetAPIError {
+    /// 로그인이 안 된 상태(요청을 보내지 않고 바로 돌려준다).
+    static let hubSignedOut = PetAPIError(status: 401, code: "unauthorized", text: "로그인이 필요해요.")
+    /// 대표 나초는 쉬게 하거나 지울 수 없다(서버가 403 `default_agent`로 거절하는 것과 같은 문구).
+    static let hubDefaultAgent = PetAPIError(status: 403, code: "default_agent", text: "")
+}

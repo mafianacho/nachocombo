@@ -91,16 +91,16 @@ extension NachosSection {
         let photos = HubKit.secondaryButton("사진", symbol: "photo") { [weak self] in self?.go(.photos(id)) }
         let limits = HubKit.secondaryButton("한도", symbol: "slider.horizontal.3") { [weak self] in self?.go(.limits(id)) }
         page.add(PetFlow.rows([edit, voices, traits, photos, limits], maxWidth: 560, gap: Double(PetTokens.Space.s)), full: false)
-        var state: [NSView] = []
+        var stateButtons: [NSView] = []
         if !a.isDefault && a.status == "active" {
-            state.append(HubKit.secondaryButton("대표로 정하기", symbol: "star") { [weak self] in self?.setDefault(a) })
+            stateButtons.append(HubKit.secondaryButton("대표로 정하기", symbol: "star") { [weak self] in self?.setDefault(a) })
         }
         if !a.isDefault {
-            if a.status == "active" { state.append(HubKit.secondaryButton("쉬게 하기", symbol: "moon") { [weak self] in self?.rest(a) }) }
-            if a.status == "resting" { state.append(HubKit.secondaryButton("깨우기", symbol: "sun.max") { [weak self] in self?.wake(a) }) }
+            if a.status == "active" { stateButtons.append(HubKit.secondaryButton("쉬게 하기", symbol: "moon") { [weak self] in self?.rest(a) }) }
+            if a.status == "resting" { stateButtons.append(HubKit.secondaryButton("깨우기", symbol: "sun.max") { [weak self] in self?.wake(a) }) }
         }
-        state.append(HubKit.primaryButton("지우기", symbol: "trash", danger: true) { [weak self] in self?.requestDelete(a) })
-        page.add(PetFlow.rows(state, maxWidth: 560, gap: Double(PetTokens.Space.s)), full: false)
+        stateButtons.append(HubKit.primaryButton("지우기", symbol: "trash", danger: true) { [weak self] in self?.requestDelete(a) })
+        page.add(PetFlow.rows(stateButtons, maxWidth: 560, gap: Double(PetTokens.Space.s)), full: false)
         if a.isDefault { page.note("대표 나초는 쉬게 하거나 지울 수 없어요. 다른 나초를 대표로 정한 뒤 해 주세요.") }
         hubShow(page.view)
     }
@@ -138,7 +138,7 @@ extension NachosSection {
             case let .failure(err): toast(HubNachosText.message(err), true)
             case let .success(resp):
                 guard case let .success(o) = HubAPI.object(resp), let preview = HubRemovalPreview(o) else { toast(PetAPIError.badResponse.text, true); return }
-                guard preview.canDelete else { toast(HubNachosText.message(PetAPIError(status: 403, code: "default_agent", text: "")), true); return }
+                guard preview.canDelete else { toast(HubNachosText.message(.hubDefaultAgent), true); return }
                 let steps = [
                     HubConfirmStep(title: "\(a.name)을(를) 지울까요?", message: preview.lines.joined(separator: "\n"), confirmTitle: "계속"),
                     HubConfirmStep(title: "정말 지울까요?", message: "\(a.name)이(가) 지워져요." + (preview.restoreDays > 0 ? " \(preview.restoreDays)일 안에만 되살릴 수 있어요." : ""), confirmTitle: "지우기"),
