@@ -171,7 +171,7 @@ scene('signin', '로그인 요청', () => desk(`<div class="chat" role="dialog">
   <div class="signin"><img src="${ART}happy.png" alt=""><h2>안녕하세요, 나초예요.</h2>
   <p>나초 계정으로 로그인하면 여기서 대화할 수 있어요. 캡처나 선반의 파일을 건네거나, 창 배치나 가젯을 켜고 끄는 일도 부탁할 수 있어요.</p>
   <button class="primary">${icon('person')}나초 계정으로 로그인</button>
-  <small>로그인은 브라우저 창(auth.nachotown.com)에서 해요. 비밀번호는 콤보가 보지 않아요.</small></div></div>${pet('waiting')}`));
+  <small>로그인은 브라우저 창(auth.mafianacho.com)에서 해요. 비밀번호는 콤보가 보지 않아요.</small></div></div>${pet('waiting')}`));
 scene('error', '오류 · 점검 안내', () => chatScene({
   headOpts: { status: '연결됨', dot: 'wait' },
   banner: `<div class="banner warn">${icon('warn')}<span>나초 서버 점검 중이에요. 오후 3시까지예요.</span></div>`,
@@ -196,7 +196,7 @@ scene('settings', '설정의 나초 펫 카드', () => `<div class="stage" style
     <div class="srow"><span class="grow">Signed in as your Nacho account · Connected</span><button class="btn">Sign Out</button></div>
     <h3>Server</h3>
     <span class="popup">Production (nacho.nachotown.com) ${icon('down')}</span>
-    <span class="cap2">https://nacho.nachotown.com · login https://auth.nachotown.com/realms/nachotown</span>
+    <span class="cap2">https://nacho.nachotown.com · login https://auth.mafianacho.com/realms/mafianacho</span>
     <h3>On This Mac</h3>
     <span class="check"><i>${icon('check')}</i>Let Nacho snap windows and switch gadgets on this Mac</span>
     <span class="cap2">Nacho can snap the front window (Window Snap's Accessibility permission) and switch other gadgets on or off. Never Computer Use, never Nacho Pet itself, and never a gadget that still needs a permission.</span>

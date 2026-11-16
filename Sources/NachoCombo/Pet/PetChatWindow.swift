@@ -306,7 +306,7 @@ final class PetChatWindow: NSPanel, NSTextFieldDelegate {
         let hi = PetLinkText(PetLinkText.plain("안녕하세요, 나초예요.", font: PetTheme.title, color: PetTheme.text, align: .center), maxWidth: inner)
         let p = PetLinkText(PetLinkText.plain("나초 계정으로 로그인하면 여기서 대화할 수 있어요. 캡처나 선반의 파일을 건네거나, 창 배치나 가젯을 켜고 끄는 일도 부탁할 수 있어요.",
                                               font: PetTheme.body, color: PetTheme.secondary, align: .center), maxWidth: inner)
-        let small = PetLinkText(PetLinkText.plain("로그인은 브라우저 창(auth.nachotown.com)에서 해요. 비밀번호는 콤보가 보지 않아요.",
+        let small = PetLinkText(PetLinkText.plain("로그인은 브라우저 창(auth.mafianacho.com)에서 해요. 비밀번호는 콤보가 보지 않아요.",
                                                   font: PetTheme.caption, color: PetTheme.tertiary, align: .center), maxWidth: inner)
         for v in [art, hi, p, signInButton!, small] as [NSView] { signInView.addArrangedSubview(v) }
     }

@@ -119,7 +119,7 @@ final class PetSettingsCard: NSObject {
             account.stringValue = m
             accountButton.title = "Sign In"
         case .signedOut:
-            account.stringValue = "Not signed in. Signing in opens auth.nachotown.com in a browser sheet; Nacho Combo never sees the password."
+            account.stringValue = "Not signed in. Signing in opens auth.mafianacho.com in a browser sheet; Nacho Combo never sees the password."
             accountButton.title = "Sign In"
         }
         let s = module.settings
