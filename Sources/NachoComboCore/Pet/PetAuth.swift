@@ -1,6 +1,6 @@
 import Foundation
 
-// Nacho Pet login: Keycloak (realm `nachotown`), public client `nacho-gadget-app`, Authorization Code + PKCE (S256),
+// Nacho Pet login: Keycloak (realm `mafianacho`, the unified IdP), public client `nacho-gadget-app`, Authorization Code + PKCE (S256),
 // redirect `nachogadget://auth/callback` — the values nacho-server already accepts (docs/keycloak-nacho-gadget-app.md).
 // Everything that decides (URLs, PKCE, callback checks, token parsing, refresh timing) is here so it is tested on Linux;
 // the app only opens the system browser sheet and keeps the tokens in the Keychain.

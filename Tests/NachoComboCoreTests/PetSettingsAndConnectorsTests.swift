@@ -46,10 +46,17 @@ final class PetSettingsTests: XCTestCase {
         let s = PetSettings()
         XCTAssertEqual(s.serverMode, .production)
         XCTAssertEqual(s.endpoint?.base.absoluteString, "https://nacho.nachotown.com")
-        XCTAssertEqual(s.oidc?.issuer.absoluteString, "https://auth.nachotown.com/realms/nachotown")
+        XCTAssertEqual(s.oidc?.issuer.absoluteString, "https://auth.mafianacho.com/realms/mafianacho")
         XCTAssertNil(s.petPosition)
         XCTAssertTrue(s.allowComboControl)
         XCTAssertNil(s.validationProblem())
+    }
+
+    func testLegacyIssuerTokensAreNotReused() {
+        // Tokens are stored under accountScope (server|issuer). The pre-IDP-078 production scope must differ from the
+        // current one, so a new build never reads tokens saved for auth.nachotown.com.
+        let legacy = "https://nacho.nachotown.com|https://auth.nachotown.com/realms/nachotown"
+        XCTAssertNotEqual(PetSettings().accountScope, legacy)
     }
 
     func testModesResolveToTheirServers() {

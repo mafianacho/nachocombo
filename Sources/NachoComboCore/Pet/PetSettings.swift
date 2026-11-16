@@ -50,7 +50,7 @@ public struct PetSettings: Codable, Equatable {
     public var speakVoiceReplies: Bool = true
 
     public static let productionServerURL = "https://nacho.nachotown.com"
-    public static let productionIssuerURL = "https://auth.nachotown.com/realms/nachotown"
+    public static let productionIssuerURL = "https://auth.mafianacho.com/realms/mafianacho"
     public static let localServerURL = "http://127.0.0.1:8787"
     public static let localIssuerURL = "http://localhost:18180/realms/nachotown"
     public static let mockServerURL = "http://127.0.0.1:8787"
@@ -171,7 +171,7 @@ public struct ServerEndpoint: Equatable {
     }
 }
 
-/// Keycloak realm issuer, e.g. `https://auth.nachotown.com/realms/nachotown`.
+/// Keycloak realm issuer, e.g. `https://auth.mafianacho.com/realms/mafianacho`.
 public enum IssuerURL {
     public static func parse(_ raw: String) -> Result<URL, ServerURLError> {
         switch URLCheck.components(raw) {

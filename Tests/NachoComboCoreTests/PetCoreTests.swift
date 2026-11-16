@@ -67,7 +67,7 @@ final class PetStubHTTP: PetHTTPClient {
 let petTokenJSON = #"{"access_token":"at-1","token_type":"Bearer","expires_in":300,"refresh_token":"rt-1","refresh_expires_in":1800,"id_token":"id-1"}"#
 
 final class PetAuthTests: XCTestCase {
-    let config = OIDCConfig(issuer: URL(string: "https://auth.nachotown.com/realms/nachotown")!)
+    let config = OIDCConfig(issuer: URL(string: "https://auth.mafianacho.com/realms/mafianacho")!)
 
     func testPKCEMatchesRFC7636Example() {
         let p = PKCE(verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
@@ -81,8 +81,8 @@ final class PetAuthTests: XCTestCase {
     func testAuthorizationURLCarriesTheServerAcceptedValues() {
         let pending = OAuthRequests.begin(config, random: PetFixedRandom())
         let c = URLComponents(url: pending.url, resolvingAgainstBaseURL: false)!
-        XCTAssertEqual(c.host, "auth.nachotown.com")
-        XCTAssertEqual(c.path, "/realms/nachotown/protocol/openid-connect/auth")
+        XCTAssertEqual(c.host, "auth.mafianacho.com")
+        XCTAssertEqual(c.path, "/realms/mafianacho/protocol/openid-connect/auth")
         var q: [String: String] = [:]
         for item in c.queryItems ?? [] { q[item.name] = item.value }
         XCTAssertEqual(q["client_id"], "nacho-gadget-app")
@@ -134,7 +134,7 @@ final class PetAuthTests: XCTestCase {
     }
 
     private func signedIn(_ http: PetStubHTTP, _ secrets: MemorySecretStore, clock: @escaping () -> Date) -> PetAuth {
-        http.on("POST", "/realms/nachotown/protocol/openid-connect/token", 200, petTokenJSON)
+        http.on("POST", "/realms/mafianacho/protocol/openid-connect/token", 200, petTokenJSON)
         let auth = PetAuth(config: config, scope: "s", http: http, secrets: secrets, random: PetFixedRandom(), now: clock)
         let pending = try! auth.begin().get()
         let ex = expectation(description: "signin")
@@ -172,7 +172,7 @@ final class PetAuthTests: XCTestCase {
         XCTAssertEqual(token(auth), .success("at-1"))
         XCTAssertEqual(http.requests.count, 1, "fresh: no network")
         now = now.addingTimeInterval(290)
-        http.on("POST", "/realms/nachotown/protocol/openid-connect/token",
+        http.on("POST", "/realms/mafianacho/protocol/openid-connect/token",
                 200, #"{"access_token":"at-2","expires_in":300}"#)
         XCTAssertEqual(token(auth), .success("at-2"))
         let form = PetStubHTTP.form(http.requests.last!)
@@ -200,7 +200,7 @@ final class PetAuthTests: XCTestCase {
         let http = PetStubHTTP(), secrets = MemorySecretStore()
         let auth = signedIn(http, secrets, clock: { now })
         now = now.addingTimeInterval(1000)
-        http.on("POST", "/realms/nachotown/protocol/openid-connect/token", 400, #"{"error":"invalid_grant"}"#)
+        http.on("POST", "/realms/mafianacho/protocol/openid-connect/token", 400, #"{"error":"invalid_grant"}"#)
         XCTAssertEqual(token(auth), .failure(.rejected("invalid_grant")))
         XCTAssertFalse(auth.isSignedIn)
         XCTAssertNil(secrets.read("tokens|s"))
@@ -223,7 +223,7 @@ final class PetAuthTests: XCTestCase {
         let ex = expectation(description: "out")
         auth.signOut { ex.fulfill() }
         wait(for: [ex], timeout: 5)
-        let logout = http.sent("POST", "/realms/nachotown/protocol/openid-connect/logout")
+        let logout = http.sent("POST", "/realms/mafianacho/protocol/openid-connect/logout")
         XCTAssertEqual(logout.count, 1)
         XCTAssertEqual(PetStubHTTP.form(logout[0])["refresh_token"], "rt-1")
         XCTAssertFalse(auth.isSignedIn)
