@@ -535,7 +535,7 @@ first launch. It is **on by default**, needs no permission and connects to nothi
   `pet-secrets.v1`), read once per launch, so macOS asks at most once; choose **항상 허용** (Always Allow). The builds
   are ad-hoc signed, so the first launch of a **new build** may ask again. If you press **거부**, the login is kept,
   not signed out: clicking Nacho (or opening the chat) asks again. A login also ends when Keycloak ends the session
-  (realm `mafianacho`: 30 min without use, 10 h at most); then the app asks you to sign in.
+  (realm `mafianacho`: 30 days without use, 90 days at most); then the app asks you to sign in.
 - **Ask about a capture:** right-click a floating capture ▸ **Ask Nacho About This…**: the picture is attached to your
   next message.
 - **Hand over files:** right-click a shelf item ▸ **Give to Nacho**, drop files on Nacho, or use the paperclip. Nacho
