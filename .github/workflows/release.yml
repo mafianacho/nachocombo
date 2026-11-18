@@ -54,11 +54,13 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: scripts/package.sh
+      # dist only carries the files to the release job; the Release keeps them, so 1 day is enough.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist
           path: dist/
           if-no-files-found: error
+          retention-days: 1
 
   release:
     needs: build
