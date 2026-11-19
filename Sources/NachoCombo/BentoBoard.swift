@@ -818,17 +818,20 @@ final class BentoPill: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func draw(_ dirtyRect: NSRect) {
-        let fill = update ? Brand.nacho : (strong ? Brand.Bento.button : Brand.Bento.glassOn)
+        // Inactive update pill (downloading or installing): the same yellow pill, dimmed. Brand.nacho and
+        // Brand.onNacho are opaque, so setting the alpha here dims them without touching the other pills' glass fills.
+        let dim: CGFloat = update && !active ? 0.55 : 1
+        let fill = update ? Brand.nacho.withAlphaComponent(dim) : (strong ? Brand.Bento.button : Brand.Bento.glassOn)
         BentoDraw.rounded(bounds, bounds.height / 2, fill: fill)
         if update {
             // A hairline keeps the yellow readable on the warm light wall as well as the dark one.
-            Brand.onNacho.withAlphaComponent(0.22).setStroke()
+            Brand.onNacho.withAlphaComponent(0.22 * dim).setStroke()
             let edge = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
             edge.lineWidth = 1
             edge.stroke()
         }
         let f = BentoDraw.font(13, .semibold)
-        let ink = update ? Brand.onNacho : (strong ? Brand.Bento.buttonInk : Brand.Bento.ink)
+        let ink = update ? Brand.onNacho.withAlphaComponent(dim) : (strong ? Brand.Bento.buttonInk : Brand.Bento.ink)
         BentoDraw.text(title, at: NSPoint(x: 0, y: (bounds.height - BentoDraw.lineHeight(f)) / 2 + 1), width: bounds.width, font: f,
                        color: ink, align: .center)
     }
