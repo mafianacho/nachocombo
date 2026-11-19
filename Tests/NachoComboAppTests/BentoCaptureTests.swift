@@ -32,6 +32,9 @@ final class BentoCaptureTests: XCTestCase {
         func bentoPerform(_ id: ModuleID) {}
         func bentoOpenSettings() {}
         func bentoOpenBoard() {}
+        var bentoUpdateState: BentoUpdateState = .idle
+        var installParents: [NSWindow?] = []
+        func bentoInstallUpdate(from window: NSWindow?) { installParents.append(window) }
 
         private func status(_ dot: StatusDotKind) -> ToolStatusPresentation {
             ToolStatusPresentation(dot: dot, stateText: "", detail: nil, accessibilityText: "")
@@ -148,6 +151,70 @@ final class BentoCaptureTests: XCTestCase {
         controller.board.hide(.diskMap)
         XCTAssertEqual(host.layout.hiddenModules, [.diskMap])
         XCTAssertFalse(controller.board.cardViews.contains { $0.module == .diskMap })
+    }
+
+    /// NACHO-802: the yellow update pill (top right) and the mascot + wordmark (top left), light and dark:
+    /// no update, available, ready, edit mode, and the window's minimum width (420 pt).
+    func testUpdatePillAndLogoCaptures() throws {
+        for (appearance, tag) in [(NSAppearance.Name.aqua, "light"), (.darkAqua, "dark")] {
+            let cases: [(String, BentoUpdateState, Bool, CGFloat)] = [
+                ("none", .idle, false, BentoWindowController.defaultSize.width),
+                ("available", .available(version: "0.9.1"), false, BentoWindowController.defaultSize.width),
+                ("ready", .ready(version: "0.9.1"), false, BentoWindowController.defaultSize.width),
+                ("downloading", .downloading, false, BentoWindowController.defaultSize.width),
+                ("edit", .available(version: "0.9.1"), true, BentoWindowController.defaultSize.width),
+                ("min420", .available(version: "0.9.1"), false, 420),
+                ("min420-ready", .ready(version: "0.9.1"), false, 420),
+            ]
+            for (name, state, editing, width) in cases {
+                let host = FixtureHost()
+                host.bentoUpdateState = state
+                let (controller, view) = board(host: host, editing: editing)
+                controller.window.appearance = NSAppearance(named: appearance)
+                let size = NSSize(width: width, height: width == 420 ? 640 : BentoWindowController.defaultSize.height)
+                controller.window.setContentSize(size)
+                controller.window.contentView?.layoutSubtreeIfNeeded()
+                controller.reload()
+                let f = controller.chromeFrames
+                if !editing, state != .idle { XCTAssertNotNil(f.update, "\(name) shows the pill") }
+                if editing { XCTAssertNil(f.update); XCTAssertNil(f.mascot); XCTAssertNil(f.wordmark) }
+                if state == .idle { XCTAssertNil(f.update) }
+                // Nothing in the top bar overlaps another part, nor leaves the window.
+                let parts = [f.mascot, f.wordmark, f.update, f.edit, f.settings].compactMap { $0 }
+                for (i, a) in parts.enumerated() {
+                    XCTAssertLessThanOrEqual(a.maxX, size.width, "\(name) \(tag) inside the window")
+                    for b in parts[(i + 1)...] { XCTAssertFalse(a.intersects(b), "\(name) \(tag): \(a) overlaps \(b)") }
+                }
+                if width == 420, let m = f.mascot { XCTAssertGreaterThanOrEqual(m.minX, BentoLogo.originX) }
+                controller.window.contentView = nil
+                try render(view, size: size, appearance: appearance, name: "b5-update-\(name)-\(tag)")
+            }
+        }
+    }
+
+    func testUpdatePillStatesAndConfirmationParent() {
+        let expectations: [(BentoUpdateState, Bool, String, Bool)] = [
+            (.idle, false, "", false), (.checking, false, "", false), (.upToDate, false, "", false), (.failed, false, "", false),
+            (.available(version: "0.9.1"), true, "업데이트 0.9.1", true), (.ready(version: "0.9.1"), true, "재시작해 업데이트", true),
+            (.downloading, true, "업데이트 중…", false), (.installing, true, "업데이트 중…", false),
+        ]
+        for (state, visible, title, active) in expectations {
+            let host = FixtureHost()
+            host.bentoUpdateState = state
+            let (controller, _) = board(host: host, editing: false)
+            controller.window.setContentSize(BentoWindowController.defaultSize)
+            controller.reload()
+            XCTAssertEqual(!controller.updateButton.isHidden, visible, "\(state)")
+            guard visible else { continue }
+            XCTAssertEqual(controller.updateButton.title, title)
+            XCTAssertEqual(controller.updateButton.active, active)
+            XCTAssertTrue(controller.updateButton.update)
+            // The click hangs the confirmation on the widget window (the sheet's parent).
+            if active {
+                controller.updateButton.onPress?()
+                XCTAssertTrue(host.installParents.last.flatMap { $0 } === controller.window)
+            }
+        }
     }
 
     func testMenuBarMiniBoard() throws {

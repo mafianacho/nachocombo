@@ -1468,7 +1468,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     var updateState: UpdateController.State { updater.state }
     var currentVersion: String { updater.currentVersion }
     func checkForUpdatesNow() { updater.check(manual: true) }
-    func installUpdate() { updater.confirmAndInstall(window: settingsWindow.isVisible ? settingsWindow.window : nil) }
+    func installUpdate() { installUpdate(from: nil) }
+    /// `from`: the window the click came from (the widget window); the sheet hangs there. Otherwise the Settings window if open.
+    func installUpdate(from window: NSWindow?) {
+        let parent = BentoUpdateLogic.confirmParent(fromWidget: window != nil, widgetVisible: window?.isVisible ?? false,
+                                                    settingsVisible: settingsWindow.isVisible)
+        switch parent {
+        case .widget: updater.confirmAndInstall(window: window)
+        case .settings: updater.confirmAndInstall(window: settingsWindow.window)
+        case .none: updater.confirmAndInstall(window: nil)
+        }
+    }
     func openReleasePage() {
         NSWorkspace.shared.open(updater.releasePage ?? URL(string: "https://github.com/mafianacho/nachocombo/releases/latest")!)
     }
@@ -2159,4 +2169,19 @@ extension AppDelegate: BentoHost {
     func bentoOpenSettings() { showSettings() }
 
     func bentoOpenBoard() { bentoWindow.show() }
+
+    var bentoUpdateState: BentoUpdateState {
+        switch updater.state {
+        case .idle: return .idle
+        case .checking: return .checking
+        case .upToDate: return .upToDate
+        case let .available(version, _): return .available(version: version)
+        case .downloading: return .downloading
+        case let .ready(version, _): return .ready(version: version)
+        case .installing: return .installing
+        case .failed: return .failed
+        }
+    }
+
+    func bentoInstallUpdate(from window: NSWindow?) { installUpdate(from: window) }
 }

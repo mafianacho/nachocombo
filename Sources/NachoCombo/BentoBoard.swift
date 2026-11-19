@@ -17,6 +17,10 @@ protocol BentoHost: AnyObject {
     func bentoOpenSettings()
     /// The main widget board window.
     func bentoOpenBoard()
+    /// The updater's state for the yellow update pill of the window.
+    var bentoUpdateState: BentoUpdateState { get }
+    /// The pill's click: the same confirm-and-install as Settings, with the confirmation hanging on `window`.
+    func bentoInstallUpdate(from window: NSWindow?)
 }
 
 enum BentoEditKey { case earlier, later, hide, select }
@@ -789,10 +793,13 @@ final class BentoEditDrawer: NSView {
     var firstControl: NSView? { chips.first }
 }
 
-/// A small pill button of the window's top bar ("위젯 편집", "설정", "완료").
+/// A small pill button of the window's top bar ("위젯 편집", "설정", "완료", and the yellow update pill).
 final class BentoPill: NSView {
     var title: String { didSet { needsDisplay = true; setAccessibilityLabel(title); invalidateIntrinsicContentSize() } }
     var strong = false { didSet { needsDisplay = true } }
+    /// The yellow update pill: nacho fill, on-nacho text. `active` false draws the same pill dimmed and unclickable.
+    var update = false { didSet { needsDisplay = true } }
+    var active = true { didSet { needsDisplay = true; setAccessibilityEnabled(active) } }
     var onPress: (() -> Void)?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -811,21 +818,30 @@ final class BentoPill: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func draw(_ dirtyRect: NSRect) {
-        BentoDraw.rounded(bounds, bounds.height / 2, fill: strong ? Brand.Bento.button : Brand.Bento.glassOn)
+        let fill = update ? Brand.nacho : (strong ? Brand.Bento.button : Brand.Bento.glassOn)
+        BentoDraw.rounded(bounds, bounds.height / 2, fill: fill)
+        if update {
+            // A hairline keeps the yellow readable on the warm light wall as well as the dark one.
+            Brand.onNacho.withAlphaComponent(0.22).setStroke()
+            let edge = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
+            edge.lineWidth = 1
+            edge.stroke()
+        }
         let f = BentoDraw.font(13, .semibold)
+        let ink = update ? Brand.onNacho : (strong ? Brand.Bento.buttonInk : Brand.Bento.ink)
         BentoDraw.text(title, at: NSPoint(x: 0, y: (bounds.height - BentoDraw.lineHeight(f)) / 2 + 1), width: bounds.width, font: f,
-                       color: strong ? Brand.Bento.buttonInk : Brand.Bento.ink, align: .center)
+                       color: ink, align: .center)
     }
     override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill() }
     override var focusRingMaskBounds: NSRect { bounds }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { onPress?() }
+        if active, bounds.contains(convert(event.locationInWindow, from: nil)) { onPress?() }
     }
     override func keyDown(with event: NSEvent) {
-        if [36, 49, 76].contains(event.keyCode) { onPress?() } else { super.keyDown(with: event) }
+        if [36, 49, 76].contains(event.keyCode) { if active { onPress?() } } else { super.keyDown(with: event) }
     }
-    override func accessibilityPerformPress() -> Bool { onPress?(); return true }
+    override func accessibilityPerformPress() -> Bool { guard active else { return false }; onPress?(); return true }
     override func viewDidChangeEffectiveAppearance() { needsDisplay = true }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: active ? .pointingHand : .arrow) }
 }
