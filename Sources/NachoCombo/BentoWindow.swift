@@ -11,6 +11,19 @@ final class BentoRootView: BentoWallView {
     }
 }
 
+/// The top-left logo of the main window: the mascot and the wordmark. The text and sizes live here so the boss can
+/// swap them after seeing the real capture (no separate logo file exists in the ledger).
+enum BentoLogo {
+    static let wordmark = "나초콤보"
+    static let wordmarkSize: CGFloat = 17
+    static let mascotHeight: CGFloat = 26
+    static let gap: CGFloat = 8
+    /// Left edge: right of the traffic lights.
+    static let originX: CGFloat = 84
+    /// The wordmark is dropped (the mascot stays) when fewer points than this are left for it.
+    static let minWordmarkWidth: CGFloat = 40
+}
+
 /// The main window (b1/b2): every tool as a widget on a wall. "위젯 편집" turns on edit mode (b3): drag to move, "−"
 /// to hide, the right panel for size, pin, shortcut. Light and dark follow the system.
 final class BentoWindowController: NSObject, NSWindowDelegate {
@@ -21,7 +34,10 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
     private let root = BentoRootView()
     private let drawer = BentoEditDrawer()
     private let editBar = NSTextField(labelWithString: "위젯 편집 중 · 끌어서 옮기고, 오른쪽에서 크기를 골라요")
-    private let titleLabel = NSTextField(labelWithString: "나초콤보")
+    private let titleLabel = NSTextField(labelWithString: BentoLogo.wordmark)
+    private let mascotView = NSImageView()
+    let updateButton = BentoPill(title: "업데이트")
+    private var lastUpdateModel = BentoUpdateButtonModel(visible: false, title: "", enabled: false)
     private let editButton = BentoPill(title: "위젯 편집")
     private let settingsButton = BentoPill(title: "설정")
     private let doneButton = BentoPill(title: "완료", strong: true)
@@ -69,17 +85,26 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
         scroll.documentView = board
         root.addSubview(scroll)
         root.addSubview(drawer)
-        titleLabel.font = BentoDraw.font(13, .bold)
+        titleLabel.font = BentoDraw.font(BentoLogo.wordmarkSize, .heavy)
         titleLabel.textColor = Brand.Bento.ink
+        titleLabel.lineBreakMode = .byTruncatingTail
+        mascotView.imageScaling = .scaleProportionallyUpOrDown
+        mascotView.setAccessibilityElement(false)   // decoration: the wordmark carries the name
+        updateButton.update = true
+        updateButton.isHidden = true
         editBar.font = BentoDraw.font(13, .semibold)
         editBar.textColor = Brand.Bento.ink
         editBar.lineBreakMode = .byTruncatingTail
         editBar.isHidden = true
         doneButton.isHidden = true
-        for v in [titleLabel, editBar, editButton, settingsButton, doneButton] as [NSView] { root.addSubview(v) }
+        for v in [mascotView, titleLabel, editBar, updateButton, editButton, settingsButton, doneButton] as [NSView] { root.addSubview(v) }
         editButton.onPress = { [weak self] in self?.beginEditing() }
         settingsButton.onPress = { [weak self] in self?.host?.bentoOpenSettings() }
         doneButton.onPress = { [weak self] in self?.endEditing() }
+        updateButton.onPress = { [weak self] in
+            guard let self = self else { return }
+            self.host?.bentoInstallUpdate(from: self.window)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(resized), name: NSView.frameDidChangeNotification, object: root)
         root.postsFrameChangedNotifications = true
         layoutChrome()
@@ -93,17 +118,43 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
         let b = root.bounds
         let top = BentoWindowController.topBar
         let drawerW = Brand.Bento.drawerWidth
-        // The traffic lights take the top-left corner; the title sits after them.
-        titleLabel.frame = NSRect(x: 84, y: 18, width: 200, height: 20)
-        titleLabel.isHidden = editing
+        let model = BentoUpdateLogic.button(for: host?.bentoUpdateState ?? .idle, editing: editing)
+        lastUpdateModel = model
+        mascotView.image = host?.bentoPetImage(signedIn: true)
+        let hasMascot = mascotView.image != nil
+        let mascotW = hasMascot ? BentoLogo.mascotHeight + BentoLogo.gap : 0
         let pillY: CGFloat = 14
-        var x = b.width - 24
-        for pill in editing ? [doneButton] : [settingsButton, editButton] {
-            let w = pill.intrinsicContentSize.width
-            x -= w
-            pill.frame = NSRect(x: x, y: pillY, width: w, height: 28)
-            x -= 8
+        // Right pills, right to left: 설정, 위젯 편집, then the yellow update pill at the far left of them. Edit mode: 완료 only.
+        func placePills(compact: Bool) -> CGFloat {
+            updateButton.isHidden = !model.visible
+            updateButton.active = model.enabled
+            updateButton.title = compact && model.enabled ? "업데이트" : model.title
+            var x = b.width - 24
+            var pills: [BentoPill] = editing ? [doneButton] : [settingsButton, editButton]
+            if model.visible { pills.append(updateButton) }
+            for pill in pills {
+                let w = pill.intrinsicContentSize.width
+                x -= w
+                pill.frame = NSRect(x: x, y: pillY, width: w, height: 28)
+                x -= 8
+            }
+            return x
         }
+        var x = placePills(compact: false)
+        // Narrow window: the update pill gives up the version before the logo gives up anything.
+        if model.visible, x - 12 - BentoLogo.originX < mascotW + BentoLogo.minWordmarkWidth { x = placePills(compact: true) }
+        // The traffic lights take the top-left corner; the mascot and the wordmark sit after them, centered in the bar.
+        let room = x - 12 - BentoLogo.originX
+        let showMascot = hasMascot && room >= BentoLogo.mascotHeight
+        let textRoom = room - (showMascot ? mascotW : 0)
+        let natural = BentoDraw.textWidth(BentoLogo.wordmark, titleLabel.font ?? BentoDraw.font(BentoLogo.wordmarkSize, .heavy))
+        let showText = textRoom >= BentoLogo.minWordmarkWidth || (!hasMascot && textRoom >= 20)
+        mascotView.frame = NSRect(x: BentoLogo.originX, y: (top - BentoLogo.mascotHeight) / 2, width: BentoLogo.mascotHeight, height: BentoLogo.mascotHeight)
+        mascotView.isHidden = editing || !showMascot
+        let textX = BentoLogo.originX + (showMascot ? mascotW : 0)
+        let lineH = BentoDraw.lineHeight(titleLabel.font ?? BentoDraw.font(BentoLogo.wordmarkSize, .heavy))
+        titleLabel.frame = NSRect(x: textX, y: (top - lineH) / 2, width: max(0, min(natural + 4, textRoom)), height: lineH)
+        titleLabel.isHidden = editing || !showText
         editBar.frame = NSRect(x: 84, y: 18, width: max(40, x - 84 - 12), height: 20)
         let boardW = editing ? b.width - drawerW - 24 - 12 : b.width
         scroll.frame = NSRect(x: 0, y: top, width: max(200, boardW), height: max(100, b.height - top))
@@ -138,6 +189,7 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
 
     func reload() {
         board.reload()
+        layoutChrome()
         fitBoard()
         if editing { drawer.show(board.selectedID) }
     }
@@ -145,6 +197,9 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
     /// The tools' state changed: new numbers and switches, same cards.
     func refresh() {
         guard window.isVisible else { return }
+        // The updater changed: the yellow pill appears, changes or goes away and the pills are placed again.
+        let now = BentoUpdateLogic.button(for: host?.bentoUpdateState ?? .idle, editing: editing)
+        if now != lastUpdateModel { layoutChrome() }
         board.refreshData()
         if editing { drawer.show(board.selectedID) }
     }
@@ -236,6 +291,13 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
     var diagnostics: [String: Any] {
         ["shown": window.isVisible, "editing": editing, "columns": board.columns, "cards": board.cardViews.count,
          "selected": board.selectedID?.rawValue ?? "-", "timer": liveTimer?.isValid ?? false]
+    }
+
+    /// Frames of the top bar's parts (tests: nothing overlaps, even at the minimum width).
+    var chromeFrames: (mascot: NSRect?, wordmark: NSRect?, update: NSRect?, edit: NSRect?, settings: NSRect?) {
+        (mascotView.isHidden ? nil : mascotView.frame, titleLabel.isHidden ? nil : titleLabel.frame,
+         updateButton.isHidden ? nil : updateButton.frame, editButton.isHidden ? nil : editButton.frame,
+         settingsButton.isHidden ? nil : settingsButton.frame)
     }
 
     var accessibilityTree: [[String: String]] { UI.accessibilityTree(of: root) }
