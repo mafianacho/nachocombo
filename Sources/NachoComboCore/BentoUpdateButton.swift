@@ -15,6 +15,12 @@ public struct BentoUpdateButtonModel: Equatable {
     public let visible: Bool
     public let title: String
     public let enabled: Bool
+
+    public init(visible: Bool, title: String, enabled: Bool) {
+        self.visible = visible
+        self.title = title
+        self.enabled = enabled
+    }
 }
 
 /// Where the update confirmation sheet hangs.
