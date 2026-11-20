@@ -68,7 +68,8 @@ final class SettingsPanelCaptureTests: XCTestCase {
         func bentoSetEnabled(_ id: ModuleID, _ on: Bool) { gadgetSetEnabled(id, on) }
         func bentoSetPinned(_ id: ModuleID, _ pinned: Bool) { bento.bentoSetPinned(id, pinned) }
         func bentoOpen(_ id: ModuleID) {}
-        func bentoPerform(_ id: ModuleID) {}
+        var performed: [ModuleID] = []
+        func bentoPerform(_ id: ModuleID) { performed.append(id) }
         func bentoOpenSettings() {}
         func bentoOpenBoard() {}
         var bentoUpdateState: BentoUpdateState { .idle }
@@ -329,6 +330,53 @@ final class SettingsPanelCaptureTests: XCTestCase {
         controller.tileClick(.clipboard, animated: false)
         controller.settingsPanel?.onClose?()
         XCTAssertFalse(controller.isPanelOpen, "the close button closes")
+    }
+
+    /// Esc closes the open panel first; with no panel open it ends edit mode. The key reaches the window's root view
+    /// both as the Escape key (code 53) and as the `cancelOperation` command; a control inside the panel has the root
+    /// in its responder chain, so Esc pressed there ends up at the same place.
+    func testEscapeClosesPanelThenEndsEditing() throws {
+        let host = PanelHost()
+        let controller = makeWindow(host)
+        let root = try XCTUnwrap(controller.window.contentView as? BentoRootView)
+        controller.openPanel(.gadget(.clipboard, .settings), bringToFront: false, animated: false)
+        let panel = try XCTUnwrap(controller.settingsPanel)
+        let close = try XCTUnwrap(SettingsPanelCaptureTests.find(in: panel) { $0.accessibilityIdentifier() == "settings-panel-close" })
+        let chain = sequence(first: close as NSResponder, next: { $0.nextResponder })
+        XCTAssertTrue(chain.contains { $0 === root }, "a control inside the panel has the window's root in its responder chain")
+        let escape = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                    windowNumber: controller.window.windowNumber, context: nil,
+                                                    characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+                                                    isARepeat: false, keyCode: 53))
+        root.keyDown(with: escape)
+        XCTAssertFalse(controller.isPanelOpen, "the Esc key closes the open panel")
+        controller.openPanel(.app(.general), bringToFront: false, animated: false)
+        XCTAssertTrue(controller.isPanelOpen)
+        root.cancelOperation(nil)
+        XCTAssertFalse(controller.isPanelOpen, "the cancel command closes the open panel")
+        controller.beginEditing()
+        XCTAssertTrue(controller.board.editing)
+        root.keyDown(with: escape)
+        XCTAssertFalse(controller.board.editing, "with no panel open, Esc ends edit mode")
+    }
+
+    /// With the panel open the wall keeps working: a widget's own switch and button still reach the host (the board
+    /// does not run under the panel: `windowScene` checks that on every scene), and the panel stays open.
+    func testWallStaysOperableWhilePanelIsOpen() throws {
+        let host = PanelHost()
+        let controller = makeWindow(host)
+        controller.openPanel(.gadget(.clipboard, .settings), bringToFront: false, animated: false)
+        controller.window.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThanOrEqual(controller.panelLayout.board.width, 200, "the wall keeps room next to the panel")
+        let pet = try XCTUnwrap(controller.board.cardViews.first { $0.module == .nachoPet })
+        pet.onAction?(.nachoPet)
+        XCTAssertEqual(host.performed, [.nachoPet], "a widget's button reaches the host while the panel is open")
+        let disk = try XCTUnwrap(controller.board.cardViews.first { $0.module == .diskMap })
+        XCTAssertFalse(host.manager.settings.isEnabled(.diskMap))
+        disk.onToggle?(.diskMap, true)
+        XCTAssertTrue(host.manager.settings.isEnabled(.diskMap), "a widget's switch changes the gadget while the panel is open")
+        XCTAssertTrue(controller.isPanelOpen, "using the wall does not close the panel")
+        XCTAssertEqual(controller.panelRoute, .gadget(.clipboard, .settings))
     }
 
     /// The window's minimum width (480, the panel's width): every control of the panel shows, nothing scrolls sideways.
