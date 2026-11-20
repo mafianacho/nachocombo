@@ -331,15 +331,26 @@ final class SettingsPanelCaptureTests: XCTestCase {
         XCTAssertFalse(controller.isPanelOpen, "the close button closes")
     }
 
-    /// The window's minimum width (420): nothing leaves the window; the panel covers the board and closing brings it back.
-    func testMinimumWidthPanelCoversBoard() throws {
-        try windowScene("s7-min420-gadget", route: .gadget(.calendarClock, .settings), size: NSSize(width: 420, height: 770))
-        try windowScene("s7-min420-app", route: .app(.general), size: NSSize(width: 420, height: 770))
+    /// The window's minimum width (480, the panel's width): every control of the panel shows, nothing scrolls sideways.
+    func testMinimumWidthShowsWholePanel() throws {
+        let min = BentoWindowController.minContentWidth
+        XCTAssertEqual(min, SettingsPanelView.width)
+        try windowScene("s7-min480-gadget", route: .gadget(.calendarClock, .settings), size: NSSize(width: min, height: 770))
+        try windowScene("s7-min480-app", route: .app(.general), size: NSSize(width: min, height: 770))
         let host = PanelHost()
-        let controller = makeWindow(host, size: NSSize(width: 420, height: 770))
+        let controller = makeWindow(host, size: NSSize(width: min, height: 770))
+        XCTAssertEqual(controller.window.contentMinSize.width, min, "the window cannot be made narrower than the panel")
         controller.openPanel(.app(.general), bringToFront: false, animated: false)
-        let panel = controller.panelLayout.panel
-        XCTAssertEqual(panel?.width, 420, "the panel is the window's width at most")
+        let panel = try XCTUnwrap(controller.settingsPanel)
+        controller.window.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(controller.panelLayout.panel?.width, min, "the panel is as wide as the window")
+        XCTAssertLessThanOrEqual(GadgetDetailView.width, panel.bounds.width, "the page fits the panel: no sideways scrolling")
+        // Every button of the page is inside the panel (not cut off at the right edge).
+        func buttons(_ v: NSView) -> [NSButton] { (v as? NSButton).map { [$0] } ?? v.subviews.flatMap(buttons) }
+        for button in buttons(panel) where !button.isHiddenOrHasHiddenAncestor {
+            let frame = panel.convert(button.bounds, from: button)
+            XCTAssertLessThanOrEqual(frame.maxX, panel.bounds.width + 0.5, "\(button.title) stays inside the panel")
+        }
         controller.closePanel(animated: false)
         XCTAssertNil(controller.panelLayout.panel)
         XCTAssertGreaterThanOrEqual(controller.panelLayout.board.width, 200, "the board is back")

@@ -50,6 +50,8 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
     private static let frameName = "NachoComboBento"
     static let defaultSize = NSSize(width: 1210, height: 770)
     static let topBar: CGFloat = 56
+    /// The narrowest window: as wide as the settings panel, so every control of the panel shows without sideways scrolling.
+    static let minContentWidth: CGFloat = SettingsPanelView.width
 
     init(host: BentoHost, settingsHost: SettingsHost? = nil) {
         self.host = host
@@ -62,7 +64,7 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false   // closing the board never stops a tool
         window.isMovableByWindowBackground = false
-        window.contentMinSize = NSSize(width: 420, height: 420)
+        window.contentMinSize = NSSize(width: BentoWindowController.minContentWidth, height: 420)
         window.delegate = self
         window.tabbingMode = .disallowed
         window.contentView = root
@@ -72,6 +74,10 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
             window.center()
         }
         window.setFrameAutosaveName(BentoWindowController.frameName)
+        // A frame saved by an older version may be narrower than the minimum: bring it up to it.
+        if window.contentLayoutRect.width < BentoWindowController.minContentWidth {
+            window.setContentSize(NSSize(width: BentoWindowController.minContentWidth, height: window.contentLayoutRect.height))
+        }
     }
 
     private func build() {

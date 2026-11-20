@@ -57,7 +57,7 @@ settings window).
 Everything you can set lives in one window: the widget window. Click a widget and a panel slides in from the right
 (about 0.2 s; none with Reduce Motion on) while the wall stays visible and usable next to it. When the window is too
 narrow for both (under about 840 pt) the panel covers the wall instead; close it to get the wall back. The window's
-minimum width is 420 pt; the panel is never wider than the window and its page scrolls sideways there.
+minimum width is 480 pt, the panel's own width, so every control of the panel always shows.
 
 - **Open / swap / close.** Click a widget (or press Return on a focused one): its panel opens. Click another widget:
   only the content changes. Close it with the ✕ button, Esc, or by clicking the same widget again.

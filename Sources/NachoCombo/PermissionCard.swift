@@ -117,6 +117,12 @@ enum PermissionCard {
         let textWidth = width - 12 - StepNumberView.size - 16 - buttonWidth - 2
         let titleLabel = UI.label(title, style: .callout, weight: state == .current ? .semibold : .regular)
         titleLabel.textColor = state == .done ? UI.secondaryText : .labelColor
+        // The title wraps in the room the button leaves (the settings panel is narrower than the old window).
+        titleLabel.lineBreakMode = .byWordWrapping
+        titleLabel.maximumNumberOfLines = 0
+        titleLabel.preferredMaxLayoutWidth = textWidth
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: textWidth).isActive = true
         var text: [NSView] = [titleLabel]
         if let detail = detail { text.append(UI.wrapLabel(detail, width: textWidth, style: .subheadline)) }
         var views: [NSView] = [badge, UI.vstack(text, spacing: 1), UI.spacer()]
