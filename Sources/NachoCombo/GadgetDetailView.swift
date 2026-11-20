@@ -64,7 +64,7 @@ protocol GadgetHost: AnyObject {
     func gadgetPerform(_ command: GadgetCommand)
     func gadgetDismissHint(_ key: String)
     func gadgetOpenDesktopSettings()
-    /// The settings window, for confirmation sheets.
+    /// The widget window, for confirmation sheets.
     var gadgetWindow: NSWindow? { get }
     /// Device Control's devices and displays, for its controls (empty while it is off).
     func gadgetDevices() -> DeviceSnapshot
@@ -78,25 +78,14 @@ protocol GadgetHost: AnyObject {
     func gadgetPetView() -> NSView?
 }
 
-/// The three parts of a gadget's page. Overview is for getting to know it, Settings for changing it, Shortcuts for keys.
-enum DetailTab: Int, CaseIterable {
-    case overview, settings, shortcuts
-
-    var title: String {
-        switch self {
-        case .overview: return "Overview"
-        case .settings: return "Settings"
-        case .shortcuts: return "Shortcuts"
-        }
-    }
-
-    var key: String { title.lowercased() }
-}
-
-/// Right-hand page of a gadget: header with its switch, what has to be done (a permission, a setup step, notices),
-/// then the Overview / Settings / Shortcuts tabs.
+/// A gadget's page in the right-hand panel of the widget window: header with its switch, what has to be done (a
+/// permission, a setup step, notices), then the Settings / Shortcuts / Permissions tabs. The old Overview (picture,
+/// controls, features) is folded into the top of Settings.
 final class GadgetDetailView: NSView {
-    static let width: CGFloat = 560
+    /// The page's width. The settings panel sets it once at start-up (before any page is built) to fit its own width;
+    /// `inner` and `cardInner` follow. A static because the page helpers (`card`, the app pages, the Computer Use and
+    /// Nacho Pet cards) all lay out to it.
+    static var width: CGFloat = SettingsPanelView.pageWidth
     static let margin: CGFloat = 24
     static var inner: CGFloat { width - 2 * margin }
     static let cardPadding: CGFloat = 12
@@ -104,7 +93,9 @@ final class GadgetDetailView: NSView {
 
     private weak var host: GadgetHost?
     private(set) var module: ModuleID = .menuBar
-    private(set) var tab: DetailTab = .overview
+    private(set) var tab: GadgetPanelTab = .settings
+    /// Settings tab: the folded Overview is open. Off gadgets start open (what is it?), on gadgets closed.
+    private var overviewOpen = false
     private let stack = NSStackView()
     /// The page changed a lot (another gadget, another tab): the window scrolls back to the top.
     var onScrollToTop: (() -> Void)?
@@ -116,7 +107,7 @@ final class GadgetDetailView: NSView {
     // What has to be done; rebuilt only when it changes.
     private let topStack = UI.vstack([], spacing: 8)
     private var lastTopKey = ""
-    private let tabControl = NSSegmentedControl(labels: DetailTab.allCases.map { $0.title }, trackingMode: .selectOne,
+    private let tabControl = NSSegmentedControl(labels: GadgetPanelTab.allCases.map { $0.title }, trackingMode: .selectOne,
                                                 target: nil, action: nil)
     private let tabStack = UI.vstack([], spacing: 10)
     /// The shown tab's content (debug snapshots of one tab).
@@ -154,7 +145,7 @@ final class GadgetDetailView: NSView {
         tabControl.target = self
         tabControl.action = #selector(tabChanged)
         tabControl.setAccessibilityIdentifier("detail-tabs")
-        tabControl.setAccessibilityLabel("Page")
+        tabControl.setAccessibilityLabel("상세 설정 탭")
         previewCaption.lineBreakMode = .byWordWrapping
         previewCaption.maximumNumberOfLines = 2
         previewCaption.preferredMaxLayoutWidth = GadgetDetailView.inner
@@ -169,10 +160,11 @@ final class GadgetDetailView: NSView {
 
     // MARK: building
 
-    /// Shows a gadget. Without a tab, a gadget that is on opens on Settings, one that is off on Overview.
-    func show(_ id: ModuleID, tab requested: DetailTab? = nil) {
+    /// Shows a gadget (on Settings unless a tab is given; the Overview inside it is open for a gadget that is off).
+    func show(_ id: ModuleID, tab requested: GadgetPanelTab? = nil) {
         module = id
-        tab = requested ?? (enabled ? .settings : .overview)
+        tab = requested ?? .settings
+        overviewOpen = !enabled
         expandedGroups = [GadgetActions.groups(of: id).first?.title ?? ""]
         for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
         lastTopKey = ""
@@ -209,7 +201,7 @@ final class GadgetDetailView: NSView {
         onScrollToTop?()
     }
 
-    func select(tab newTab: DetailTab) {
+    func select(tab newTab: GadgetPanelTab) {
         guard newTab != tab else { return }
         tab = newTab
         renderTab()
@@ -238,45 +230,68 @@ final class GadgetDetailView: NSView {
     }
 
     @objc private func tabChanged() {
-        guard let newTab = DetailTab(rawValue: tabControl.selectedSegment) else { return }
+        guard GadgetPanelTab.allCases.indices.contains(tabControl.selectedSegment) else { return }
+        let newTab = GadgetPanelTab.allCases[tabControl.selectedSegment]
         select(tab: newTab)
     }
 
     @objc private func enableToggled() { host?.gadgetSetEnabled(module, enableSwitch.state == .on) }
 
     private func renderTab() {
-        tabControl.selectedSegment = tab.rawValue
+        tabControl.selectedSegment = GadgetPanelTab.allCases.firstIndex(of: tab) ?? 0
         for view in tabStack.arrangedSubviews { tabStack.removeArrangedSubview(view); view.removeFromSuperview() }
         refreshers.removeAll()
         shortcutFields.removeAll()
         shortcutNotes.removeAll()
         switch tab {
-        case .overview:
-            if !previewSized {
-                previewView.translatesAutoresizingMaskIntoConstraints = false
-                previewView.widthAnchor.constraint(equalToConstant: GadgetDetailView.inner).isActive = true
-                previewSized = true
-            }
-            previewView.setAccessibilityElement(true)
-            previewView.setAccessibilityRole(.image)
-            previewView.setAccessibilityLabel("\(module.displayName) preview")
-            tabStack.addArrangedSubview(previewView)
-            tabStack.setCustomSpacing(6, after: previewView)
-            tabStack.addArrangedSubview(previewCaption)
-            tabStack.setCustomSpacing(18, after: previewCaption)
-            addSection("Controls", rows: controlRows(for: module))
-            addSection("Features", rows: info.features.map(featureRow))
-            if !info.tips.isEmpty { addSection("Keys and Gestures", rows: info.tips.map(tipRow)) }
-            if !info.limits.isEmpty { addSection("Good to Know", rows: info.limits.map(limitRow)) }
         case .settings:
+            addOverviewFold()
+            if overviewOpen { addOverviewSections() }
             addSection("Options", rows: optionRows(for: module))
             addSection("Menu Bar Access", rows: menuBarAccessRows())
-            addSection(info.permissions.count > 1 ? "Permissions" : "Permission", rows: permissionRows())
         case .shortcuts:
             addShortcutSections()
+        case .permissions:
+            addSection(info.permissions.count > 1 ? "Permissions" : "Permission", rows: permissionRows())
         }
         refresh()
-        if tab == .overview { refreshPreview() }
+        if tab == .settings && overviewOpen { refreshPreview() }
+    }
+
+    /// The folded Overview: a disclosure line on top of Settings ("개요 ▸/▾"), what the gadget is and its live controls below.
+    private func addOverviewFold() {
+        let button = ClosureButton(title: overviewOpen ? "▾  개요 (설명·미리보기·바로 쓰기)" : "▸  개요 (설명·미리보기·바로 쓰기)") { [weak self] in
+            guard let self = self else { return }
+            self.overviewOpen.toggle()
+            self.renderTab()
+        }
+        button.isBordered = false
+        button.alignment = .left
+        button.font = UI.controlFont(.callout)
+        button.setAccessibilityIdentifier("detail-overview-toggle")
+        button.setAccessibilityLabel("개요")
+        button.setAccessibilityValue(overviewOpen ? "펼침" : "접힘")
+        tabStack.addArrangedSubview(button)
+        tabStack.setCustomSpacing(10, after: button)
+    }
+
+    private func addOverviewSections() {
+        if !previewSized {
+            previewView.translatesAutoresizingMaskIntoConstraints = false
+            previewView.widthAnchor.constraint(equalToConstant: GadgetDetailView.inner).isActive = true
+            previewSized = true
+        }
+        previewView.setAccessibilityElement(true)
+        previewView.setAccessibilityRole(.image)
+        previewView.setAccessibilityLabel("\(module.displayName) preview")
+        tabStack.addArrangedSubview(previewView)
+        tabStack.setCustomSpacing(6, after: previewView)
+        tabStack.addArrangedSubview(previewCaption)
+        tabStack.setCustomSpacing(18, after: previewCaption)
+        addSection("Controls", rows: controlRows(for: module))
+        addSection("Features", rows: info.features.map(featureRow))
+        if !info.tips.isEmpty { addSection("Keys and Gestures", rows: info.tips.map(tipRow)) }
+        if !info.limits.isEmpty { addSection("Good to Know", rows: info.limits.map(limitRow)) }
     }
 
     private func addSection(_ title: String, rows: [NSView], footer: NSView? = nil, header: NSView? = nil) {
@@ -1031,7 +1046,7 @@ final class GadgetDetailView: NSView {
         var rows: [NSView] = []
         if info.permissions.isEmpty || info.permissions.allSatisfy({ $0.optional }) {
             let check = UI.symbolView("checkmark.shield", size: 15, tint: DotPalette.green)
-            let title = UI.label(info.permissions.isEmpty ? "No Permission Needed" : "No Permission Needed to Run",
+            let title = UI.label(info.permissions.isEmpty ? "필요한 권한이 없어요" : "실행에 필요한 권한은 없어요",
                                  style: .callout, weight: .semibold)
             let note = UI.wrapLabel(info.permissionNote, width: GadgetDetailView.cardInner - 29, style: .subheadline)
             rows.append(UI.hstack([check, UI.vstack([title, note], spacing: 2)], spacing: 8, alignment: .top))
@@ -1298,7 +1313,7 @@ final class GadgetDetailView: NSView {
 
     /// Re-renders the picture (on selection, after an option change, and on a timer for live numbers).
     func refreshPreview() {
-        guard let host = host, tab == .overview else { return }
+        guard let host = host, tab == .settings, overviewOpen else { return }
         var inputs = host.gadgetPreviewInputs()
         if module == .systemMonitor { inputs.monitor = host.gadgetMonitorPreview(appearance: appearanceName) }
         let picture = GadgetPreview.picture(for: module, inputs: inputs, appearance: effectiveAppearance)

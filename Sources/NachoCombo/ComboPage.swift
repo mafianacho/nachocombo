@@ -260,7 +260,7 @@ final class ComboPage: NSView, NSTextFieldDelegate {
     private var draftIsNew = false
     private let content = UI.vstack([], spacing: 0)
     private var lastKey = ""
-    var onOpen: ((SettingsPage) -> Void)?
+    var onOpen: ((SettingsPanelRoute) -> Void)?
     /// First launch: the page greets instead of explaining.
     var welcome = false { didSet { lastKey = ""; refresh() } }
 
@@ -599,7 +599,7 @@ final class ComboPage: NSView, NSTextFieldDelegate {
                 icon.heightAnchor.constraint(equalToConstant: 22).isActive = true
                 let enabled = settings.isEnabled(id)
                 let button: NSButton = enabled
-                    ? BrandButton("Show Steps", style: .board, small: true) { [weak self] in self?.onOpen?(.gadget(id)) }
+                    ? BrandButton("Show Steps", style: .board, small: true) { [weak self] in self?.onOpen?(.gadget(id, .permissions)) }
                     : BrandButton("Allow \(permission.displayName)…", style: .attention, small: true) { [weak self] in
                         self?.host?.allowFromCombo(id)
                     }

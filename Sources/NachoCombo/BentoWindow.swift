@@ -1,7 +1,7 @@
 import AppKit
 import NachoComboCore
 
-/// The window's root: Esc ends edit mode, ⌘E starts it.
+/// The window's root: Esc closes the settings panel or ends edit mode.
 final class BentoRootView: BentoWallView {
     var onEscape: (() -> Void)?
     override var acceptsFirstResponder: Bool { true }
@@ -33,6 +33,11 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
     private let scroll = NSScrollView()
     private let root = BentoRootView()
     private let drawer = BentoEditDrawer()
+    /// NACHO-856: the right-hand settings panel (nil in tests that build the window without a settings host).
+    let settingsPanel: SettingsPanelView?
+    private var panelState = SettingsPanelState()
+    /// Below this width left for the board the panel covers the board instead of squeezing it.
+    static let minBoardWidth: CGFloat = 360
     private let editBar = NSTextField(labelWithString: "위젯 편집 중 · 끌어서 옮기고, 오른쪽에서 크기를 골라요")
     private let titleLabel = NSTextField(labelWithString: BentoLogo.wordmark)
     private let mascotView = NSImageView()
@@ -46,8 +51,9 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
     static let defaultSize = NSSize(width: 1210, height: 770)
     static let topBar: CGFloat = 56
 
-    init(host: BentoHost) {
+    init(host: BentoHost, settingsHost: SettingsHost? = nil) {
         self.host = host
+        settingsPanel = settingsHost.map { SettingsPanelView(host: $0) }
         window = NSWindow(contentRect: NSRect(origin: .zero, size: BentoWindowController.defaultSize),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
@@ -69,13 +75,17 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
     }
 
     private func build() {
-        root.onEscape = { [weak self] in self?.endEditing() }
+        root.onEscape = { [weak self] in
+            guard let self = self else { return }
+            if self.panelState.isOpen { self.closePanel() } else { self.endEditing() }
+        }
         board.host = host
         board.onSelectionChange = { [weak self] id in self?.drawer.show(id) }
         board.onOpenHiddenMenu = { [weak self] view in self?.showHiddenMenu(from: view) }
         drawer.host = host
         drawer.onSize = { [weak self] id, size in self?.board.setSize(id, size); self?.fitBoard() }
         drawer.onHide = { [weak self] id in self?.board.hide(id); self?.fitBoard() }
+        drawer.onShortcuts = { [weak self] id in self?.openPanel(.gadget(id, .shortcuts)) }
         drawer.isHidden = true
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -85,6 +95,13 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
         scroll.documentView = board
         root.addSubview(scroll)
         root.addSubview(drawer)
+        if let panel = settingsPanel {
+            panel.isHidden = true
+            panel.onClose = { [weak self] in self?.closePanel() }
+            panel.onNavigate = { [weak self] route in self?.navigatePanel(route) }
+            root.addSubview(panel)
+            board.onTileClick = { [weak self] id in self?.tileClick(id) }
+        }
         titleLabel.font = BentoDraw.font(BentoLogo.wordmarkSize, .heavy)
         titleLabel.textColor = Brand.Bento.ink
         titleLabel.lineBreakMode = .byTruncatingTail
@@ -99,7 +116,7 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
         doneButton.isHidden = true
         for v in [mascotView, titleLabel, editBar, updateButton, editButton, settingsButton, doneButton] as [NSView] { root.addSubview(v) }
         editButton.onPress = { [weak self] in self?.beginEditing() }
-        settingsButton.onPress = { [weak self] in self?.host?.bentoOpenSettings() }
+        settingsButton.onPress = { [weak self] in self?.settingsPillClick() }
         doneButton.onPress = { [weak self] in self?.endEditing() }
         updateButton.onPress = { [weak self] in
             guard let self = self else { return }
@@ -114,7 +131,7 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
 
     private var editing: Bool { board.editing }
 
-    private func layoutChrome() {
+    private func layoutChrome(animatePanel: Bool = false) {
         let b = root.bounds
         let top = BentoWindowController.topBar
         let drawerW = Brand.Bento.drawerWidth
@@ -156,10 +173,105 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
         titleLabel.frame = NSRect(x: textX, y: (top - lineH) / 2, width: max(0, min(natural + 4, textRoom)), height: lineH)
         titleLabel.isHidden = editing || !showText
         editBar.frame = NSRect(x: 84, y: 18, width: max(40, x - 84 - 12), height: 20)
-        let boardW = editing ? b.width - drawerW - 24 - 12 : b.width
+        // The panel (normal mode only) takes the right edge; the board keeps the rest while that is at least
+        // `minBoardWidth`, else the panel covers the board and closing it brings the board back.
+        let panelW = panelState.isOpen ? min(SettingsPanelView.width, b.width) : 0
+        let squeezed = panelW > 0 && b.width - panelW >= BentoWindowController.minBoardWidth
+        let boardW = editing ? b.width - drawerW - 24 - 12 : (squeezed ? b.width - panelW : b.width)
         scroll.frame = NSRect(x: 0, y: top, width: max(200, boardW), height: max(100, b.height - top))
         drawer.frame = NSRect(x: b.width - drawerW - 24, y: top, width: drawerW, height: max(100, b.height - top - 24))
+        placePanel(in: b, top: top, animated: animatePanel)
         fitBoard()
+    }
+
+    // MARK: settings panel (NACHO-856)
+
+    /// Slides the panel in from the right edge (about 0.2 s) or out again; Reduce Motion: no animation.
+    private func placePanel(in b: NSRect, top: CGFloat, animated: Bool) {
+        guard let panel = settingsPanel else { return }
+        let w = min(SettingsPanelView.width, b.width)
+        let height = max(100, b.height - top)
+        let shown = NSRect(x: b.width - w, y: top, width: w, height: height)
+        let hidden = NSRect(x: b.width, y: top, width: w, height: height)
+        let animate = animated && !UI.reduceMotion
+        if panelState.isOpen {
+            if panel.isHidden {
+                panel.frame = hidden
+                panel.isHidden = false
+            }
+            if animate {
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.2
+                    panel.animator().frame = shown
+                })
+            } else {
+                panel.frame = shown
+            }
+        } else if !panel.isHidden {
+            if animate {
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.2
+                    panel.animator().frame = hidden
+                }, completionHandler: { [weak self, weak panel] in
+                    if self?.panelState.isOpen == false { panel?.isHidden = true }
+                })
+            } else {
+                panel.frame = hidden
+                panel.isHidden = true
+            }
+        }
+    }
+
+    /// Re-reads the state: shows the route in the panel, slides it, and takes the board's width into account.
+    private func applyPanel(animated: Bool = true) {
+        if let route = panelState.route { settingsPanel?.show(route) }
+        layoutChrome(animatePanel: animated)
+        // The panel went away: keyboard focus goes back to the board.
+        if !panelState.isOpen, !editing, let first = board.firstCard { window.makeFirstResponder(first) }
+    }
+
+    var isPanelOpen: Bool { panelState.isOpen }
+    /// Where the board and the panel sit in the window (tests: no overlap, nothing outside the window).
+    var panelLayout: (board: NSRect, panel: NSRect?) {
+        (scroll.frame, settingsPanel.flatMap { $0.isHidden ? nil : $0.frame })
+    }
+    var panelRoute: SettingsPanelRoute? { settingsPanel.flatMap { panelState.isOpen ? $0.route : nil } }
+
+    /// A tile of the wall was clicked (or Return on it): open its panel, swap the content, or close on the same tile.
+    func tileClick(_ id: ModuleID, animated: Bool = true) {
+        guard settingsPanel != nil else { host?.bentoOpen(id); return }
+        guard panelState.tileClick(id) else { return }   // editing: the drawer owns the click
+        applyPanel(animated: animated)
+    }
+
+    private func settingsPillClick() {
+        guard settingsPanel != nil else { host?.bentoOpenSettings(); return }
+        guard panelState.settingsPillClick() else { return }
+        applyPanel()
+    }
+
+    /// Any other entry point (menu bar "Settings…", a gadget's own request, a deep link): the window comes to the front
+    /// and the panel shows the route (nil closes it). Edit mode ends first: the panel and the edit drawer never meet.
+    /// `bringToFront: false` / `animated: false` are for tests that draw the window off screen.
+    func openPanel(_ route: SettingsPanelRoute?, bringToFront: Bool = true, animated: Bool = true) {
+        guard settingsPanel != nil else { if bringToFront { show() }; return }
+        if editing { endEditing() }
+        if bringToFront { show() }
+        guard let route = route else { closePanel(animated: animated); return }
+        panelState.open(route)
+        applyPanel(animated: animated)
+    }
+
+    func closePanel(animated: Bool = true) {
+        guard panelState.isOpen else { return }
+        panelState.close()
+        applyPanel(animated: animated)
+    }
+
+    /// The panel's own navigation: its tabs, "Show Steps", a combo's gadget link. No re-slide.
+    private func navigatePanel(_ route: SettingsPanelRoute) {
+        guard panelState.open(route) else { return }
+        applyPanel(animated: false)
     }
 
     private func fitBoard() {
@@ -202,10 +314,12 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
         if now != lastUpdateModel { layoutChrome() }
         board.refreshData()
         if editing { drawer.show(board.selectedID) }
+        if panelState.isOpen { settingsPanel?.refresh() }
     }
 
     func beginEditing() {
         guard !editing else { return }
+        panelState.beginEditing()   // closes the panel: it and the edit drawer never show together
         board.setEditing(true)
         editBar.isHidden = false
         doneButton.isHidden = false
@@ -219,6 +333,7 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
 
     func endEditing() {
         guard editing else { return }
+        panelState.endEditing()
         board.setEditing(false)
         editBar.isHidden = true
         doneButton.isHidden = true
@@ -241,9 +356,20 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
             head.isEnabled = false
             menu.addItem(head)
             for id in hidden {
-                let item = NSMenuItem(title: id.displayName, action: #selector(unhide(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = id.rawValue
+                // Each hidden widget: bring it back, or open its settings panel without showing it.
+                let item = NSMenuItem(title: id.displayName, action: nil, keyEquivalent: "")
+                let sub = NSMenu(title: id.displayName)
+                let show = NSMenuItem(title: "다시 보이기", action: #selector(unhide(_:)), keyEquivalent: "")
+                show.target = self
+                show.representedObject = id.rawValue
+                sub.addItem(show)
+                if settingsPanel != nil {
+                    let settings = NSMenuItem(title: "설정 열기", action: #selector(openHiddenSettings(_:)), keyEquivalent: "")
+                    settings.target = self
+                    settings.representedObject = id.rawValue
+                    sub.addItem(settings)
+                }
+                item.submenu = sub
                 menu.addItem(item)
             }
         }
@@ -262,6 +388,11 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
         reload()
     }
 
+    @objc private func openHiddenSettings(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let id = ModuleID(rawValue: raw) else { return }
+        openPanel(SettingsEntry.hiddenWidgetSettings(id).route)
+    }
+
     @objc private func menuEdit() { beginEditing() }
 
     // MARK: live numbers
@@ -273,6 +404,8 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
             guard let self = self else { return }
             guard self.window.isVisible, !self.window.isMiniaturized, self.window.occlusionState.contains(.visible) else { return }
             self.board.refreshData()
+            // The panel's live numbers (the old settings window's 2 s timer) run here while it is open.
+            if self.panelState.isOpen { self.settingsPanel?.tick() }
         }
         RunLoop.main.add(t, forMode: .common)
         liveTimer = t
@@ -290,7 +423,8 @@ final class BentoWindowController: NSObject, NSWindowDelegate {
 
     var diagnostics: [String: Any] {
         ["shown": window.isVisible, "editing": editing, "columns": board.columns, "cards": board.cardViews.count,
-         "selected": board.selectedID?.rawValue ?? "-", "timer": liveTimer?.isValid ?? false]
+         "selected": board.selectedID?.rawValue ?? "-", "timer": liveTimer?.isValid ?? false,
+         "panelOpen": panelState.isOpen, "panelRoute": panelRoute.map { "\($0)" } ?? "-"]
     }
 
     /// Frames of the top bar's parts (tests: nothing overlaps, even at the minimum width).

@@ -56,7 +56,7 @@ ctl gallery page permissions; sleep 1
 ctl gallery detail "$PWD/$OUT/permissions.png"
 ctl combo select desk; sleep 1
 ctl gallery detail "$PWD/$OUT/combos.png"
-ctl gallery page captureFloat; ctl gallery tab overview; sleep 1
+ctl gallery page captureFloat; ctl gallery tab settings; sleep 1
 ctl gallery content "$PWD/$OUT/detail-capture-float.png"
 ctl panel list; sleep 1
 ctl snapshot panel "$PWD/$OUT/quick-panel.png"
