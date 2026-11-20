@@ -170,7 +170,8 @@ final class GeneralPage: NSView {
                   let index = LaunchWindow.allCases.firstIndex(of: current) else { return }
             popup?.selectItem(at: index)
         }
-        let note = UI.label("Opening the app again always shows it.", style: .subheadline, color: UI.secondaryText)
+        // Wraps in the room the pop-up leaves (the panel is narrower than the old window).
+        let note = UI.wrapLabel("Opening the app again always shows it.", width: cardInner - 215, style: .subheadline)
         return row([titled("Show This Window at Launch", note), UI.spacer(), popup])
     }
 
@@ -290,8 +291,8 @@ final class GeneralPage: NSView {
     }
 
     private func resetRow() -> NSView {
-        let note = UI.label("Turns every gadget off and restores the default options and shortcuts.", style: .subheadline,
-                            color: UI.secondaryText)
+        let note = UI.wrapLabel("Turns every gadget off and restores the default options and shortcuts.", width: cardInner - 100,
+                                style: .subheadline)
         let reset = UI.pushButton("Reset…", small: true) { [weak self] in self?.confirmReset() }
         reset.setAccessibilityIdentifier("general-reset")
         return row([titled("Reset All Settings", note), UI.spacer(), reset])

@@ -373,7 +373,8 @@ final class ComboPage: NSView, NSTextFieldDelegate {
         for view in content.arrangedSubviews { content.removeArrangedSubview(view); view.removeFromSuperview() }
 
         let eyebrow = Brand.eyebrow(welcome ? "Welcome to Nacho Combo" : "Combos")
-        let title = Brand.signLabel("What's your order?", size: 40)
+        // 40 pt fits the old 560 pt page; the narrower panel needs a smaller sign.
+        let title = Brand.signLabel("What's your order?", size: ComboPage.inner >= 480 ? 40 : 30)
         title.setAccessibilityIdentifier("combos-title")
         let lede = UI.wrapLabel(welcome
             ? "Everything starts off. Pick a combo to switch on a few gadgets together, make your own, or choose them one by "
@@ -405,7 +406,9 @@ final class ComboPage: NSView, NSTextFieldDelegate {
         }
 
         // The board: the numbered presets, the user's own, then the order or the editor.
-        let tileWidth = floor((ComboPage.boardInner - 4 * 8) / 5)
+        // Five tiles to a row on a wide page, three in the narrow panel (names break inside words below ~90 pt).
+        let perRow = ComboPage.boardInner >= 480 ? 5 : 3
+        let tileWidth = floor((ComboPage.boardInner - CGFloat(perRow - 1) * 8) / CGFloat(perRow))
         let editingID = draft?.id
         func tile(_ combo: Combo) -> NSView {
             let button = BoardTileButton(top: "No.\(combo.number)", name: combo.name, note: permissionText(combo),
@@ -415,10 +418,9 @@ final class ComboPage: NSView, NSTextFieldDelegate {
             button.widthAnchor.constraint(equalToConstant: tileWidth).isActive = true
             return button
         }
-        // Five tiles to a row, like the board's columns.
         let presetTiles = ComboCatalog.presets.map(tile)
-        let presetLines = stride(from: 0, to: presetTiles.count, by: 5).map {
-            UI.hstack(Array(presetTiles[$0..<min($0 + 5, presetTiles.count)]), spacing: 8, alignment: .top) as NSView
+        let presetLines = stride(from: 0, to: presetTiles.count, by: perRow).map {
+            UI.hstack(Array(presetTiles[$0..<min($0 + perRow, presetTiles.count)]), spacing: 8, alignment: .top) as NSView
         }
         var rows: [NSView] = [UI.vstack(presetLines, spacing: 8)]
         let customs = ComboCatalog.combos(settings).filter { $0.isCustom }
@@ -432,7 +434,10 @@ final class ComboPage: NSView, NSTextFieldDelegate {
             ownTiles.append(new)
         }
         rows.append(Brand.eyebrow("Your combos", size: 10.5, color: Brand.boardMute))
-        rows.append(UI.hstack(ownTiles, spacing: 8, alignment: .top))
+        let ownLines = stride(from: 0, to: ownTiles.count, by: perRow).map {
+            UI.hstack(Array(ownTiles[$0..<min($0 + perRow, ownTiles.count)]), spacing: 8, alignment: .top) as NSView
+        }
+        rows.append(UI.vstack(ownLines, spacing: 8))
         rows.append(draft.map { editorPanel($0) } ?? orderPanel())
         let boardColumn = UI.vstack(rows, spacing: 10)
         boardColumn.setCustomSpacing(14, after: rows[0])

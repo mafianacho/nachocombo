@@ -44,6 +44,8 @@ final class SettingsPanelCaptureTests: XCTestCase {
         var combosOrdered: [String] = []
         let computerUse: ComputerUseModule
         var mcpCard: ComputerUseCard?
+        private var petCard: PetSettingsCard?
+        private var computerUseGadgetCard: ComputerUseGadgetCard?
 
         init(storeURL: URL? = nil) {
             let url = storeURL ?? FileManager.default.temporaryDirectory.appendingPathComponent("nc-panel-\(UUID().uuidString)/settings.json")
@@ -52,6 +54,10 @@ final class SettingsPanelCaptureTests: XCTestCase {
             computerUse = ComputerUseModule(keys: APIKeyStore(url: nil))
             computerUse.currentSettings = { [manager] in manager.settings.computerUse }
             computerUse.gadgetOn = { [manager] in manager.settings.isEnabled(.computerUse) }
+            // The same gadgets are on as on the wall of the board fixture.
+            for id in [ModuleID.nachoPet, .systemMonitor, .windowSnap, .keepAwake, .clipboard, .captureFloat, .deviceControl, .calendarClock] {
+                _ = manager.setEnabled(id, true)
+            }
         }
 
         // BentoHost
@@ -108,8 +114,18 @@ final class SettingsPanelCaptureTests: XCTestCase {
         func gadgetDevices() -> DeviceSnapshot { DeviceSnapshot() }
         func gadgetCommandState(_ command: GadgetCommand) -> (on: Bool, enabled: Bool) { (false, true) }
         func gadgetSetAppShortcut(_ bundleID: String, _ shortcut: ToolShortcut?) -> String? { nil }
-        func gadgetComputerUseView() -> NSView? { nil }
-        func gadgetPetView() -> NSView? { nil }
+        func gadgetComputerUseView() -> NSView? {
+            if computerUseGadgetCard == nil {
+                let card = ComputerUseGadgetCard(module: computerUse, manager: manager, width: GadgetDetailView.cardInner)
+                card.refresh(state: manager.settings.isEnabled(.computerUse) ? .running : .off)
+                computerUseGadgetCard = card
+            }
+            return computerUseGadgetCard?.view
+        }
+        func gadgetPetView() -> NSView? {
+            if petCard == nil { petCard = PetSettingsCard(module: NachoPetModule(), width: GadgetDetailView.cardInner) }
+            return petCard?.view
+        }
 
         // SettingsHost
         var loginItemState: LoginItemState { .off }

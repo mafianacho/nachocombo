@@ -93,8 +93,10 @@ final class SettingsPanelView: NSView {
         // The container follows the clip's width but never gets narrower than the page: a narrow window scrolls sideways.
         let leading = container.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor)
         let trailing = container.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor)
+        // Leading wins over trailing when the page is wider than the clip: the page starts at the left edge and the
+        // rest scrolls (equal priorities let Auto Layout pin the right edge and cut the page's left side).
         leading.priority = .defaultHigh
-        trailing.priority = .defaultHigh
+        trailing.priority = NSLayoutConstraint.Priority(rawValue: NSLayoutConstraint.Priority.defaultHigh.rawValue - 1)
         NSLayoutConstraint.activate([
             container.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
             leading, trailing,
