@@ -23,7 +23,7 @@ for this release.
 ## 2. Tagline candidates (max 60 characters)
 
 <!-- len:tagline_1:60 -->
-> Thirteen Mac menu bar gadgets in one free open-source app
+> Mac menu bar gadgets in one free open-source app
 
 <!-- len:tagline_2:60 -->
 > Window snap, clipboard, monitor and more, one menu bar app
@@ -34,7 +34,7 @@ for this release.
 ## 3. Description candidates (max 260 characters)
 
 <!-- len:descr_1:260 -->
-> Nacho Combo is a free, open-source macOS menu bar app with thirteen gadgets, each its own switch: window snap, system monitor, file shelf, floating captures, clipboard history, disk map and more. Order them one by one or as a combo. macOS 12+.
+> Nacho Combo is a free, open-source macOS menu bar app with 13 gadgets, each its own switch: window snap, system monitor, file shelf, clipboard history, disk map and more. Plus experimental Computer Use and Nacho Pet. macOS 12+.
 
 <!-- len:descr_2:260 -->
 > One menu bar app instead of a pile of small Mac utilities. Every gadget is its own switch, and macOS permissions are asked only when you switch on a gadget that needs one. Free, MIT-licensed source, macOS 12 or later, Apple Silicon and Intel.
@@ -45,10 +45,10 @@ Run `python3 docs/product-hunt/check_lengths.py`. Output recorded when this file
 
 ```text
 key            chars  limit  ok
-tagline_1         57     60  OK
+tagline_1         48     60  OK
 tagline_2         58     60  OK
 tagline_3         52     60  OK
-descr_1          243    260  OK
+descr_1          227    260  OK
 descr_2          242    260  OK
 ```
 
@@ -60,7 +60,7 @@ stricter limit set in the task brief.)
 > Hi Product Hunt! I'm one of the makers of Nacho Combo.
 >
 > **Why we built it:** a Mac menu bar fills up with small utilities, each with its own settings and its own permission
-> prompts. Nacho Combo puts thirteen of them in one app, and every gadget is its own switch, so you only turn on what you
+> prompts. Nacho Combo puts 13 of them in one app (plus an experimental Computer Use server and Nacho Pet), and every gadget is its own switch, so you only turn on what you
 > use. (C6)
 >
 > **What it does:** snap windows from the keyboard, watch CPU, memory, disk and network in the menu bar, park files on a
@@ -95,7 +95,7 @@ Replace `<PH-LINK>` with the launch URL on the day. 🔒 Boss approval required 
 
 ### 5.1 X post (≤280 characters)
 
-> We just launched Nacho Combo on Product Hunt: one free, open-source Mac menu bar app with 13 gadgets (window snap, system monitor, file shelf, clipboard history, disk map and more), each its own switch. Feedback welcome: <PH-LINK>
+> We just launched Nacho Combo on Product Hunt: one free, open-source Mac menu bar app with 13 gadgets (window snap, file shelf, clipboard history and more), each its own switch, plus experimental Computer Use and Nacho Pet. Feedback welcome: <PH-LINK>
 
 ### 5.2 Reddit post (for a Mac-app community; `⚠ Unverified`: which subreddit allows self-promotion and in what form)
 
@@ -103,7 +103,7 @@ Replace `<PH-LINK>` with the launch URL on the day. 🔒 Boss approval required 
 >
 > Nacho Combo is a macOS menu bar app (macOS 12+, Apple Silicon and Intel, MIT source). Gadgets include window snapping,
 > a system monitor, a file shelf, floating screen captures, clipboard history, device control, an app and window
-> switcher, mouse tuning, a calendar clock, a disk map and a menu bar organizer. Each one is a separate switch.
+> switcher, mouse tuning, a calendar clock, a disk map and a menu bar organizer. Each one is a separate switch. The app also has two experimental extras, Computer Use (an MCP server, off by default) and Nacho Pet, which have not been tried on a real Mac yet.
 >
 > Things to know: the UI is in Korean for now, and the app is ad-hoc signed and not notarized, so the first launch needs
 > right-click ▸ Open. Source and downloads: https://github.com/mafianacho/nachocombo . We are on Product Hunt today
@@ -112,7 +112,7 @@ Replace `<PH-LINK>` with the launch URL on the day. 🔒 Boss approval required 
 ### 5.3 Short community or chat message (Discord, Slack, newsletter)
 
 > Nacho Combo, a free open-source macOS menu bar app with 13 gadgets (window snap, monitor, file shelf, clipboard
-> history and more), is on Product Hunt today: <PH-LINK> . The UI is Korean for now. Honest feedback is the most
+> history and more; plus experimental Computer Use and Nacho Pet), is on Product Hunt today: <PH-LINK> . The UI is Korean for now. Honest feedback is the most
 > useful thing you can give.
 
 ## 6. FAQ (7 entries; for the Product Hunt page, the repository and replies)

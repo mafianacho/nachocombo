@@ -52,7 +52,7 @@ README section names are headings of `README.md`; `README:NNN` is the start line
 | C3 | Free, MIT, open source | README top line "free and open source (MIT)"; `LICENSE:1` ("MIT License") and its scope note |
 | C4 | MIT covers source only; art, icon, names excluded; ™ not ® | `LICENSE:3-5`; `NOTICE:3-8`; `TRADEMARKS.md` ("none of them is a registered trademark (®) yet"); `Resources/Nacho/LICENSE:1-6` |
 | C5 | macOS 12 or later; Apple Silicon and Intel (universal) | README top line; Install section README:628; `Package.swift:31` (`.macOS(.v12)`); `scripts/build-app.sh:5,16` (`UNIVERSAL=1` builds arm64 + x86_64); `scripts/build-app.sh:71` (`LSMinimumSystemVersion` 12.0) |
-| C6 | Thirteen gadgets, each its own switch | README intro paragraph; Gadgets table README:152 |
+| C6 | 13 gadgets, each its own switch; Computer Use and Nacho Pet are named separately as experimental (see C42) | README intro paragraph; Gadgets table README:152 |
 | C7 | Snap windows from the keyboard | Window Snap, README:266 |
 | C8 | Watch CPU, memory, disk, network in the menu bar | System Monitor, README:188 |
 | C9 | Park files on a floating shelf | File Shelf, README:289 |
@@ -88,7 +88,7 @@ README section names are headings of `README.md`; `README:NNN` is the start line
 | C39 | Computer Use details (client with key, tool groups, high-risk groups, emergency stop ⌃⌥⌘.) | README Computer Use README:437; `Sources/NachoCombo/ComputerUseModule.swift:25` (`⌃⌥⌘.`) |
 | C40 | Pet details (chat, dictation, capture and shelf handoff, window and gadget commands switchable off, phone-only items) | README Nacho Pet README:461 |
 | C41 | Combos (preset switches) | README "Combos" README:91 |
-| C42 | Thirteen gadgets + Computer Use + Pet = 15 parts | README intro; brief for NACHO-975 |
+| C42 | 13 gadgets + experimental Computer Use (MCP server, off by default) + Nacho Pet; the v0.13.0 widget window shows all 15 tiles, so LISTING says "13 gadgets" and names the other two as experimental, never "15 gadgets" | README intro; brief for NACHO-975 |
 
 Claims in LISTING.md with no row above are opinions or process statements and carry no feature claim (the "Who it is
 for" line and the "what I'd love to hear" line).
