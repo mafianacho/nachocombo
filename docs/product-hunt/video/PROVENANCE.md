@@ -3,13 +3,35 @@
 What the video is made from, with what, and under which licences. No user names, host names or paths are recorded here on purpose.
 
 ## What it is
-- A 75 s, 1920x1080, 25 fps, H.264 video with burned-in English captions (`captions.en.srt`) and a 14 s silent GIF loop.
+- A 75 s, 1920x1080, 25 fps, H.264 video with burned-in English captions (`captions.en.srt`) and a 14 s silent GIF loop. A third file, `nacho-combo-intro-v0.13.0-preview.mp4` (under 10 MB), is a **confirmation copy** for chat previews: same pictures, size, 25 fps, 1875 frames and 75.00 s, a lower bit rate. It is **not the deliverable**.
 - **Not a screen recording.** Every app picture is a render the app made itself (or, for four of them, the CI runner's off-screen render of the same v0.13.0 code on test data). The motion (zoom, scroll, cursor click, panel wipe, cross-fades) and all text on top are drawn afterwards in an HTML scene (`tools/scene`). The first and last scene say so on screen.
 - Built with the pipeline in this folder (`build.sh`, `tools/`, `timeline.json`, `STORYBOARD.md`), no video editor.
+- This is the **second build** (NACHO-994): the first MP4 had a 1 px sideways wobble of the big text (next section) and is superseded. The pictures, `timeline.json` and the look are the same; the render method is different and caption 8 reads "Window Snap: 24 commands, or drag a window to an edge." (it said "24 keyboard commands"; the README says "24 window commands").
 
 ## Product build shown
 - **Nacho Combo v0.13.0** (`CFBundleShortVersionString 0.13.0`, ad-hoc signed), tag v0.13.0, commit `fdcd4c9`.
 - Release disk image `NachoCombo-0.13.0-macos.dmg`, SHA-256 `5283efdeaa69ba3710e033ce34ee131c374b7376e4fb8b04e9c83fcdda8fb8bf` (equal to the release's `SHA256SUMS.txt`).
+
+## Render method: why the text wobbled and what changed (NACHO-994)
+- **Symptom (reported by the owner, measured on the first MP4):** the big English text (scene titles) moved left and right by 1 px with a period of 6 frames, about 4.2 Hz at 25 fps. Example, scene S04a "WINDOW SNAP": the right end of the text alternates between 520 and 521 px in a repeating pattern. A re-render with the old method shows the same pattern in its raw PNG frames, so it is the renderer and not the encoder. Captions were not affected.
+- **Cause:** `tools/render.mjs` drew frame i on browser page (i mod 6) (default `--workers 6`), and the same text came out up to 1 px different on each page, depending on the frames that page had drawn before: every scene element had `will-change: opacity, transform` (its own compositor layer) and finished elements kept a `translateX(0px)` / `scale(1)` transform. One page drawing the frames in order gives identical text.
+- **What changed:**
+  1. `tools/render.mjs`: default `--workers 1` (one page draws every frame in order). More pages are still possible (`--workers N`) but print a warning and must pass the check below; `--range a,b` renders only part of the timeline for quick checks.
+  2. `tools/scene/scene.css`: `will-change` removed from `.el`; text uses `text-rendering: geometricPrecision`, `font-kerning: normal`, no ligatures.
+  3. `tools/scene/scene.js`: once an entrance is over (p >= 1) an element gets `transform: none`, `clip-path` empty and no `opacity` property; entrance offsets are whole pixels; a shot that does not zoom gets `transform: none`.
+  4. New `tools/check-text-stability.mjs` (also run by `build.sh` on the PNG frames, the MP4 and the preview): measures the left end, right end and sub-pixel centre shift of every title, label, tagline, pill and caption in its stable window and tests them for a pattern against frame number modulo 2 to 8. Its rules and limits are in the header of the script.
+- **Evidence (same tool, same rules):**
+
+| What was checked | Result |
+|---|---|
+| First MP4 (sha256 `e4e2e269...a8dabf`, superseded) | **FAIL**: 14 of 14 titles fail (an end moves 1 px in 13 of them, centre shift 0.21 to 0.77 px in all 14); 41 of 55 measurements pass (pills and captions were stable); periodic patterns with period 6 (16 findings), 3, 4 and 8 |
+| Frames of the old renderer, 6 pages, re-rendered | **FAIL**: 14 titles, period 6 in the PNG frames themselves (35 findings with period 6) |
+| Frames of the new renderer, 1 page (what this MP4 was encoded from) | **PASS** 55 of 55: ends 0 px, centre shift 0.000 px, no text pixel changes between consecutive frames, no periodic pattern |
+| This MP4 | **PASS** 55 of 55: no title or pill end moves, largest centre shift 0.006 px, one single 1 px step of one caption end (an encoder re-coding a still picture once, allowed up to 2 per window) |
+| Preview copy | **PASS** 55 of 55 |
+| New renderer, 6 pages (experiment) | text **PASS** 55 of 55 (page independent now); 566 of 1875 frames still differ from the 1-page frames, only inside the screenshot area and by at most 16 of 255 levels (image resampling during zooms and wipes), which is why the default stays at one page |
+
+- **Render time:** 247.8 s for the 1875 frames on one page (the old default took 204.7 s on 6 pages); the whole build including encodes, GIF, preview copy and checks is about 6.5 minutes.
 
 ## Where each picture comes from
 | Picture | File | Source | How made |
@@ -64,10 +86,10 @@ Fitted to the frame (no distortion), slow push-in on some, c20 scrolled from the
 |---|---|---|
 | Playwright `playwright-core` 1.64.0 with Chromium 156.0.8078.4 | renders the scene frame by frame | Apache-2.0 (Playwright), BSD-style (Chromium) |
 | FFmpeg 7.1 with x264 (Docker image `jrottenberg/ffmpeg@sha256:292a972c60356abd651d9a4f9c808c13e7473f65ad400b7eb99215f4e571931d`) | H.264 encode (crf 18, preset slow, High 4.1, yuv420p, bt709), metadata strip, GIF palette | FFmpeg built with GPL and nonfree options: the binary is only run, never shipped; its output is not covered by its licence |
-| Node.js 22 | scripts | MIT |
+| Node.js 22 | scripts, including `tools/check-text-stability.mjs` | MIT |
 | Pillow (Python) | contact sheets of the review only | HPND |
 
-Encode: 25 fps, 1875 frames, `-map_metadata -1`, a second pass without re-encoding removes container tags and the encoder's version string; `+faststart`. GIF: 800 px wide, 10 fps, 128 colours, Bayer dither, loop forever, from four segments of the video (0.4 to 3.4 s, 13.6 to 16.5 s, 24.0 to 28.3 s, 67.2 to 70.9 s).
+Encode: 25 fps, 1875 frames, `-map_metadata -1`, a second pass without re-encoding removes container tags and the encoder's version string; `+faststart`. GIF: 800 px wide, 10 fps, 128 colours, Bayer dither, loop forever, from four segments of the video (0.4 to 3.4 s, 13.6 to 16.5 s, 24.0 to 28.3 s, 67.2 to 70.9 s). Preview copy: same frames, libx264 2-pass ABR at 930 kbit/s (preset slow, High 4.1, yuv420p, `-g 50`), `-movflags +faststart`, `-map_metadata -1`, the same metadata-stripping copy pass; 8 757 199 bytes, 934 kbit/s measured.
 
 ## Fonts (in the picture)
 Anton (wordmark and scene titles), IBM Plex Sans (captions, text), IBM Plex Mono (labels, address): the app's own brand fonts from `Resources/Fonts`, SIL Open Font License 1.1 (Anton Project Authors; IBM Corp.). Used as rendered text, not modified, renamed or embedded in a distributed font file.
@@ -82,8 +104,11 @@ The source code is MIT. The app icon, the Nacho character and the app's artwork 
 ## Files
 | File | SHA-256 | Size |
 |---|---|---|
-| `nacho-combo-intro-v0.13.0.mp4` | `e4e2e26993101a6a4bd3704c8b7f2780792147f2564a78ee0eaca675a5a8dabf` | 14112366 bytes |
-| `nacho-combo-intro-v0.13.0.gif` | `28de85f0d2bac4474700ccd63f788f6da7233e444f9d64361aa3fd5dd93ce8c7` | 1784718 bytes |
+| `nacho-combo-intro-v0.13.0.mp4` (the deliverable) | `6342741b83846d639a6b78e00474108e0d0807eb32287b7f600a19901d60ad07` | 12840238 bytes |
+| `nacho-combo-intro-v0.13.0.gif` | `ce67dc0cc36ae8ecc592653cc9b2ccc4907a5c8700713f66031d7961b2c7f31c` | 1003450 bytes |
+| `nacho-combo-intro-v0.13.0-preview.mp4` (confirmation copy, not the deliverable) | `32e54bf0c7541c333b1e84a369dc54247a9c14747e43ae51acf53d8f018b7424` | 8757199 bytes |
+
+Superseded (the first build, with the 1 px text wobble; kept in `final/superseded-jitter/`): MP4 `e4e2e26993101a6a4bd3704c8b7f2780792147f2564a78ee0eaca675a5a8dabf`, GIF `28de85f0d2bac4474700ccd63f788f6da7233e444f9d64361aa3fd5dd93ce8c7`. Do not use them.
 
 SHA-256 of the capture PNGs used:
 

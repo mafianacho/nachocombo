@@ -22,7 +22,7 @@ that the captions do not say.
 7. 00:00:20,200 — Permissions: the clock needs none, Calendars is optional.
 
 ## Six gadgets (0:24 – 0:50)
-8. 00:00:24,200 — Window Snap: 24 keyboard commands, or drag a window to an edge.
+8. 00:00:24,200 — Window Snap: 24 commands, or drag a window to an edge.
 9. 00:00:28,600 — System Monitor: CPU, memory, disk, network and more in the menu bar.
 10. 00:00:33,500 — Capture Float keeps a capture floating over other windows.
 11. 00:00:37,600 — File Shelf: shake while dragging and a floating shelf appears.

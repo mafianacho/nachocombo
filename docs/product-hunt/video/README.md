@@ -13,16 +13,19 @@ leaks nothing personal. **Text and scripts only**: videos, GIFs, frames and capt
 | `capture-manifest.json` → `capture.sh` | the capture list as data; `capture.sh` (generated) shoots all PNGs on a Mac from the debug build |
 | `timeline.json` | the scene timeline: what is on screen, when, where (renderer input) |
 | `build.sh` | **one command**: captures folder → MP4 (H.264) + gallery GIF + ffprobe + verification |
-| `tools/` | `render.mjs` (scene → PNG frames on a fixed clock), `scene/` (the HTML scene), `check-captions.mjs`, `verify.mjs`, `gif-frames.mjs`, `make-standin.mjs`, `gen-capture.mjs`, `ffmpeg.sh` |
+| `tools/` | `render.mjs` (scene → PNG frames on a fixed clock), `scene/` (the HTML scene), `check-captions.mjs`, `check-text-stability.mjs` (no sideways wobble of text), `verify.mjs`, `gif-frames.mjs`, `make-standin.mjs`, `gen-capture.mjs`, `ffmpeg.sh` |
 | `privacy/` | the privacy check: `run.sh` (frames every 2 s, contact sheets, metadata dump, forbidden-string scans, checklist), `scan-forbidden.mjs`, `forbidden-patterns.json`, `CHECKLIST.template.md` |
 
 ## How it works
 ```
 captures/*.png + capture-manifest.json + timeline.json + captions.en.srt
-   └─ tools/render.mjs   Chromium (Playwright) draws the HTML scene at t = N/25 s, 1920x1080 PNG per frame (parallel pages)
+   └─ tools/render.mjs   Chromium (Playwright) draws the HTML scene at t = N/25 s, 1920x1080 PNG per frame (one page, in order)
+       └─ tools/check-text-stability.mjs   frames: titles, labels and captions must not move sideways (PASS needed)
        └─ ffmpeg (Docker, libx264)   frames → MP4 (yuv420p, +faststart), then a copy pass that strips every tag and the encoder's version SEI
+       └─ tools/check-text-stability.mjs   the MP4 decoded again: the same check
        └─ ffmpeg                      selected segments → palette-optimised GIF, steps down in size until it is under 2 MiB
-           └─ tools/verify.mjs        ffprobe → 1920x1080, h264, yuv420p, 60-90 s, no metadata, faststart; GIF 10-20 s, loops, size
+       └─ ffmpeg (--preview)          a copy under 10 MB (2-pass ABR) for chat previews; not the deliverable
+           └─ tools/verify.mjs        ffprobe → 1920x1080, h264 High 4.1, yuv420p, 25 fps, 1875 frames, 75.00 s, no metadata, faststart; GIF 10-20 s, loops, size; preview under 10 MB
 ```
 The method follows `scripts/capture-motion.mjs` (fixed-clock frames, ffmpeg encode), with the scene in HTML/CSS so captions,
 titles, the cursor and the panel slide are code, not a video editor.
@@ -34,8 +37,9 @@ titles, the cursor and the panel slide are code, not a video editor.
   (tag `7-ubuntu`, FFmpeg 7.1 with x264, about 87 MB; pulled once, never removed by these scripts). Rootless Docker: set
   `DOCKER_HOST=unix:///run/user/<uid>/docker.sock`; rootful Docker: also set `FFMPEG_DOCKER_USER="$(id -u):$(id -g)"`.
   Without Docker, `FFMPEG_MODE=local` uses an `ffmpeg` on the PATH that has libx264, palettegen, tile and drawtext.
-- About 2 GB of free disk for the frames while building (removed afterwards unless `--keep-frames`), and 3 to 4 minutes on a many-core machine for
-  1875 frames (about 200 s render with 10 to 12 pages, 10 s encode, 20 s GIF).
+- About 1 GB of free disk for the frames while building (removed afterwards unless `--keep-frames`), and about 6 to 7 minutes for 1875 frames: the render
+  is one browser page drawing every frame in order (about 250 s; more pages with `--workers N` are faster but must pass `tools/check-text-stability.mjs`),
+  then checks, encode, GIF and, with `--preview`, the small copy (about 90 s together).
 
 ## 1. Dry run with stand-in pictures (no Mac needed)
 ```sh
@@ -56,7 +60,8 @@ it proves the pipeline and is not a deliverable.
    ```sh
    privacy/run.sh <artifacts>/final/nachocombo-intro.mp4 <artifacts>/final/nachocombo-intro.gif
    ```
-   It writes, next to the video: `privacy/frames/f_0001.png` ... (one every 2 s: 38 for 75 s), `contact-sheet-01.png` and `-02.png` with time
+   `--offset <s>` starts the frame grid that many seconds into the video: after a rebuild use another offset, so the frames read are not the ones seen before.
+   It writes, next to the video: `privacy/frames/f_0001.png` ... (one every 2 s: 38 for 75 s), `privacy/gif-frames/g_001.png` ... (one per second of the GIF loop), `contact-sheet-01.png` and `-02.png` with time
    stamps, `ffprobe.json` and `metadata.txt` (every container/stream tag), `scan-media.txt` (forbidden strings in the MP4/GIF bytes), `scan-source.txt`
    (forbidden strings in the scene files, timeline, captions, scripts and, with `CAPTURES_DIR=<dir>`, the capture PNGs including their PNG text chunks) and `CHECKLIST.md`.
    `node privacy/scan-forbidden.mjs --selftest` shows that the scanner really catches the patterns.
@@ -68,6 +73,8 @@ it proves the pipeline and is not a deliverable.
   150 words a minute, narration equals captions). `build.sh` runs it first.
 - `node tools/gen-capture.mjs --check`: the STORYBOARD capture table and `capture.sh` match `capture-manifest.json`.
 - `node tools/verify.mjs`: the output spec, run at the end of `build.sh`.
+- `node tools/check-text-stability.mjs <video.mp4 | frames folder>`: PASS/FAIL for sideways wobble of the text (see the header of the script for what is measured and the limits).
+  `build.sh` runs it on the PNG frames (exact) and on the MP4 and stops when it fails. `--selftest` shows that it catches a 1 px wobble.
 
 ## Notes
 - The video is a slideshow of the app's own renders, not a screen recording, and says so on screen. Sample numbers and a made-up disk are labelled.

@@ -59,7 +59,7 @@ against the v0.13.0 README before the final cut.
 | 5 | Click a widget and a panel slides in from the right | README "The settings panel" ("Click a widget and a panel slides in from the right") |
 | 6 | The panel has Settings, Shortcuts and Permissions tabs | README "A gadget's panel ... three tabs"; picture c04, c05 |
 | 7 | Calendar Clock needs no permission; Calendars is optional (events are read on this Mac and never sent anywhere) | README "Calendar Clock" ("Calendars is optional and only for events") and Gadgets table; picture c05 (Permissions tab, "Not asked yet") |
-| 8, S04a label | Window Snap: 24 window commands from the keyboard, drag to snap; needs Accessibility | README Gadgets table and "Window Snap" |
+| 8, S04a label | Window Snap: 24 commands, or drag a window to an edge; needs Accessibility | README Gadgets table ("24 window commands from the keyboard, drag to snap") and "Window Snap" (24 commands; drag to snap) |
 | 9, S04b labels | System Monitor: CPU, memory, disk, network, sensor and battery menu bar items; no permission; pictures use sample numbers | README Gadgets table, "System Monitor", note under the intro screenshots |
 | 10, S04c label | Capture Float keeps a capture floating above other windows; needs Screen Recording | README Gadgets table and "Capture Float" |
 | 11 | File Shelf opens when you shake a drag; floating shelf | README Gadgets table and "File Shelf" |
