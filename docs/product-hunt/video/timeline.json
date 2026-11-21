@@ -1,0 +1,928 @@
+{
+ "$comment": "Renderer input. Times are seconds on the video clock; element times (inAt/outAt/t0) are seconds since the start of their scene. Coordinates are on the 1920x1080 canvas; shot regions are fitted with 'contain'. Captions come from captions.en.srt, not from here. The panel-reveal click target (S03 click.at) and the crops (S05a) were set on stand-in pictures: re-tune them on the real v0.13.0 captures (README of this folder).",
+ "width": 1920,
+ "height": 1080,
+ "fps": 25,
+ "duration": 75,
+ "fade": 0.45,
+ "fadeIn": 0.4,
+ "fadeOut": 0.6,
+ "scenes": [
+  {
+   "id": "S01",
+   "title": "Hook",
+   "start": 0,
+   "end": 6,
+   "elements": [
+    {
+     "type": "shot",
+     "capture": "app-icon",
+     "region": [
+      130,
+      150,
+      400,
+      400
+     ],
+     "in": "pop",
+     "inAt": 0.3,
+     "plain": true,
+     "inDur": 0.6
+    },
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "NACHO COMBO",
+     "size": 220,
+     "color": "accent",
+     "x": 590,
+     "y": 150,
+     "in": "from-right",
+     "inAt": 0.4,
+     "inDur": 0.6
+    },
+    {
+     "type": "text",
+     "font": "plex",
+     "text": "One box. Only what you order.",
+     "size": 52,
+     "color": "text",
+     "x": 598,
+     "y": 420,
+     "in": "fade",
+     "inAt": 1.0
+    },
+    {
+     "type": "shot",
+     "capture": "menu-bar",
+     "region": [
+      560,
+      560,
+      1300,
+      100
+     ],
+     "in": "from-below",
+     "inAt": 1.4,
+     "id": "bar",
+     "inDur": 0.6
+    },
+    {
+     "type": "pill",
+     "text": "Rendered by the app itself — not a screen recording",
+     "x": 1050,
+     "y": 44,
+     "in": "fade",
+     "inAt": 0.8,
+     "size": 24
+    }
+   ]
+  },
+  {
+   "id": "S02",
+   "title": "Widget window",
+   "start": 6,
+   "end": 12.5,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "THE WIDGET\nWINDOW",
+     "size": 120,
+     "color": "accent",
+     "x": 110,
+     "y": 300,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "Each gadget has its own switch",
+     "x": 112,
+     "y": 600,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "shot",
+     "capture": "wall-home",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "id": "wall",
+     "zoom": [
+      1,
+      1.06
+     ],
+     "focus": [
+      0.5,
+      0.25
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S03",
+   "title": "Settings panel on the right",
+   "start": 12.5,
+   "end": 24,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "CLICK A\nWIDGET",
+     "size": 120,
+     "color": "accent",
+     "x": 110,
+     "y": 320,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5,
+     "outAt": 4.2,
+     "outDur": 0.3
+    },
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "SETTINGS\nSHORTCUTS\nPERMISSIONS",
+     "size": 84,
+     "color": "accent",
+     "x": 110,
+     "y": 300,
+     "in": "from-left",
+     "inAt": 4.4,
+     "inDur": 0.5
+    },
+    {
+     "type": "shot",
+     "capture": "wall-home",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "id": "wall"
+    },
+    {
+     "type": "click",
+     "on": "wall",
+     "from": [
+      0.93,
+      0.9
+     ],
+     "at": [
+      0.52,
+      0.64
+     ],
+     "t0": 0.8,
+     "travel": 0.9,
+     "hold": 0.6
+    },
+    {
+     "type": "shot",
+     "capture": "wall-panel-calendar",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "wipe",
+     "inAt": 2.1,
+     "inDur": 0.6
+    },
+    {
+     "type": "shot",
+     "capture": "wall-panel-shortcuts",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 4.4,
+     "inDur": 0.5
+    },
+    {
+     "type": "shot",
+     "capture": "wall-panel-permissions",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 6.2,
+     "inDur": 0.5
+    }
+   ]
+  },
+  {
+   "id": "S04a",
+   "title": "Window Snap",
+   "start": 24,
+   "end": 28.4,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "WINDOW\nSNAP",
+     "size": 130,
+     "color": "accent",
+     "x": 110,
+     "y": 320,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "Needs: Accessibility",
+     "x": 112,
+     "y": 690,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "shot",
+     "capture": "window-snap",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "zoom": [
+      1,
+      1.06
+     ],
+     "focus": [
+      0.35,
+      0.5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S04b",
+   "title": "System Monitor",
+   "start": 28.4,
+   "end": 33.2,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "SYSTEM\nMONITOR",
+     "size": 130,
+     "color": "accent",
+     "x": 110,
+     "y": 320,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "Permission: none",
+     "x": 112,
+     "y": 690,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "pill",
+     "text": "Sample numbers",
+     "x": 112,
+     "y": 760,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "shot",
+     "capture": "system-monitor",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "outAt": 2.5,
+     "outDur": 0.4,
+     "zoom": [
+      1,
+      1.05
+     ]
+    },
+    {
+     "type": "shot",
+     "capture": "monitor-cpu-flyout",
+     "region": [
+      700,
+      60,
+      1120,
+      810
+     ],
+     "in": "fade",
+     "inAt": 2.4,
+     "inDur": 0.5,
+     "zoom": [
+      1,
+      1.04
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S04c",
+   "title": "Capture Float",
+   "start": 33.2,
+   "end": 37.4,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "CAPTURE\nFLOAT",
+     "size": 130,
+     "color": "accent",
+     "x": 110,
+     "y": 320,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "Needs: Screen Recording",
+     "x": 112,
+     "y": 690,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "shot",
+     "capture": "capture-float",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "zoom": [
+      1,
+      1.06
+     ],
+     "focus": [
+      0.6,
+      0.5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S04d",
+   "title": "File Shelf",
+   "start": 37.4,
+   "end": 41.6,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "FILE\nSHELF",
+     "size": 130,
+     "color": "accent",
+     "x": 110,
+     "y": 320,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "Permission: none",
+     "x": 112,
+     "y": 690,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "shot",
+     "capture": "file-shelf",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "zoom": [
+      1,
+      1.06
+     ],
+     "focus": [
+      0.6,
+      0.5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S04e",
+   "title": "Focus Dim",
+   "start": 41.6,
+   "end": 45.4,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "FOCUS\nDIM",
+     "size": 130,
+     "color": "accent",
+     "x": 110,
+     "y": 320,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "Permission: none",
+     "x": 112,
+     "y": 690,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "shot",
+     "capture": "focus-dim",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "zoom": [
+      1,
+      1.06
+     ],
+     "focus": [
+      0.5,
+      0.5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S04f",
+   "title": "Disk Map",
+   "start": 45.4,
+   "end": 50,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "DISK\nMAP",
+     "size": 130,
+     "color": "accent",
+     "x": 110,
+     "y": 320,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "Permission: none",
+     "x": 112,
+     "y": 690,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "pill",
+     "text": "Full Disk Access: optional",
+     "x": 112,
+     "y": 750,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "pill",
+     "text": "Made-up sample disk",
+     "x": 112,
+     "y": 810,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "shot",
+     "capture": "disk-map",
+     "region": [
+      700,
+      70,
+      1120,
+      800
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "zoom": [
+      1,
+      1.06
+     ],
+     "focus": [
+      0.5,
+      0.5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S05a",
+   "title": "Combos",
+   "start": 50,
+   "end": 56.5,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "COMBOS",
+     "size": 130,
+     "color": "accent",
+     "x": 110,
+     "y": 340,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "7 ready-made · plus your own",
+     "x": 112,
+     "y": 560,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "shot",
+     "capture": "combos",
+     "region": [
+      700,
+      80,
+      1120,
+      790
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "crop": [
+      0,
+      0,
+      0,
+      0.4
+     ],
+     "zoom": [
+      1,
+      1.12
+     ],
+     "focus": [
+      [
+       0.5,
+       0.3
+      ],
+      [
+       0.5,
+       0.7
+      ]
+     ],
+     "zoomDur": 5.5
+    }
+   ]
+  },
+  {
+   "id": "S05b",
+   "title": "Quick panel",
+   "start": 56.5,
+   "end": 62,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "QUICK\nPANEL",
+     "size": 130,
+     "color": "accent",
+     "x": 110,
+     "y": 320,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "Click the nacho box in the menu bar",
+     "x": 112,
+     "y": 640,
+     "in": "fade",
+     "inAt": 0.7,
+     "size": 22
+    },
+    {
+     "type": "shot",
+     "capture": "quick-panel",
+     "region": [
+      720,
+      80,
+      420,
+      780
+     ],
+     "in": "fade",
+     "inAt": 0.1,
+     "align": [
+      0.5,
+      0.0
+     ],
+     "zoom": [
+      1,
+      1.03
+     ]
+    },
+    {
+     "type": "shot",
+     "capture": "quick-panel-combos",
+     "region": [
+      1180,
+      80,
+      420,
+      780
+     ],
+     "in": "from-right",
+     "inAt": 1.2,
+     "align": [
+      0.5,
+      0.0
+     ],
+     "inDur": 0.6
+    }
+   ]
+  },
+  {
+   "id": "S06",
+   "title": "Nacho Pet (mascot only)",
+   "start": 62,
+   "end": 67,
+   "elements": [
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "NACHO\nPET",
+     "size": 130,
+     "color": "accent",
+     "x": 110,
+     "y": 320,
+     "in": "from-left",
+     "inAt": 0.15,
+     "inDur": 0.5
+    },
+    {
+     "type": "pill",
+     "text": "Switch it off any time",
+     "x": 112,
+     "y": 640,
+     "in": "fade",
+     "inAt": 0.7
+    },
+    {
+     "type": "rect",
+     "region": [
+      700,
+      100,
+      1120,
+      700
+     ],
+     "radius": 26,
+     "fill": "#1d1712",
+     "stroke": "#3a2d20",
+     "in": "fade",
+     "inAt": 0.1
+    },
+    {
+     "type": "rect",
+     "region": [
+      760,
+      160,
+      640,
+      360
+     ],
+     "radius": 14,
+     "fill": "#2a2118",
+     "in": "fade",
+     "inAt": 0.3
+    },
+    {
+     "type": "rect",
+     "region": [
+      790,
+      196,
+      260,
+      22
+     ],
+     "radius": 8,
+     "fill": "#3f3123",
+     "in": "fade",
+     "inAt": 0.3
+    },
+    {
+     "type": "rect",
+     "region": [
+      790,
+      244,
+      560,
+      16
+     ],
+     "radius": 8,
+     "fill": "#33271c",
+     "in": "fade",
+     "inAt": 0.3
+    },
+    {
+     "type": "rect",
+     "region": [
+      790,
+      280,
+      500,
+      16
+     ],
+     "radius": 8,
+     "fill": "#33271c",
+     "in": "fade",
+     "inAt": 0.3
+    },
+    {
+     "type": "shot",
+     "capture": "nacho-idle",
+     "region": [
+      1380,
+      480,
+      300,
+      300
+     ],
+     "in": "pop",
+     "inAt": 0.6,
+     "plain": true,
+     "bob": [
+      8,
+      1.8
+     ],
+     "outAt": 2.4,
+     "outDur": 0.4
+    },
+    {
+     "type": "shot",
+     "capture": "nacho-happy",
+     "region": [
+      1380,
+      480,
+      300,
+      300
+     ],
+     "in": "fade",
+     "inAt": 2.2,
+     "plain": true,
+     "bob": [
+      8,
+      1.8
+     ],
+     "inDur": 0.4
+    }
+   ]
+  },
+  {
+   "id": "S07",
+   "title": "Download",
+   "start": 67,
+   "end": 75,
+   "bg": "accent",
+   "elements": [
+    {
+     "type": "shot",
+     "capture": "app-icon",
+     "region": [
+      130,
+      200,
+      420,
+      420
+     ],
+     "in": "pop",
+     "inAt": 0.2,
+     "plain": true,
+     "inDur": 0.6
+    },
+    {
+     "type": "text",
+     "font": "anton",
+     "text": "NACHO COMBO",
+     "size": 200,
+     "color": "ink",
+     "x": 620,
+     "y": 190,
+     "in": "from-right",
+     "inAt": 0.3,
+     "inDur": 0.6
+    },
+    {
+     "type": "text",
+     "font": "plex",
+     "weight": 700,
+     "text": "Free and open source (MIT)",
+     "size": 58,
+     "color": "ink",
+     "x": 628,
+     "y": 440,
+     "in": "fade",
+     "inAt": 0.5
+    },
+    {
+     "type": "text",
+     "font": "plex",
+     "text": "macOS 12 or later · Apple Silicon + Intel",
+     "size": 40,
+     "color": "ink",
+     "x": 630,
+     "y": 530,
+     "in": "fade",
+     "inAt": 0.9
+    },
+    {
+     "type": "text",
+     "font": "mono",
+     "text": "github.com/mafianacho/nachocombo/releases",
+     "size": 40,
+     "color": "ink",
+     "x": 630,
+     "y": 620,
+     "in": "fade",
+     "inAt": 3.6
+    },
+    {
+     "type": "text",
+     "font": "plex",
+     "text": "MIT covers the source code. The Nacho artwork, app icon and names are not open source.",
+     "size": 28,
+     "color": "ink",
+     "x": 130,
+     "y": 770,
+     "in": "fade",
+     "inAt": 1.4
+    },
+    {
+     "type": "text",
+     "font": "plex",
+     "text": "Screens are rendered by the app itself, not a screen recording.",
+     "size": 28,
+     "color": "ink",
+     "x": 130,
+     "y": 815,
+     "in": "fade",
+     "inAt": 1.4
+    }
+   ]
+  }
+ ],
+ "gif": {
+  "$comment": "Gallery loop: segments of the finished video, concatenated (seconds). 10-20 s in total; they start and end on caption boundaries where possible. maxBytes = 2 MiB: Product Hunt's current guide gives 2 MB as the limit for an animated logo/thumbnail and states no limit for gallery GIFs (unverified), so the stricter number is the default.",
+  "segments": [
+   [
+    0.4,
+    3.4
+   ],
+   [
+    13.6,
+    16.5
+   ],
+   [
+    24.0,
+    28.3
+   ],
+   [
+    67.2,
+    70.9
+   ]
+  ],
+  "maxBytes": 2097152
+ }
+}

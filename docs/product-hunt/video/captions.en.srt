@@ -1,0 +1,85 @@
+1
+00:00:00,600 --> 00:00:03,200
+One menu bar app
+with many small tools.
+
+2
+00:00:03,400 --> 00:00:05,900
+Switch on only the ones you want.
+
+3
+00:00:06,300 --> 00:00:09,600
+Open the widget window:
+each gadget is a widget.
+
+4
+00:00:09,800 --> 00:00:12,300
+Each one switches on or off alone.
+
+5
+00:00:12,800 --> 00:00:16,400
+Click a widget: its settings panel
+slides in on the right.
+
+6
+00:00:16,700 --> 00:00:19,900
+Settings, shortcuts and permissions
+
+7
+00:00:20,200 --> 00:00:23,800
+No permission is asked until
+you switch a gadget on.
+
+8
+00:00:24,200 --> 00:00:28,200
+Window Snap: 24 keyboard commands,
+or drag a window to an edge.
+
+9
+00:00:28,600 --> 00:00:33,000
+System Monitor: CPU, memory, disk,
+network and more in the menu bar.
+
+10
+00:00:33,500 --> 00:00:37,300
+Capture Float keeps a capture
+floating over other windows.
+
+11
+00:00:37,600 --> 00:00:41,400
+File Shelf: shake while dragging
+and a floating shelf appears.
+
+12
+00:00:41,800 --> 00:00:45,200
+Focus Dim darkens everything
+behind the window you use.
+
+13
+00:00:45,600 --> 00:00:49,800
+Disk Map shows what fills a disk,
+as a sunburst or as blocks.
+
+14
+00:00:50,300 --> 00:00:56,200
+Order a combo: a few gadgets switch
+on together for the way you work.
+
+15
+00:00:56,700 --> 00:01:01,700
+The menu bar quick panel lists every
+tool, its status and its controls.
+
+16
+00:01:02,300 --> 00:01:06,600
+Nacho Pet is the Nacho character
+in the corner of your screen.
+
+17
+00:01:07,300 --> 00:01:10,700
+Free and open source (MIT)
+for macOS 12 or later.
+
+18
+00:01:11,000 --> 00:01:14,600
+Get it from GitHub Releases.

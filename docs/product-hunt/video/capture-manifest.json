@@ -1,0 +1,268 @@
+{
+  "$comment": "Single source for the capture list. tools/gen-capture.mjs turns it into the table in STORYBOARD.md and into capture.sh (run both with --write; --check fails when they drift). `commands` are debug-ctl commands without the leading `ctl`; {out} becomes the output PNG path. Every ctl command here is taken from README.md (Build / test) and scripts/screenshots.sh, and was checked against Sources/NachoCombo/AppDelegate.swift on origin/main f684d41; none has been run against a real build yet.",
+  "version": 1,
+  "build": "Shoot from a v0.13.0 (or newer) debug build: widget window with the settings panel on the right. Re-read the README ctl section against that build first.",
+  "scale": "2x (the ctl snapshot commands write 2x PNGs). minWidth is the smallest width in pixels the renderer accepts without a warning.",
+  "setup": [
+    "appearance dark",
+    "gallery sample on"
+  ],
+  "teardown": [
+    "disk hide",
+    "gallery page home",
+    "gallery sample off",
+    "appearance system"
+  ],
+  "captures": [
+    {
+      "id": "menu-bar",
+      "file": "c01-menu-bar.png",
+      "scene": "S01",
+      "what": "The six System Monitor menu bar items (CPU, memory, disk, network, sensors, battery) on sample numbers",
+      "commands": [
+        "monitor menubar {out} sample"
+      ],
+      "appearance": "dark",
+      "minWidth": 800,
+      "standin": "docs/images/monitor-menu-bar.png",
+      "privacy": "Sample numbers only; the strip contains no other app icons, clock or account menu."
+    },
+    {
+      "id": "app-icon",
+      "file": "repo:Resources/AppIcon.png",
+      "scene": "S01, S07",
+      "what": "The app icon, read from the repository at render time (not copied, not a capture)",
+      "commands": [],
+      "appearance": "n/a",
+      "minWidth": 1024,
+      "standin": "Resources/AppIcon.png",
+      "privacy": "Brand artwork; rights are reserved by Mafianacho (TRADEMARKS.md). Used here for the company's own promo of its own app."
+    },
+    {
+      "id": "wall-home",
+      "file": "c02-wall-home.png",
+      "scene": "S02, S03",
+      "what": "The widget window with the gadget wall, no panel open",
+      "commands": [
+        "gallery page home",
+        "sleep 1",
+        "settings snapshot {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 1800,
+      "standin": "docs/release-notes/assets/v0.13.0/edit-mode-dark.png",
+      "privacy": "Sample data on (setup). The wall tiles show live values (Clipboard History rows, Device Control output name, Calendar Clock event, File Shelf items, Nacho Pet's sign-in button, Computer Use permission state): check every tile in the PNG and hide a tile with the widget edit mode if it shows anything real. Window title bar only; no desktop around it."
+    },
+    {
+      "id": "wall-panel-calendar",
+      "file": "c03-wall-panel-calendar.png",
+      "scene": "S03",
+      "what": "The same window with the right-hand panel open on Calendar Clock, Settings tab (same window size as wall-home so the two overlay exactly)",
+      "commands": [
+        "gallery page calendarClock",
+        "gallery tab overview",
+        "sleep 1",
+        "settings snapshot {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 1800,
+      "standin": "docs/release-notes/assets/v0.13.0/panel-calendar-settings-dark.png",
+      "privacy": "Calendar Clock must show sample events only (setup: gallery sample on); the wall tiles beside the panel carry the same live values as wall-home: check them too."
+    },
+    {
+      "id": "wall-panel-shortcuts",
+      "file": "c04-wall-panel-shortcuts.png",
+      "scene": "S03",
+      "what": "Window Snap panel, Shortcuts tab, same window size",
+      "commands": [
+        "gallery page windowSnap",
+        "gallery tab shortcuts",
+        "sleep 1",
+        "settings snapshot {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 1800,
+      "standin": "docs/release-notes/assets/v0.13.0/panel-calendar-shortcuts-light.png",
+      "privacy": "Shortcut list only; shows which other app already holds a key only if one does - none on a clean test Mac."
+    },
+    {
+      "id": "wall-panel-permissions",
+      "file": "c05-wall-panel-permissions.png",
+      "scene": "S03",
+      "what": "Window Snap panel, Permissions tab, same window size",
+      "commands": [
+        "gallery page windowSnap",
+        "gallery tab permissions",
+        "sleep 1",
+        "settings snapshot {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 1800,
+      "standin": "docs/release-notes/assets/v0.13.0/panel-calendar-permissions-dark.png",
+      "privacy": "Permission card text only."
+    },
+    {
+      "id": "window-snap",
+      "file": "c10-window-snap.png",
+      "scene": "S04a",
+      "what": "Window Snap picture: a window snapped to the left half and one dragged to the right edge (the app draws the desktop around it)",
+      "commands": [
+        "gallery preview windowSnap {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 800,
+      "standin": "docs/images/window-snap.png",
+      "privacy": "Drawn by the app on a made-up desktop."
+    },
+    {
+      "id": "system-monitor",
+      "file": "c11-system-monitor.png",
+      "scene": "S04b",
+      "what": "System Monitor picture: menu bar items above the CPU panel, sample numbers",
+      "commands": [
+        "gallery preview systemMonitor {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 800,
+      "standin": "docs/images/system-monitor.png",
+      "privacy": "Sample numbers; no process names from the real Mac (sample mode)."
+    },
+    {
+      "id": "monitor-cpu-flyout",
+      "file": "c12-monitor-cpu-flyout.png",
+      "scene": "S04b",
+      "what": "CPU panel with the CPU chart card hovered and its flyout beside it, sample numbers",
+      "commands": [
+        "monitor flyout cpu 0 {out} sample"
+      ],
+      "appearance": "dark",
+      "minWidth": 1300,
+      "standin": "docs/images/monitor-cpu-flyout.png",
+      "privacy": "Sample numbers; the top-process list must show sample names only."
+    },
+    {
+      "id": "capture-float",
+      "file": "c13-capture-float.png",
+      "scene": "S04c",
+      "what": "Capture Float picture: dashed selection over a chart and the captured area floating with close, pin and share buttons",
+      "commands": [
+        "gallery preview captureFloat {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 800,
+      "standin": "docs/images/capture-float.png",
+      "privacy": "Drawn by the app; the chart is a stand-in picture."
+    },
+    {
+      "id": "file-shelf",
+      "file": "c14-file-shelf.png",
+      "scene": "S04d",
+      "what": "File Shelf picture: a file dragged onto the floating shelf holding a PDF, an image and a text snippet",
+      "commands": [
+        "gallery preview fileShelf {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 800,
+      "standin": "docs/images/file-shelf.png",
+      "privacy": "Sample item names only; check the file names in the picture."
+    },
+    {
+      "id": "focus-dim",
+      "file": "c15-focus-dim.png",
+      "scene": "S04e",
+      "what": "Focus Dim picture: one window bright in front, two dimmed behind (light variant reads better)",
+      "commands": [
+        "gallery preview focusDim {out} light"
+      ],
+      "appearance": "light",
+      "minWidth": 800,
+      "standin": "docs/images/focus-dim.png",
+      "privacy": "Drawn by the app; the app windows named in the picture are made up (Notes, Mail, Calendar) with no content."
+    },
+    {
+      "id": "disk-map",
+      "file": "c16-disk-map.png",
+      "scene": "S04f",
+      "what": "Disk Map window on the made-up sample disk, sunburst view colored by folder",
+      "commands": [
+        "disk sample",
+        "disk style sunburst",
+        "disk color folder",
+        "sleep 1",
+        "disk snapshot {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 2000,
+      "standin": "docs/images/disk-map-sunburst.png",
+      "privacy": "`disk sample` is a made-up disk: no real folder names. Wait ~1 s after `disk sample` before the snapshot."
+    },
+    {
+      "id": "combos",
+      "file": "c20-combos.png",
+      "scene": "S05a",
+      "what": "Combos page with the Desk combo selected (the whole page; the video crops the top)",
+      "commands": [
+        "gallery page combos",
+        "combo select desk",
+        "sleep 1",
+        "gallery detail {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 1000,
+      "standin": "docs/images/combos.png",
+      "privacy": "Static catalogue text."
+    },
+    {
+      "id": "quick-panel",
+      "file": "c21-quick-panel.png",
+      "scene": "S05b",
+      "what": "Menu bar quick panel, tool list (Combo row first, status dots)",
+      "commands": [
+        "panel list",
+        "sleep 1",
+        "snapshot panel {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 340,
+      "standin": "docs/images/quick-panel.png",
+      "privacy": "Only the popover is captured, not the menu bar. Sample data on."
+    },
+    {
+      "id": "quick-panel-combos",
+      "file": "c22-quick-panel-combos.png",
+      "scene": "S05b",
+      "what": "Menu bar quick panel, combo screen",
+      "commands": [
+        "panel combos",
+        "sleep 1",
+        "snapshot panel {out}"
+      ],
+      "appearance": "dark",
+      "minWidth": 340,
+      "standin": "docs/images/quick-panel-combos.png",
+      "privacy": "Static catalogue text."
+    },
+    {
+      "id": "nacho-idle",
+      "file": "repo:Resources/Nacho/idle.png",
+      "scene": "S06",
+      "what": "Nacho character, idle face (mascot only), read from the repository at render time",
+      "commands": [],
+      "appearance": "n/a",
+      "minWidth": 440,
+      "standin": "Resources/Nacho/idle.png",
+      "privacy": "Character artwork only: no chat, no login screen, no conversation."
+    },
+    {
+      "id": "nacho-happy",
+      "file": "repo:Resources/Nacho/happy.png",
+      "scene": "S06",
+      "what": "Nacho character, happy face (mascot only), read from the repository at render time",
+      "commands": [],
+      "appearance": "n/a",
+      "minWidth": 440,
+      "standin": "Resources/Nacho/happy.png",
+      "privacy": "Character artwork only."
+    }
+  ]
+}
