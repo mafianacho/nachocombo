@@ -37,7 +37,7 @@ text; the Launch Guide pages are marked "Updated over 2 weeks ago" without an ex
 | B6 | Whether an account must be some days old before launching; edits to the page after launch; notification timing to followers | Not stated in the articles read | PROCEDURE.md |
 | B7 | Whether the link was launched on Product Hunt before (relaunch rule) | Product Hunt search was not used; no account | PROCEDURE.md section 0 |
 | B8 | Features, state and release status of the Windows project | Only its README header was read; nothing was run | LISTING.md FAQ 6 |
-| B9 | Whether the v0.13.0 release (tag, GitHub Release) exists | At base `fdcd4c9` (PR #76 merged) the README, release notes and `scripts/build-app.sh` default say 0.13.0, but `gh release list` still showed v0.12.1 as the latest published release on 2026-11-21. The gallery and video must use a v0.13.0 build; re-read README and `Resources/WhatsNew` before the PR is marked ready | LISTING.md, ASSETS.md |
+| B9 | Whether the v0.13.0 release (tag, GitHub Release) exists | Resolved at review on 2026-11-21: `gh release view v0.13.0` shows it published (not draft, not pre-release) at 2026-11-21T06:08:23Z, so it is now the latest release; at the time of writing it was not yet out. At base `fdcd4c9` (PR #76 merged) the README, release notes and `scripts/build-app.sh` default say 0.13.0. The gallery and video must use a v0.13.0 build; re-read README and `Resources/WhatsNew` before the PR is marked ready | LISTING.md, ASSETS.md |
 | B10 | Official English caption length limit for gallery images | No such field described | ASSETS.md |
 | B11 | Whether the Korean-only UI hurts reception on Product Hunt | An opinion, not a fact; the boss decides about localization (out of scope) | LISTING.md FAQ 6 |
 

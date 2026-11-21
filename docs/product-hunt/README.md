@@ -5,8 +5,8 @@ only. No Product Hunt account was created or connected, and nothing was saved, u
 Written in English for Product Hunt; ticket NACHO-975 (sub-issue NACHO-980).
 
 Base: `origin/main` at `fdcd4c9` (PR #76, v0.13.0 notes and README pictures merged; README says 13 gadgets, plus the
-experimental Computer Use and Nacho Pet). The v0.13.0 GitHub Release was not yet published on 2026-11-21 (latest
-release v0.12.1), so re-read the README and `Resources/WhatsNew` before the launch.
+experimental Computer Use and Nacho Pet). The v0.13.0 GitHub Release was published on 2026-11-21 (06:08 UTC, tag
+`v0.13.0`), so the gallery and video must use a v0.13.0 build. Re-read the README and `Resources/WhatsNew` before the launch.
 
 ## Files
 
