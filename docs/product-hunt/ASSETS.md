@@ -65,3 +65,23 @@ chat with no login screen and no real conversation, and show the pet only throug
 - [ ] Captions are English and match [LISTING.md](LISTING.md) wording
 - [ ] No claim in a caption is outside the README (see SOURCES.md section C)
 - [ ] The video link is a real, public, boss-approved link
+
+## 5. Produced images (NACHO-975, v0.13.0)
+
+Files in `docs/product-hunt/assets/`: `thumbnail.png` (240x240, from `docs/images/app-icon.png`, 256x256 downscaled) and seven
+1270x760 PNG gallery images. Captions are laid over the capture PNGs (HTML/CSS rendered with Chromium, fonts Noto Sans).
+The eighth slot (Combos) is left out: the only usable source (quick-panel capture) is washed out; no filler. Gadget counts are not used in
+any caption (README 13 vs. release notes 15: ⚠ pending boss decision). The video link stays `TBD after boss-approved upload`; the
+final MP4/GIF live outside the repository under `.../nachocombo-promo/final/` and are not committed.
+
+| File | Source capture | Origin | Caption (README basis) |
+|---|---|---|---|
+| `gallery-01-widget-wall.png` | c02-wall-home | CI off-screen render, fixture data, 1x, Korean UI | "Every gadget is a widget on one wall." (README "Opening the app shows the widget window: every gadget is a widget on a wall") |
+| `gallery-02-settings-panel.png` | c03-wall-panel-calendar | CI render, fixture data, 1x, Korean UI | "Click a widget and its panel slides in from the right." (README "Click a widget and a panel slides in from the right") |
+| `gallery-03-window-snap.png` | c10-window-snap | Mac mini real build, app-drawn sample | "Snap windows from the keyboard or by dragging." (gadget table: "24 window commands from the keyboard, drag to snap") |
+| `gallery-04-capture-float.png` | c13-capture-float | Mac mini real build, sample | "Keep a capture floating above other windows." (table: "keeps it floating above other windows") |
+| `gallery-05-file-shelf.png` | c14-file-shelf | Mac mini real build, sample | "A floating shelf for files, images, links and text." (table, File Shelf) |
+| `gallery-06-focus-dim.png` | c15-focus-dim | Mac mini real build, sample | "Keep the active window bright and dim everything behind it." (table, Focus Dim) |
+| `gallery-07-disk-map.png` | c16-disk-map | Mac mini real build, sample disk | "See what fills your disk, as a sunburst or as blocks." (table, Disk Map) |
+
+Images 01 and 02 show Korean app text (UI localization is out of scope for this release); the captions say what the screen shows.

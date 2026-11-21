@@ -45,8 +45,8 @@ scope of this ticket), and the README sentence about Nacho Pet's network use (SO
 | Maker first comment | Draft | Boss review; makers to be named |
 | Announcement drafts (X, Reddit, chat) | Draft (not sent) | Boss approval to send |
 | FAQ (7) | Draft | Boss review; B3 in SOURCES.md |
-| Logo (240x240) | Waiting for image | Image step |
-| Gallery images (5 to 8) | Waiting for image | v0.13.0 screens from the image step |
+| Logo (240x240) | Made (`assets/thumbnail.png`) | Boss review |
+| Gallery images (5 to 8) | Made: 7 images (`assets/gallery-01…07`, 1270x760 PNG) | Boss review; see ASSETS.md section 5 |
 | Intro video | Waiting for video | Video step (separate NACHO-975 sub-issue); link slot `TBD after boss-approved upload` |
 | Unverified list | Open | See SOURCES.md section B |
 
