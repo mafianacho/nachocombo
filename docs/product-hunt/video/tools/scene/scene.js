@@ -64,8 +64,11 @@
     const [cl = 0, ct = 0, cr = 0, cb = 0] = spec.crop || [];
     const cw = nw * (1 - cl - cr), ch = nh * (1 - ct - cb);
     const [rx, ry, rw, rh] = spec.region;
-    const s = Math.min(Math.min(rw / cw, rh / ch), spec.maxScale ?? 1.5);
-    const w = cw * s, h = ch * s;
+    // scroll: [y0, y1] in source pixels. The picture is fitted to the region's width and the region is a window onto it
+    // that moves from y0 to y1 (a tall page shown part by part). Eased, starts at scrollAt (default: inAt) and takes scrollDur.
+    const scroll = spec.scroll;
+    const s = scroll ? Math.min(rw / cw, spec.maxScale ?? 1.5) : Math.min(Math.min(rw / cw, rh / ch), spec.maxScale ?? 1.5);
+    const w = cw * s, h = scroll ? rh : ch * s;
     const left = rx + (rw - w) * (spec.align?.[0] ?? 0.5);
     const top = ry + (rh - h) * (spec.align?.[1] ?? 0.5);
     const el = document.createElement('div');
@@ -77,6 +80,27 @@
     const img = document.createElement('img');
     img.src = im.src;
     Object.assign(img.style, { width: `${nw * s}px`, height: `${nh * s}px`, left: `${-nw * cl * s}px`, top: `${-nh * ct * s}px` });
+    // filter: a CSS filter on the picture. lift: [lo, hi] re-levels only the grey (low-saturation) pixels of the picture so that
+    // light text on the washed-out quick panel snapshots (translucent panel over a light backdrop) can be read; coloured pixels
+    // (status dots, orange labels, icons) and the alpha channel are left alone. Disclosed in PROVENANCE.md.
+    if (spec.filter) img.style.filter = spec.filter;
+    if (spec.lift) {
+      const [lo, hi] = spec.lift;
+      const cv = document.createElement('canvas');
+      cv.width = nw; cv.height = nh;
+      const cx = cv.getContext('2d');
+      cx.drawImage(im, 0, 0);
+      const data = cx.getImageData(0, 0, nw, nh);
+      const px = data.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const r = px[i], g = px[i + 1], b = px[i + 2];
+        if (Math.max(r, g, b) - Math.min(r, g, b) > 26) continue;
+        const v = Math.round(clamp(((r + g + b) / 3 - lo) / (hi - lo)) * 255);
+        px[i] = px[i + 1] = px[i + 2] = v;
+      }
+      cx.putImageData(data, 0, 0);
+      img.src = cv.toDataURL('image/png');
+    }
     pan.appendChild(img);
     el.appendChild(pan);
     if (spec.id) rects[spec.id] = { left, top, w, h };
@@ -85,9 +109,12 @@
     const [f0, f1] = Array.isArray(f[0]) ? f : [f, f];
     const t0 = spec.inAt ?? 0;
     const zdur = spec.zoomDur ?? ((spec.outAt ?? duration) - t0);
+    const sc0 = spec.scrollAt ?? t0;
+    const scdur = spec.scrollDur ?? ((spec.outAt ?? duration) - sc0);
     return {
       el,
       update(tl) {
+        if (scroll) img.style.top = `${-lerp(scroll[0], scroll[1], easeInOut((tl - sc0) / Math.max(scdur, 0.001))) * s}px`;
         const k = easeInOut((tl - t0) / Math.max(zdur, 0.001));
         pan.style.transformOrigin = `${lerp(f0[0], f1[0], k) * 100}% ${lerp(f0[1], f1[1], k) * 100}%`;
         pan.style.transform = `scale(${lerp(z0, z1, k)})`;

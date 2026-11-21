@@ -1,5 +1,5 @@
 {
- "$comment": "Renderer input. Times are seconds on the video clock; element times (inAt/outAt/t0) are seconds since the start of their scene. Coordinates are on the 1920x1080 canvas; shot regions are fitted with 'contain'. Captions come from captions.en.srt, not from here. The panel-reveal click target (S03 click.at) and the crops (S05a) were set on stand-in pictures: re-tune them on the real v0.13.0 captures (README of this folder).",
+ "$comment": "Renderer input. Times are seconds on the video clock; element times (inAt/outAt/t0) are seconds since the start of their scene. Coordinates are on the 1920x1080 canvas; shot regions are fitted with 'contain' (scroll shots: fitted to the region's width). Captions come from captions.en.srt, not from here. Tuned on the real v0.13.0 captures (NACHO-977): the click target in S03 is the Calendar Clock tile of capture c02, the combos page scrolls from the board to the Desk combo, the quick panel tool list (c21) is cropped above its header and below Nacho Pet and its grey pixels are re-levelled (lift) and the combos screen (c22) gets a brightness/contrast filter, because both snapshots are washed out.",
  "width": 1920,
  "height": 1080,
  "fps": 25,
@@ -49,7 +49,7 @@
      "x": 598,
      "y": 420,
      "in": "fade",
-     "inAt": 1.0
+     "inAt": 1
     },
     {
      "type": "shot",
@@ -67,7 +67,7 @@
     },
     {
      "type": "pill",
-     "text": "Rendered by the app itself — not a screen recording",
+     "text": "Rendered by the app itself \u2014 not a screen recording",
      "x": 1050,
      "y": 44,
      "in": "fade",
@@ -103,24 +103,33 @@
      "inAt": 0.7
     },
     {
+     "type": "pill",
+     "text": "Window text is in Korean",
+     "x": 112,
+     "y": 680,
+     "in": "fade",
+     "inAt": 1,
+     "size": 24
+    },
+    {
      "type": "shot",
      "capture": "wall-home",
      "region": [
-      700,
-      80,
-      1120,
-      790
+      690,
+      70,
+      1180,
+      800
      ],
      "in": "fade",
      "inAt": 0.1,
      "id": "wall",
      "zoom": [
       1,
-      1.06
+      1.04
      ],
      "focus": [
       0.5,
-      0.25
+      0.3
      ]
     }
    ]
@@ -154,17 +163,17 @@
      "x": 110,
      "y": 300,
      "in": "from-left",
-     "inAt": 4.4,
+     "inAt": 4.5,
      "inDur": 0.5
     },
     {
      "type": "shot",
      "capture": "wall-home",
      "region": [
-      700,
-      80,
-      1120,
-      790
+      690,
+      70,
+      1180,
+      800
      ],
      "in": "fade",
      "inAt": 0.1,
@@ -174,12 +183,12 @@
      "type": "click",
      "on": "wall",
      "from": [
-      0.93,
-      0.9
+      0.96,
+      0.92
      ],
      "at": [
-      0.52,
-      0.64
+      0.74,
+      0.625
      ],
      "t0": 0.8,
      "travel": 0.9,
@@ -189,10 +198,10 @@
      "type": "shot",
      "capture": "wall-panel-calendar",
      "region": [
-      700,
-      80,
-      1120,
-      790
+      690,
+      70,
+      1180,
+      800
      ],
      "in": "wipe",
      "inAt": 2.1,
@@ -202,26 +211,26 @@
      "type": "shot",
      "capture": "wall-panel-shortcuts",
      "region": [
-      700,
-      80,
-      1120,
-      790
+      690,
+      70,
+      1180,
+      800
      ],
      "in": "fade",
-     "inAt": 4.4,
+     "inAt": 4.5,
      "inDur": 0.5
     },
     {
      "type": "shot",
      "capture": "wall-panel-permissions",
      "region": [
-      700,
-      80,
-      1120,
-      790
+      690,
+      70,
+      1180,
+      800
      ],
      "in": "fade",
-     "inAt": 6.2,
+     "inAt": 7.5,
      "inDur": 0.5
     }
    ]
@@ -265,11 +274,7 @@
      "inAt": 0.1,
      "zoom": [
       1,
-      1.06
-     ],
-     "focus": [
-      0.35,
-      0.5
+      1
      ]
     }
    ]
@@ -323,7 +328,7 @@
      "outDur": 0.4,
      "zoom": [
       1,
-      1.05
+      1
      ]
     },
     {
@@ -544,7 +549,7 @@
      "inAt": 0.1,
      "zoom": [
       1,
-      1.06
+      1.04
      ],
      "focus": [
       0.5,
@@ -573,7 +578,7 @@
     },
     {
      "type": "pill",
-     "text": "7 ready-made · plus your own",
+     "text": "7 ready-made \u00b7 plus your own",
      "x": 112,
      "y": 560,
      "in": "fade",
@@ -590,27 +595,16 @@
      ],
      "in": "fade",
      "inAt": 0.1,
-     "crop": [
-      0,
-      0,
-      0,
-      0.4
-     ],
      "zoom": [
       1,
-      1.12
+      1
      ],
-     "focus": [
-      [
-       0.5,
-       0.3
-      ],
-      [
-       0.5,
-       0.7
-      ]
+     "scroll": [
+      40,
+      1140
      ],
-     "zoomDur": 5.5
+     "scrollAt": 1.6,
+     "scrollDur": 3.4
     }
    ]
   },
@@ -654,11 +648,21 @@
      "inAt": 0.1,
      "align": [
       0.5,
-      0.0
+      0
      ],
      "zoom": [
       1,
       1.03
+     ],
+     "crop": [
+      0,
+      0.075,
+      0,
+      0.1255
+     ],
+     "lift": [
+      195,
+      252
      ]
     },
     {
@@ -674,9 +678,10 @@
      "inAt": 1.2,
      "align": [
       0.5,
-      0.0
+      0
      ],
-     "inDur": 0.6
+     "inDur": 0.6,
+     "filter": "brightness(0.8) contrast(2)"
     }
    ]
   },
@@ -705,6 +710,15 @@
      "y": 640,
      "in": "fade",
      "inAt": 0.7
+    },
+    {
+     "type": "pill",
+     "text": "Illustration, not a capture",
+     "x": 112,
+     "y": 720,
+     "in": "fade",
+     "inAt": 1,
+     "size": 24
     },
     {
      "type": "rect",
@@ -859,7 +873,7 @@
     {
      "type": "text",
      "font": "plex",
-     "text": "macOS 12 or later · Apple Silicon + Intel",
+     "text": "macOS 12 or later \u00b7 Apple Silicon + Intel",
      "size": 40,
      "color": "ink",
      "x": 630,
@@ -885,18 +899,29 @@
      "size": 28,
      "color": "ink",
      "x": 130,
-     "y": 770,
+     "y": 715,
      "in": "fade",
      "inAt": 1.4
     },
     {
      "type": "text",
      "font": "plex",
-     "text": "Screens are rendered by the app itself, not a screen recording.",
+     "text": "Screens are v0.13.0 renders made by the app itself, not a screen recording.",
      "size": 28,
      "color": "ink",
      "x": 130,
-     "y": 815,
+     "y": 760,
+     "in": "fade",
+     "inAt": 1.4
+    },
+    {
+     "type": "text",
+     "font": "plex",
+     "text": "Sample or test data. The quick panel's on/off dots show a real switch state; nothing personal.",
+     "size": 28,
+     "color": "ink",
+     "x": 130,
+     "y": 805,
      "in": "fade",
      "inAt": 1.4
     }
@@ -915,7 +940,7 @@
     16.5
    ],
    [
-    24.0,
+    24,
     28.3
    ],
    [

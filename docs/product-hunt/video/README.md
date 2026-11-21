@@ -9,6 +9,7 @@ leaks nothing personal. **Text and scripts only**: videos, GIFs, frames and capt
 | [STORYBOARD.md](STORYBOARD.md) | the 75 s scene plan, where every claim comes from, and the **capture list** the next step shoots |
 | [captions.en.srt](captions.en.srt) · [NARRATION.md](NARRATION.md) | English captions (burned in and as SRT) and the same words as an optional voice-over script |
 | [TTS-AND-AUDIO.md](TTS-AND-AUDIO.md) · [LICENSES.md](LICENSES.md) | voice and music licences with the recommendation (subtitle-only), fonts, tools |
+| [PROVENANCE.md](PROVENANCE.md) | **the final v0.13.0 video**: build shown, where each picture came from (Mac mini render / CI off-screen render), tools and versions, fonts, sound (none), sha256 of the MP4, GIF and capture PNGs |
 | `capture-manifest.json` → `capture.sh` | the capture list as data; `capture.sh` (generated) shoots all PNGs on a Mac from the debug build |
 | `timeline.json` | the scene timeline: what is on screen, when, where (renderer input) |
 | `build.sh` | **one command**: captures folder → MP4 (H.264) + gallery GIF + ffprobe + verification |

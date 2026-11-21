@@ -18,8 +18,8 @@ that the captions do not say.
 
 ## The settings panel on the right (0:12 – 0:24)
 5. 00:00:12,800 — Click a widget: its settings panel slides in on the right.
-6. 00:00:16,700 — Settings, shortcuts and permissions
-7. 00:00:20,200 — No permission is asked until you switch a gadget on.
+6. 00:00:16,700 — Three tabs: Settings, Shortcuts, Permissions.
+7. 00:00:20,200 — Permissions: the clock needs none, Calendars is optional.
 
 ## Six gadgets (0:24 – 0:50)
 8. 00:00:24,200 — Window Snap: 24 keyboard commands, or drag a window to an edge.
@@ -31,7 +31,7 @@ that the captions do not say.
 
 ## Combos and the quick panel (0:50 – 1:02)
 14. 00:00:50,300 — Order a combo: a few gadgets switch on together for the way you work.
-15. 00:00:56,700 — The menu bar quick panel lists every tool, its status and its controls.
+15. 00:00:56,700 — The menu bar quick panel lists the tools, their status and controls.
 
 ## Nacho Pet (1:02 – 1:07)
 16. 00:01:02,300 — Nacho Pet is the Nacho character in the corner of your screen.

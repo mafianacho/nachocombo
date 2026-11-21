@@ -23,12 +23,13 @@ slides in on the right.
 
 6
 00:00:16,700 --> 00:00:19,900
-Settings, shortcuts and permissions
+Three tabs: Settings, Shortcuts,
+Permissions.
 
 7
-00:00:20,200 --> 00:00:23,800
-No permission is asked until
-you switch a gadget on.
+00:00:20,200 --> 00:00:23,900
+Permissions: the clock needs none,
+Calendars is optional.
 
 8
 00:00:24,200 --> 00:00:28,200
@@ -67,8 +68,8 @@ on together for the way you work.
 
 15
 00:00:56,700 --> 00:01:01,700
-The menu bar quick panel lists every
-tool, its status and its controls.
+The menu bar quick panel lists the
+tools, their status and controls.
 
 16
 00:01:02,300 --> 00:01:06,600

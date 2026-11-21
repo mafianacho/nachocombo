@@ -1,8 +1,8 @@
 # Intro video storyboard (75 s, English captions)
 
-Status: **tooling and script, not yet the final video.** The pictures for the final cut are shot from a v0.13.0 build by
-the next step with the capture list at the bottom; this file, `captions.en.srt`, `timeline.json` and the pipeline are
-ready for it. Dry run with stand-in pictures: see [README.md](README.md).
+Status: **final cut built (NACHO-977)** from the 15 v0.13.0 pictures (11 shot on a Mac mini from the v0.13.0 build, 4 wall and panel renders from the
+v0.13.0 CI run; see `PROVENANCE.md` for the scene-by-scene origin). The scene table below describes the final cut; where it differs
+from the first plan the changes are listed under "Changes in the final cut". Dry run with stand-in pictures: see [README.md](README.md).
 
 ## Format
 | | |
@@ -29,18 +29,18 @@ characters per second at most: `node tools/check-captions.mjs`). Times are on th
 | Scene | Time | What is on screen | Captures | Caption cue(s) | Motion / transition |
 |---|---|---|---|---|---|
 | S01 Hook | 0:00 to 0:06 | App icon, the **NACHO COMBO** wordmark in Anton, the app's own line "One box. Only what you order.", the six System Monitor items as a menu bar strip. Top-right label: rendered by the app itself, not a screen recording | `app-icon`, `menu-bar` | 1, 2 | Fade in from black; icon pops, title slides in, strip rises |
-| S02 Widget window | 0:06 to 0:12.5 | Title "The widget window". The whole window with the gadget wall, label "Each gadget has its own switch" | `wall-home` | 3, 4 | Cross-fade in; slow 6 % push-in |
-| S03 Settings panel | 0:12.5 to 0:24 | Title "Click a widget". A cursor clicks a widget, the panel **slides in from the right** (Calendar Clock, Settings tab). Then the Shortcuts tab, then the Permissions tab of Window Snap. Title becomes "Settings, shortcuts, permissions" | `wall-home`, `wall-panel-calendar`, `wall-panel-shortcuts`, `wall-panel-permissions` | 5, 6, 7 | Cursor travel from 13.3 s, ripple at 14.2 s, wipe-reveal of the panel at 14.6 s, tab changes by cross-fade at 16.9 s and 18.7 s |
+| S02 Widget window | 0:06 to 0:12.5 | Title "The widget window". The whole window with the gadget wall, labels "Each gadget has its own switch" and "Window text is in Korean" | `wall-home` | 3, 4 | Cross-fade in; slow 6 % push-in |
+| S03 Settings panel | 0:12.5 to 0:24 | Title "Click a widget". A cursor clicks the Calendar Clock tile, the panel **slides in from the right** (Calendar Clock, Settings tab). Then the Shortcuts tab, then the Permissions tab, both of Calendar Clock. Title becomes "Settings, shortcuts, permissions" | `wall-home`, `wall-panel-calendar`, `wall-panel-shortcuts`, `wall-panel-permissions` | 5, 6, 7 | Cursor travel from 13.3 s, ripple at 14.2 s, wipe-reveal of the panel at 14.6 s, tab changes by cross-fade at 17.0 s and 20.0 s |
 | S04a Window Snap | 0:24 to 0:28.4 | Title, label "Needs: Accessibility", the Window Snap picture | `window-snap` | 8 | Cross-fade; 6 % push-in |
 | S04b System Monitor | 0:28.4 to 0:33.2 | Labels "Permission: none", "Sample numbers"; the picture of the menu bar items over the CPU panel, then the CPU panel with its flyout | `system-monitor`, `monitor-cpu-flyout` | 9 | Cross-fade; the second picture fades in at 30.8 s |
 | S04c Capture Float | 0:33.2 to 0:37.4 | Label "Needs: Screen Recording", the Capture Float picture | `capture-float` | 10 | Cross-fade; push-in |
 | S04d File Shelf | 0:37.4 to 0:41.6 | Label "Permission: none", the File Shelf picture | `file-shelf` | 11 | Cross-fade; push-in |
 | S04e Focus Dim | 0:41.6 to 0:45.4 | Label "Permission: none", the Focus Dim picture (light) | `focus-dim` | 12 | Cross-fade; push-in |
 | S04f Disk Map | 0:45.4 to 0:50 | Labels "Permission: none", "Full Disk Access: optional", "Made-up sample disk"; the Disk Map sunburst | `disk-map` | 13 | Cross-fade; push-in |
-| S05a Combos | 0:50 to 0:56.5 | Title "Combos", label "7 ready-made, plus your own"; the Combos page, panned from the board down to the Desk combo | `combos` | 14 | Cross-fade; slow pan down the board and a 12 % push-in |
-| S05b Quick panel | 0:56.5 to 1:02 | Title "Quick panel", label "Click the nacho box in the menu bar"; the tool list, then the combo screen beside it | `quick-panel`, `quick-panel-combos` | 15 | Cross-fade; the second panel slides in at 57.7 s |
-| S06 Nacho Pet | 1:02 to 1:07 | Title "Nacho Pet", label "Switch it off any time"; the mascot (idle, then happy) in the corner of a drawn desktop card. **Mascot only**: no chat, no login screen, no conversation | `nacho-idle`, `nacho-happy` | 16 | Cross-fade; mascot pops in and bobs |
-| S07 Download | 1:07 to 1:15 | Yellow end card: app icon, **NACHO COMBO**, "Free and open source (MIT)", "macOS 12 or later, Apple Silicon + Intel", `github.com/mafianacho/nachocombo/releases`, small print (MIT covers the source code only; artwork, icon and names are not open source; screens are rendered by the app itself) | `app-icon` | 17, 18 | Cross-fade; fade to black at 1:14.4 |
+| S05a Combos | 0:50 to 0:56.5 | Title "Combos", label "7 ready-made, plus your own"; the Combos page, scrolled from the board down to the Desk combo | `combos` | 14 | Cross-fade; slow pan down the board and a 12 % push-in |
+| S05b Quick panel | 0:56.5 to 1:02 | Title "Quick panel", label "Click the nacho box in the menu bar"; the tool list (header and the Computer Use row cropped, grey pixels re-levelled for legibility), then the combo screen beside it | `quick-panel`, `quick-panel-combos` | 15 | Cross-fade; the second panel slides in at 57.7 s |
+| S06 Nacho Pet | 1:02 to 1:07 | Title "Nacho Pet", labels "Switch it off any time" and "Illustration, not a capture"; the mascot (idle, then happy) in the corner of a drawn desktop card. **Mascot only**: no chat, no login screen, no conversation | `nacho-idle`, `nacho-happy` | 16 | Cross-fade; mascot pops in and bobs |
+| S07 Download | 1:07 to 1:15 | Yellow end card: app icon, **NACHO COMBO**, "Free and open source (MIT)", "macOS 12 or later, Apple Silicon + Intel", `github.com/mafianacho/nachocombo/releases`, small print (MIT covers the source code only; artwork, icon and names are not open source; screens are v0.13.0 renders made by the app itself; sample or test data, except the quick panel's on/off dots, which show a real switch state, nothing personal) | `app-icon` | 17, 18 | Cross-fade; fade to black at 1:14.4 |
 
 Order against the request: hook, whole widget window, settings in the right-hand panel (v0.13.0), six gadgets, combos and
 quick panel, Nacho Pet (mascot only), download. Clipboard History was left out for time (its picture is in the README and
@@ -57,8 +57,8 @@ against the v0.13.0 README before the final cut.
 | S01 line | "One box. Only what you order." | The app's own banner text on the gadget wall (visible in the gallery picture) |
 | 3, 4 | Opening the app shows the widget window; every gadget is a widget on a wall | README "The app lives in the menu bar ... shows the widget window: every gadget is a widget on a wall" |
 | 5 | Click a widget and a panel slides in from the right | README "The settings panel" ("Click a widget and a panel slides in from the right") |
-| 6 | The panel has Settings, Shortcuts and Permissions tabs | README "A gadget's panel ... three tabs" |
-| 7 | Nothing is asked before you switch a gadget on | README "Permissions" ("nothing is asked before you switch one on") |
+| 6 | The panel has Settings, Shortcuts and Permissions tabs | README "A gadget's panel ... three tabs"; picture c04, c05 |
+| 7 | Calendar Clock needs no permission; Calendars is optional (events are read on this Mac and never sent anywhere) | README "Calendar Clock" ("Calendars is optional and only for events") and Gadgets table; picture c05 (Permissions tab, "Not asked yet") |
 | 8, S04a label | Window Snap: 24 window commands from the keyboard, drag to snap; needs Accessibility | README Gadgets table and "Window Snap" |
 | 9, S04b labels | System Monitor: CPU, memory, disk, network, sensor and battery menu bar items; no permission; pictures use sample numbers | README Gadgets table, "System Monitor", note under the intro screenshots |
 | 10, S04c label | Capture Float keeps a capture floating above other windows; needs Screen Recording | README Gadgets table and "Capture Float" |
@@ -66,7 +66,7 @@ against the v0.13.0 README before the final cut.
 | 12 | Focus Dim dims everything behind the active window; no permission | README Gadgets table and "Focus Dim" |
 | 13, S04f labels | Disk Map shows what fills a disk as a sunburst or blocks; Full Disk Access optional; `ctl disk sample` is a made-up disk | README Gadgets table, "Disk Map", ctl list |
 | 14, S05a label | A combo switches on a few gadgets together; seven ready-made combos, up to five of your own | README "Combos" |
-| 15 | The quick panel (click the nacho box) lists the tools with status and control screens | README "Quick panel (menu bar)" |
+| 15 | The quick panel (click the nacho box) lists the tools with their status and has a combo screen | README "Quick panel (menu bar)"; pictures c21, c22 |
 | 16, S06 label | Nacho Pet: the Nacho character in the corner of the screen; switching the gadget off hides Nacho | README "Nacho Pet" ("sits in the bottom-right corner", "Switching the gadget off ... hides Nacho") |
 | 17, S07 | Free and open source (MIT); macOS 12 or later; Apple Silicon and Intel | README header line, `LICENSE`, "Install (release)" |
 | 17, S07 small print | MIT covers the source code only; the Nacho artwork, app icon and names are not open source | `LICENSE`, `TRADEMARKS.md`, README "License" |
@@ -146,3 +146,16 @@ After shooting: `PLAYWRIGHT_CORE=... ./build.sh --captures <out dir> --out <arti
     Settings, Shortcuts and Permissions tabs, dark and light) are offscreen renders from the macOS CI runner with made-up data, 1210 x 770 (1x),
     and already match S03. They are what the dry run uses as stand-ins and could be used in the final cut without a Mac. What is missing is the plain
     wall with no panel and no edit drawer (S02, S03 start), and 2x resolution. `ctl` on a Mac fixes both; no new `ctl` command is needed for any scene except the pet in the corner (item 4).
+
+## Changes in the final cut (NACHO-977)
+Decided with the capture review (NACHO-976); the first plan above stays in the file for the record.
+- **S03 shows Calendar Clock, not Window Snap.** The wall and panel pictures (c02 to c05) are v0.13.0 CI off-screen renders, and the
+  panel tabs in them (Shortcuts, Permissions) belong to Calendar Clock. Cues 6 and 7 were reworded to what the pictures show.
+- **Korean text.** The wall and panel pictures are partly Korean; S02 says so on screen ("Window text is in Korean"), the captions carry the meaning.
+- **Quick panel (c21, c22)** are washed out in the source pictures. c21 is cropped above its "N running" header and below the Nacho Pet row (the Computer Use pin is not shown),
+  its grey pixels are re-levelled and c22 gets a brightness/contrast filter (`lift` and `filter` in `timeline.json`, no other change to the pixels).
+  c21 shows a real switch state of the capture Mac (green dots), not sample data; the end card says so.
+- **Combos (c20)** is a tall page, scrolled instead of panned (`scroll` in `timeline.json`).
+- **S06 (Nacho Pet)** is a drawn card with the mascot art, labelled "Illustration, not a capture".
+- No number of gadgets is named anywhere (README says thirteen plus two, the release notes say fifteen: boss decision pending).
+- Voice-over: none (subtitle-only, as recommended in `TTS-AND-AUDIO.md`). Music: none.
