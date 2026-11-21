@@ -53,7 +53,7 @@ dump("format", p.format.tags); p.streams.forEach((s, i) => dump(`stream ${i} (${
 const structural = /^format: (major_brand|minor_version|compatible_brands) =|^stream \d+ \(\w+\): (language = und|vendor_id = |handler_name = (VideoHandler|SoundHandler)?$)/;
 const risky = lines.filter((l) => !structural.test(l));
 console.log(lines.join("\n") || "(no tags)");
-console.log(`\nformat: ${p.format.format_long_name}, streams: ${p.streams.map((s) => s.codec_type + "/" + s.codec_name).join(", ")}, chapters: ${(p.chapters || []).length}`);
+console.log(`\nformat: ${p.format.format_name}, streams: ${p.streams.map((s) => s.codec_type + "/" + s.codec_name).join(", ")}, chapters: ${(p.chapters || []).length}`);
 console.log(risky.length ? "RISKY TAGS:\n" + risky.join("\n") : "no tags beyond container defaults (brand, language und, generic handler name)");
 process.exit(risky.length ? 1 : 0);
 ' "$OUT/ffprobe.json" | tee "$OUT/metadata.txt" && META="clean: no title, encoder, comment, path or user name" || META="TAGS FOUND, see metadata.txt"
