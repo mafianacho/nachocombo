@@ -33,4 +33,4 @@ None by default: no music, no voice. See [TTS-AND-AUDIO.md](TTS-AND-AUDIO.md) fo
 ## Product Hunt media limits used for the GIF target
 Official guide "4. Build your product page" (https://help.producthunt.com/en/articles/17834537-4-build-your-product-page, read 2026-11-21): logo / thumbnail
 "JPG, PNG, or GIF, up to 2MB", recommended gallery image 1270x760. No file-size limit for gallery GIFs is stated there (unverified), so the GIF
-target is the stricter **2 MiB**. Product Hunt takes videos **by link** (YouTube is the documented one), not as a file upload.
+target is the stricter **2 MiB**. Product Hunt takes videos **by link** (official wording: "add videos and demos by link"); the accepted hosts, length and file upload are not documented there (unverified; see `docs/product-hunt/SOURCES.md` item B1).
