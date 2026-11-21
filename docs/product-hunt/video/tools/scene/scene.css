@@ -14,7 +14,10 @@ html, body { margin: 0; background: #000; }
 .scene { position: absolute; inset: 0; overflow: hidden; }
 .scene.bg-dark { background: radial-gradient(1400px 800px at 28% 18%, #2b2016 0%, #15110d 62%); }
 .scene.bg-accent { background: radial-gradient(1400px 800px at 70% 10%, #ffd566 0%, #ffc43d 60%); color: var(--ink); }
-.el { position: absolute; will-change: opacity, transform; }
+/* No will-change here: it gave every element its own compositor layer, and the same text then came out up to 1 px different
+   depending on the page and the frames drawn before (NACHO-994). Text is placed with whole pixels and sub-pixel glyph positioning is fixed. */
+.el { position: absolute; }
+.text, .pill, #captions .box { text-rendering: geometricPrecision; font-kerning: normal; font-variant-ligatures: none; }
 
 .shot { overflow: hidden; border-radius: 18px; box-shadow: 0 28px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.07); background: #0c0a08; }
 .shot.plain { box-shadow: none; background: transparent; border-radius: 0; overflow: visible; }

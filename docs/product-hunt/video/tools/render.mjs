@@ -2,7 +2,12 @@
 // Renders the intro video frame by frame on a fixed clock: frame N is the scene at exactly N/fps seconds.
 // usage: PLAYWRIGHT_CORE=<playwright-core dir> node tools/render.mjs --captures <dir> --out <frames dir>
 //          [--timeline timeline.json] [--manifest capture-manifest.json] [--srt captions.en.srt]
-//          [--draft] [--workers 8] [--still 3.2,12 ...]   (--still writes just those moments as stills-<t>.png in --out)
+//          [--draft] [--workers 1] [--range t0,t1] [--still 3.2,12 ...]
+//   --workers N   parallel browser pages (default 1). Frame i of a multi-page run is drawn by page (i mod N). Since NACHO-994 the scene
+//                 draws the same pixels whatever page and history drew them (no will-change layers, integer entrance offsets, no
+//                 leftover transforms), but the default stays at one page and `tools/check-text-stability.mjs` is the proof for any other value.
+//   --range a,b   only frames from a to b seconds (the files keep their frame numbers; for quick checks of one scene)
+//   --still t,t   just those moments as still-<t>.png in --out
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -98,19 +103,23 @@ if (a.still) {
   errorsAll = errors;
 } else {
   for (const f of fs.readdirSync(outDir)) if (/^\d{5}\.png$/.test(f)) fs.rmSync(path.join(outDir, f));
-  const workers = Math.max(1, Math.min(Number(a.workers) || 6, 16));
+  const workers = Math.max(1, Math.min(Number(a.workers) || 1, 16));
+  const [rFrom, rTo] = a.range ? String(a.range).split(',').map(Number) : [0, timeline.duration];
+  const first = Math.max(0, Math.ceil(rFrom * fps - 1e-9)), last = Math.min(total - 1, Math.floor(rTo * fps + 1e-9));
+  const count = last - first + 1;
+  if (workers > 1) console.warn(`render: ${workers} pages. Frame i is drawn by page (i mod ${workers}); run tools/check-text-stability.mjs on the result.`);
   let done = 0;
   await Promise.all(Array.from({ length: workers }, async (_, w) => {
     const { page, errors } = await openPage();
-    for (let i = w; i < total; i += workers) {
+    for (let i = first + w; i <= last; i += workers) {
       await page.evaluate((ms) => window.renderAt(ms), (i * 1000) / fps);
       await page.screenshot({ path: path.join(outDir, `${String(i).padStart(5, '0')}.png`) });
-      if (++done % 250 === 0) console.log(`render: ${done}/${total} frames`);
+      if (++done % 250 === 0) console.log(`render: ${done}/${count} frames`);
     }
     errorsAll.push(...errors, ...(await page.evaluate(() => window.__errors)));
     await page.close();
   }));
-  console.log(`render: ${total} frames (${timeline.width}x${timeline.height} @ ${fps} fps, ${timeline.duration}s) in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${outDir}`);
+  console.log(`render: ${count} frames (${timeline.width}x${timeline.height} @ ${fps} fps, ${timeline.duration}s timeline, ${workers} page${workers > 1 ? 's' : ''}) in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${outDir}`);
 }
 await browser.close();
 server.close();

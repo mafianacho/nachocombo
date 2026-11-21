@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Privacy check of a finished video: frames every 2 s, contact sheets, metadata dump, forbidden-string scans, checklist.
-#   privacy/run.sh <video.mp4> [<gif>] [--out <dir>] [--interval 2]
+#   privacy/run.sh <video.mp4> [<gif>] [--out <dir>] [--interval 2] [--offset 0]
+# --offset <s> starts the frame grid that many seconds into the video (use a different one after a rebuild: the frames are then not the ones seen before).
 # <dir> must be inside the video's folder (it is the one folder mounted into the ffmpeg container); default <video dir>/privacy.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,12 +9,13 @@ VIDEO_DIR_ROOT="$(cd "$HERE/.." && pwd)"
 REPO_ROOT="$(cd "$HERE/../../../.." && pwd)"
 source "$VIDEO_DIR_ROOT/tools/ffmpeg.sh"
 
-VIDEO="" GIF="" OUTSUB="privacy" INTERVAL=2
+VIDEO="" GIF="" OUTSUB="privacy" INTERVAL=2 OFFSET=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) OUTSUB="$2"; shift 2 ;;
     --interval) INTERVAL="$2"; shift 2 ;;
-    -h|--help) sed -n '2,5p' "$0"; exit 0 ;;
+    --offset) OFFSET="$2"; shift 2 ;;
+    -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
     *) if [ -z "$VIDEO" ]; then VIDEO="$1"; else GIF="$1"; fi; shift ;;
   esac
 done
@@ -28,8 +30,9 @@ DURATION=$(fp "$DIR" -v error -show_entries format=duration -of csv=p=0 "$BASE" 
 # Exactly every INTERVAL seconds (frame numbers, not the fps filter: that one takes the last frame of each interval, a second late).
 FPS=$(fp "$DIR" -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of csv=p=0 "$BASE" | awk -F/ '{printf "%.4f", $1/$2}')
 STEP=$(awk -v f="$FPS" -v i="$INTERVAL" 'BEGIN{printf "%d", f*i+0.5}')
-SELECT="select=not(mod(n\\,$STEP))"
-echo "== frames every ${INTERVAL}s of $BASE (${DURATION}s, ${FPS} fps, every ${STEP}th frame)"
+START=$(awk -v f="$FPS" -v o="$OFFSET" 'BEGIN{printf "%d", f*o+0.5}')
+SELECT="select=gte(n\\,$START)*not(mod(n-$START\\,$STEP))"
+echo "== frames every ${INTERVAL}s from ${OFFSET}s of $BASE (${DURATION}s, ${FPS} fps, every ${STEP}th frame from frame ${START})"
 ff "$DIR" -y -loglevel error -i "$BASE" -vf "$SELECT" -fps_mode vfr "$OUTSUB/frames/f_%04d.png"
 FRAMES=$(ls "$OUT/frames" | wc -l)
 NEEDED=$(awk -v d="$DURATION" -v i="$INTERVAL" 'BEGIN{n=int(d/i); if (n*i<d) n++; print n}')
@@ -41,6 +44,19 @@ ff "$DIR" --font-dir "$REPO_ROOT/Resources/Fonts" -y -loglevel error -i "$BASE" 
   -vf "$SELECT,scale=480:270,drawtext=fontfile=/fonts/IBMPlexMono-Medium.ttf:text='%{pts\:hms}':x=8:y=8:fontsize=22:fontcolor=white:box=1:boxcolor=black@0.7:boxborderw=4,tile=4x5:padding=4:margin=4:color=black" \
   -fps_mode vfr "$OUTSUB/contact-sheet-%02d.png"
 ls "$OUT"/contact-sheet-*.png | sed "s|$DIR/||"
+
+GIFFRAMES=0
+if [ -n "$GIF" ]; then
+  # one GIF frame per second of the loop, starting half a second in, at full size (the GIF must sit in the video's folder)
+  GBASE="$(basename "$GIF")"
+  [ -f "$DIR/$GBASE" ] || { echo "run.sh: the GIF must be in the same folder as the video ($DIR)" >&2; exit 2; }
+  GFPS=$(fp "$DIR" -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of csv=p=0 "$GBASE" | awk -F/ '{printf "%d", $1/$2+0.5}')
+  mkdir -p "$OUT/gif-frames"
+  echo "== GIF frames, one per second of the loop ($GBASE, $GFPS fps)"
+  ff "$DIR" -y -loglevel error -i "$GBASE" -vf "select=gte(n\\,$((GFPS / 2)))*not(mod(n-$((GFPS / 2))\\,$GFPS))" -fps_mode vfr "$OUTSUB/gif-frames/g_%03d.png"
+  GIFFRAMES=$(ls "$OUT/gif-frames" | wc -l)
+  echo "   $GIFFRAMES GIF frames"
+fi
 
 echo "== metadata dump"
 fp "$DIR" -v error -show_format -show_streams -show_chapters -show_programs -of json "$BASE" > "$OUT/ffprobe.json"
@@ -67,9 +83,9 @@ SRC=("$VIDEO_DIR_ROOT/tools" "$VIDEO_DIR_ROOT/timeline.json" "$VIDEO_DIR_ROOT/ca
 if node "$HERE/scan-forbidden.mjs" "${SRC[@]}" | tee "$OUT/scan-source.txt"; then SS="0 hits"; else SS="HITS, see scan-source.txt"; fi
 
 sed -e "s|{{video}}|$BASE|g" -e "s|{{date}}|$(date +%F)|g" -e "s|{{interval}}|$INTERVAL|g" -e "s|{{frames}}|$FRAMES|g" \
-    -e "s|{{duration}}|$DURATION|g" -e "s|{{needed}}|$NEEDED|g" -e "s|{{frames_dir}}|$OUTSUB/frames|g" \
+    -e "s|{{duration}}|$DURATION|g" -e "s|{{needed}}|$NEEDED|g" -e "s|{{frames_dir}}|$OUTSUB/frames|g" -e "s|{{gif_frames}}|$GIFFRAMES|g" -e "s|{{offset}}|$OFFSET|g" \
     -e "s|{{metadata_result}}|$META|g" -e "s|{{scan_media_result}}|$SM|g" -e "s|{{scan_source_result}}|$SS|g" \
     "$HERE/CHECKLIST.template.md" > "$OUT/CHECKLIST.md"
 echo
-echo "privacy: $FRAMES frames, metadata: $META, media scan: $SM, source scan: $SS"
+echo "privacy: $FRAMES video frames, $GIFFRAMES GIF frames, metadata: $META, media scan: $SM, source scan: $SS"
 echo "next: look at $OUT/contact-sheet-*.png and the frames, then fill in the 'By eye' rows of $OUT/CHECKLIST.md"

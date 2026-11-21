@@ -30,14 +30,17 @@
     return { a, p };
   }
 
+  // Whole pixels only, and no transform at all once the entrance is over (p >= 1) or when there is none: a leftover
+  // translateX(0px) / scale(1) put the element on its own raster path and made the text draw a pixel differently from page to page.
   function entryTransform(spec, p) {
+    if (p >= 1) return { t: '', clip: '' };
     const e = easeOut(p);
     switch (spec.in) {
-      case 'from-right': return { t: `translateX(${(1 - e) * 160}px)` };
-      case 'from-left': return { t: `translateX(${-(1 - e) * 160}px)` };
-      case 'from-below': return { t: `translateY(${(1 - e) * 50}px)` };
+      case 'from-right': return { t: `translateX(${Math.round((1 - e) * 160)}px)` };
+      case 'from-left': return { t: `translateX(${-Math.round((1 - e) * 160)}px)` };
+      case 'from-below': return { t: `translateY(${Math.round((1 - e) * 50)}px)` };
       case 'pop': return { t: `scale(${0.92 + 0.08 * e})` };
-      case 'wipe': return { t: `translateX(${(1 - e) * 70}px)`, clip: `inset(0 0 0 ${(1 - e) * 100}%)` };
+      case 'wipe': return { t: `translateX(${Math.round((1 - e) * 70)}px)`, clip: `inset(0 0 0 ${(1 - e) * 100}%)` };
       default: return { t: '' };
     }
   }
@@ -50,10 +53,10 @@
 
   function applyVisibility(el, spec, tl, extraTransform) {
     const { a, p } = visibility(spec, tl);
-    el.style.opacity = a;
+    el.style.opacity = a >= 1 ? '' : a;
     el.style.display = a <= 0.001 ? 'none' : 'block';
     const { t, clip } = entryTransform(spec, p);
-    el.style.transform = `${t} ${extraTransform || ''}`.trim();
+    el.style.transform = `${t} ${extraTransform || ''}`.trim() || 'none';
     el.style.clipPath = clip || '';
   }
 
@@ -116,8 +119,11 @@
       update(tl) {
         if (scroll) img.style.top = `${-lerp(scroll[0], scroll[1], easeInOut((tl - sc0) / Math.max(scdur, 0.001))) * s}px`;
         const k = easeInOut((tl - t0) / Math.max(zdur, 0.001));
-        pan.style.transformOrigin = `${lerp(f0[0], f1[0], k) * 100}% ${lerp(f0[1], f1[1], k) * 100}%`;
-        pan.style.transform = `scale(${lerp(z0, z1, k)})`;
+        if (z0 === 1 && z1 === 1) pan.style.transform = 'none';
+        else {
+          pan.style.transformOrigin = `${lerp(f0[0], f1[0], k) * 100}% ${lerp(f0[1], f1[1], k) * 100}%`;
+          pan.style.transform = `scale(${lerp(z0, z1, k)})`;
+        }
         const bob = spec.bob ? Math.sin((tl / spec.bob[1]) * Math.PI * 2) * spec.bob[0] : 0;
         applyVisibility(el, spec, tl, bob ? `translateY(${bob}px)` : '');
       },
