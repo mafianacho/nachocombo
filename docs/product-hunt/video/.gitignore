@@ -1,0 +1,10 @@
+# Nothing rendered belongs in the repository: videos, GIFs, frames and capture PNGs live in the artifacts folder.
+out/
+work/
+*.mp4
+*.gif
+*.webm
+*.mov
+*.wav
+*.mp3
+*.png

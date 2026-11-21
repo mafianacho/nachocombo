@@ -1,0 +1,67 @@
+{
+  "$comment": "Strings that must never appear in the video's source material (scene HTML/JS/CSS, timeline, captions, scripts, capture PNG text chunks) or in the finished MP4/GIF bytes. This file is the only one the scanner skips. Add a pattern when a new kind of leak is thought of. `regex` is a JavaScript regular expression, case-insensitive. `binaryRegex`, when present, replaces `regex` for non-text files (MP4, GIF, PNG pixel bytes).",
+  "version": 1,
+  "patterns": [
+    {
+      "name": "linux-home-path",
+      "regex": "/home/[a-z0-9._-]+",
+      "why": "a server home directory (user name inside)"
+    },
+    {
+      "name": "macos-user-path",
+      "regex": "/Users/[a-z0-9._ -]+",
+      "why": "a Mac home directory (user name inside)"
+    },
+    {
+      "name": "user-run-dir",
+      "regex": "/run/user/\\d+",
+      "why": "a per-user runtime path (numeric user id)"
+    },
+    {
+      "name": "boss-account-name",
+      "regex": "nachofather",
+      "why": "the server / account user name"
+    },
+    {
+      "name": "server-host-name",
+      "regex": "mafianacho-server|moneymachine|tail[0-9a-f]{6}\\.ts\\.net|\\.ts\\.net",
+      "why": "server and tailnet host names"
+    },
+    {
+      "name": "gmail-address",
+      "regex": "@gmail\\b",
+      "why": "a personal mail domain"
+    },
+    {
+      "name": "company-mail-address",
+      "regex": "@mafianacho\\b",
+      "why": "a company mail domain"
+    },
+    {
+      "name": "any-email-address",
+      "regex": "[a-z0-9._%+-]+@(?!example\\.(com|org|net)\\b)[a-z0-9-]+(\\.[a-z0-9-]+)*\\.[a-z]{2,}",
+      "why": "any e-mail address except @example.* (in binary files a stricter form is used: 3+ character local part and a real top-level domain, because random bytes can look like 'a@b.Cd')",
+      "binaryRegex": "(?<![a-z0-9._%+-])[a-z0-9._%+-]{3,}@(?!example\\.(com|org|net)\\b)[a-z0-9-]{2,}(\\.[a-z0-9-]{2,})*\\.(com|org|net|io|dev|co|kr|app|ai|me|us|edu|gov)(?![a-z0-9])"
+    },
+    {
+      "name": "discord-snowflake",
+      "regex": "(?<![0-9])[0-9]{17,19}(?![0-9])",
+      "why": "a Discord or other long numeric account id"
+    },
+    {
+      "name": "jwt-token",
+      "regex": "eyJ[a-z0-9_-]{15,}\\.[a-z0-9_-]{15,}",
+      "why": "a login token"
+    },
+    {
+      "name": "api-key",
+      "regex": "gh[pousr]_[a-z0-9]{20,}|sk-[a-z0-9]{20,}|AKIA[0-9A-Z]{16}",
+      "why": "an access key"
+    },
+    {
+      "name": "bearer-header",
+      "regex": "bearer\\s+[a-z0-9._-]{16,}",
+      "why": "an Authorization header"
+    }
+  ]
+}

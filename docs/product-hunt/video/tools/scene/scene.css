@@ -1,0 +1,48 @@
+/* Fonts come from Resources/Fonts (SIL Open Font License 1.1: Anton, IBM Plex Sans, IBM Plex Mono). The render server maps /fonts there. */
+@font-face { font-family: "Anton"; src: url("/fonts/Anton-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-Medium.ttf"); font-weight: 500; }
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-SemiBold.ttf"); font-weight: 600; }
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-Bold.ttf"); font-weight: 700; }
+@font-face { font-family: "IBM Plex Mono"; src: url("/fonts/IBMPlexMono-Medium.ttf"); font-weight: 500; }
+@font-face { font-family: "IBM Plex Mono"; src: url("/fonts/IBMPlexMono-SemiBold.ttf"); font-weight: 600; }
+
+:root { --accent: #ffc43d; --ink: #2a1708; --bg: #15110d; --text: #f6efe3; --muted: #b9ab98; }
+html, body { margin: 0; background: #000; }
+#canvas { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #000; font-family: "IBM Plex Sans", sans-serif; color: var(--text); }
+
+.scene { position: absolute; inset: 0; overflow: hidden; }
+.scene.bg-dark { background: radial-gradient(1400px 800px at 28% 18%, #2b2016 0%, #15110d 62%); }
+.scene.bg-accent { background: radial-gradient(1400px 800px at 70% 10%, #ffd566 0%, #ffc43d 60%); color: var(--ink); }
+/* No will-change here: it gave every element its own compositor layer, and the same text then came out up to 1 px different
+   depending on the page and the frames drawn before (NACHO-994). Text is placed with whole pixels and sub-pixel glyph positioning is fixed. */
+.el { position: absolute; }
+.text, .pill, #captions .box { text-rendering: geometricPrecision; font-kerning: normal; font-variant-ligatures: none; }
+
+.shot { overflow: hidden; border-radius: 18px; box-shadow: 0 28px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.07); background: #0c0a08; }
+.shot.plain { box-shadow: none; background: transparent; border-radius: 0; overflow: visible; }
+.shot .pan { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.shot img { position: absolute; display: block; max-width: none; image-rendering: auto; }
+
+.text { white-space: pre; line-height: 1.02; }
+.text.anton { font-family: "Anton", sans-serif; letter-spacing: .01em; text-transform: uppercase; }
+.text.plex { font-family: "IBM Plex Sans", sans-serif; font-weight: 500; line-height: 1.25; }
+.text.mono { font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+.pill { display: inline-block; padding: 10px 22px; border-radius: 999px; font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 26px;
+        background: rgba(255,196,61,.16); color: var(--accent); border: 2px solid rgba(255,196,61,.55); white-space: nowrap; }
+.pill.ink { background: rgba(42,23,8,.10); color: var(--ink); border-color: rgba(42,23,8,.45); }
+.rect { box-sizing: border-box; }
+
+.cursor { position: absolute; width: 44px; height: 44px; margin: -3px 0 0 -3px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.45)); }
+.ripple { position: absolute; border-radius: 50%; border: 6px solid var(--accent); box-sizing: border-box; }
+
+#captions { position: absolute; left: 0; right: 0; bottom: 48px; display: flex; justify-content: center; pointer-events: none; }
+#captions .box { max-width: 1560px; padding: 14px 34px 16px; border-radius: 18px; background: rgba(12,9,6,.78); text-align: center; color: #fff;
+                 font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 46px; line-height: 1.22; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+#captions .box div { white-space: pre; }
+
+#draft { position: absolute; inset: 0; pointer-events: none; display: none; }
+#draft .big { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-22deg); font-family: "Anton", sans-serif; font-size: 460px; letter-spacing: .06em;
+              color: rgba(255,255,255,.13); -webkit-text-stroke: 6px rgba(255,255,255,.22); white-space: nowrap; }
+#draft .tag { position: absolute; left: 24px; top: 20px; padding: 8px 18px; border-radius: 10px; background: rgba(214,40,40,.92); color: #fff;
+              font: 600 24px "IBM Plex Mono", monospace; letter-spacing: .04em; }
