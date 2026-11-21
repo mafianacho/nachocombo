@@ -18,13 +18,13 @@ protocol PanelHost: AnyObject {
     func panelSetDim(_ value: Double)
     func panelOpenPermissionPane(_ id: ModuleID)
     func panelRecheck(_ id: ModuleID)
-    /// Opens the settings window on a gadget (nil: the Permissions page).
+    /// Opens the settings panel of the widget window on a gadget (nil: the app Permissions tab).
     func panelOpenGadget(_ id: ModuleID?)
     func panelOrderCombo(_ id: String)
     /// The combo just ordered, while its order can still be undone.
     var panelUndoName: String? { get }
     func panelUndoOrder()
-    /// Opens the settings window's Combos page (with a new combo of one's own started).
+    /// Opens the settings panel's Combos tab (with a new combo of one's own started).
     func panelOpenCombos(newCombo: Bool)
     func panelPermissionGranted(_ permission: GadgetPermission) -> Bool?
     /// The gallery's live commands (capture modes, lock floats, pause dimming...).

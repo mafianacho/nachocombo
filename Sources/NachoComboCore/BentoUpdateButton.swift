@@ -23,8 +23,8 @@ public struct BentoUpdateButtonModel: Equatable {
     }
 }
 
-/// Where the update confirmation sheet hangs.
-public enum UpdateConfirmParent: Equatable { case widget, settings, none }
+/// Where the update confirmation sheet hangs: the widget window (the only window left), or nowhere (a window-less alert).
+public enum UpdateConfirmParent: Equatable { case widget, none }
 
 public enum BentoUpdateLogic {
     /// State → (visible, text, active). Hidden while editing (only "완료" shows there).
@@ -39,10 +39,8 @@ public enum BentoUpdateLogic {
         }
     }
 
-    /// The confirmation sheet's parent: the widget window when the click came from it and it is on screen, else the
-    /// settings window when that is open (the old behaviour), else none.
-    public static func confirmParent(fromWidget: Bool, widgetVisible: Bool, settingsVisible: Bool) -> UpdateConfirmParent {
-        if fromWidget && widgetVisible { return .widget }
-        return settingsVisible ? .settings : .none
+    /// The confirmation sheet's parent: the widget window when it is on screen, else none.
+    public static func confirmParent(widgetVisible: Bool) -> UpdateConfirmParent {
+        widgetVisible ? .widget : .none
     }
 }

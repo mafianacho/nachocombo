@@ -154,7 +154,7 @@ final class BentoCaptureTests: XCTestCase {
     }
 
     /// NACHO-802: the yellow update pill (top right) and the mascot + wordmark (top left), light and dark:
-    /// no update, available, ready, edit mode, and the window's minimum width (420 pt).
+    /// no update, available, ready, edit mode, and the window's minimum width (480 pt).
     func testUpdatePillAndLogoCaptures() throws {
         for (appearance, tag) in [(NSAppearance.Name.aqua, "light"), (.darkAqua, "dark")] {
             let cases: [(String, BentoUpdateState, Bool, CGFloat)] = [
@@ -163,15 +163,15 @@ final class BentoCaptureTests: XCTestCase {
                 ("ready", .ready(version: "0.9.1"), false, BentoWindowController.defaultSize.width),
                 ("downloading", .downloading, false, BentoWindowController.defaultSize.width),
                 ("edit", .available(version: "0.9.1"), true, BentoWindowController.defaultSize.width),
-                ("min420", .available(version: "0.9.1"), false, 420),
-                ("min420-ready", .ready(version: "0.9.1"), false, 420),
+                ("min480", .available(version: "0.9.1"), false, BentoWindowController.minContentWidth),
+                ("min480-ready", .ready(version: "0.9.1"), false, BentoWindowController.minContentWidth),
             ]
             for (name, state, editing, width) in cases {
                 let host = FixtureHost()
                 host.bentoUpdateState = state
                 let (controller, view) = board(host: host, editing: editing)
                 controller.window.appearance = NSAppearance(named: appearance)
-                let size = NSSize(width: width, height: width == 420 ? 640 : BentoWindowController.defaultSize.height)
+                let size = NSSize(width: width, height: width == BentoWindowController.minContentWidth ? 640 : BentoWindowController.defaultSize.height)
                 controller.window.setContentSize(size)
                 controller.window.contentView?.layoutSubtreeIfNeeded()
                 controller.reload()
@@ -185,7 +185,7 @@ final class BentoCaptureTests: XCTestCase {
                     XCTAssertLessThanOrEqual(a.maxX, size.width, "\(name) \(tag) inside the window")
                     for b in parts[(i + 1)...] { XCTAssertFalse(a.intersects(b), "\(name) \(tag): \(a) overlaps \(b)") }
                 }
-                if width == 420, let m = f.mascot { XCTAssertGreaterThanOrEqual(m.minX, BentoLogo.originX) }
+                if width == BentoWindowController.minContentWidth, let m = f.mascot { XCTAssertGreaterThanOrEqual(m.minX, BentoLogo.originX) }
                 controller.window.contentView = nil
                 try render(view, size: size, appearance: appearance, name: "b5-update-\(name)-\(tag)")
             }

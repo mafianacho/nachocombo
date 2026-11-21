@@ -16,17 +16,18 @@ map, plus the experimental [Computer Use](#computer-use-experimental) (an MCP se
 combo. No third-party apps, code or brands are used; the brand fonts are open-licensed
 ([Brand](#brand)).
 
-<img src="docs/images/gallery-dark.png" width="100%" alt="The settings window: a sidebar with All Gadgets, Combos, General, Permissions and the gadgets, and the gadget gallery with a tile per gadget">
+<img src="docs/images/gallery-dark.png" width="100%" alt="The widget window with the gadget wall (this picture still shows the old settings window and will be replaced)">
 
-The app lives in the menu bar as its nacho box icon and has no Dock icon. Opening the app shows the **settings window**
-above: a sidebar on the left and, first, the **gadget gallery** with every gadget as a tile and its switch.
+The app lives in the menu bar as its nacho box icon and has no Dock icon. Opening the app shows the **widget window**: every
+gadget is a widget on a wall, and the settings open in a **panel on the right of that window** (there is no separate
+settings window).
 
 > The screenshots are rendered by the app itself (`scripts/screenshots.sh`). Where a gadget works on other apps'
 > windows, the desktop around it is drawn; System Monitor pictures use sample numbers.
 
 ## Contents
 - [Usage](#usage)
-- [The settings window](#the-settings-window) · [Combos](#combos) · [Permissions](#permissions) · [Brand](#brand)
+- [The settings panel](#the-settings-panel) · [Combos](#combos) · [Permissions](#permissions) · [Brand](#brand)
 - [Gadgets](#gadgets): [Menu Bar Organizer](#menu-bar-organizer) · [System Monitor](#system-monitor) ·
   [Window Snap](#window-snap) · [File Shelf](#file-shelf) · [Capture Float](#capture-float) · [Focus Dim](#focus-dim) ·
   [Keep Awake](#keep-awake) · [Clipboard History](#clipboard-history) · [Device Control](#device-control) ·
@@ -51,71 +52,42 @@ above: a sidebar on the left and, first, the **gadget gallery** with every gadge
 5. Choices are saved automatically and restored on the next launch. General ▸ Open at Login adds Nacho Combo to Login
    Items (macOS 13 and later); Show This Window at Launch chooses when the window opens by itself.
 
-## The settings window
+## The settings panel
 
-<img src="docs/images/gallery-light.png" width="100%" alt="The Window Snap page in light mode: the header with its switch, the permission card with three steps, and the Settings tab">
+Everything you can set lives in one window: the widget window. Click a widget and a panel slides in from the right
+(about 0.2 s; none with Reduce Motion on) while the wall stays visible and usable next to it. When the window is too
+narrow for both (under about 840 pt) the panel covers the wall instead; close it to get the wall back. The window's
+minimum width is 480 pt, the panel's own width, so every control of the panel always shows.
 
-The window can be resized; its size and the last page come back next time.
+- **Open / swap / close.** Click a widget (or press Return on a focused one): its panel opens. Click another widget:
+  only the content changes. Close it with the ✕ button, Esc, or by clicking the same widget again.
+- **A gadget's panel.** The header has the icon, name, one sentence, the real state (`Running`, `Off`,
+  `Needs Accessibility`) and its switch; a permission card, a one-time setup step or a notice shows right under it. Then
+  three tabs:
+  - **설정 (Settings):** a folded **개요 (Overview)** on top (the gadget at work, drawn by its own views; Controls to use
+    it right away; Features; Keys and Gestures; Good to Know; open by default while the gadget is off, closed while it
+    is on), then its Options (saved at once) and Menu Bar Access (pin it to the menu bar, a shortcut that opens its controls).
+  - **단축키 (Shortcuts):** how many are set, how many another app holds, `Restore Defaults…`; click a key cap field and type
+    a new combination; ⌫ removes it, ↺ brings back the default, Esc cancels. A combination macOS reserves, another
+    action uses, or another app already holds is refused with the reason.
+  - **권한 (Permissions):** each permission the gadget uses, why, its state and the one thing to do (`필요한 권한이 없어요` when it needs none).
+- **App settings.** The **설정** pill at the top of the window opens the same panel on the app's own settings; press it
+  again to close. Tabs: **일반 (General)** (Open at Login, Show This Window at Launch, the dot on the menu bar icon, the
+  settings file, updates, Reset All Settings, version, Quit), **권한 (Permissions)** (everything macOS asks you to
+  allow, who uses it and why), **콤보 (Combos)** (order or make a combo) and **MCP** (the Computer Use server, keys and
+  tool groups).
+- **Hidden widgets.** The ＋ card of the wall lists hidden widgets; each has `다시 보이기` and `설정 열기` (its panel, without
+  showing it on the wall).
+- **Edit mode.** `위젯 편집` closes the panel and shows the edit drawer (size, pin, shortcut); they never show together, and
+  no panel opens while editing. The drawer's shortcut line ends editing and opens the gadget's 단축키 tab.
+- **Other ways in.** `Settings…` of the menu bar icon, a gadget's own `Settings…`, the first launch (the combo menu), a
+  gadget that needs a permission (`Show This Window at Launch ▸ When Something Needs You`, the permission notice, the
+  quick panel's links) all bring the widget window to the front and open the right page of the panel.
 
-**Sidebar.** All Gadgets (the gallery), Combos, General, Permissions (with a count when something needs you), then every gadget
-with its state in one word: `ON`, `OFF`, `ALLOW` (switched on but waiting for a permission), `ERROR`. A gadget that is off is
-dimmed, and the heading counts what is on. Rest the pointer on a gadget and its overview opens beside the sidebar, like a
-large tooltip: what it is, a picture of it at work and what it can do. ↑ / ↓ move between entries.
+Choices are saved at once and restored on the next launch, exactly as before: the panel only moved where they are set.
 
-**All Gadgets.** The yellow lid on top shows what runs, what waits for you and which combo the box is (`Your box: Desk`,
-or `Start from a combo`). Each tile shows the gadget's icon, its name, one status slot and its own on / off switch. The slot holds
-what matters most: its main shortcut (`⌃⌥S · Empty`, `⇧⌘2`), live numbers (`CPU 18% · Memory 85%`), `Off`, a lock with
-the permission it will ask for (`Accessibility`, while off), or, while it waits for one, an orange **Allow
-Accessibility…** button that opens its page. Every state uses the same slot, so the icon, the name and the switch never
-move. An orange badge on the icon says something needs attention (`!` for one thing, a number from two). The header
-counts what runs (`2 running`) and names what waits (`1 needs Accessibility ›`, which opens it). Click a tile to open
-its page; arrow keys move a highlight, Return opens, Space flips the switch.
-
-**A gadget's page.** From top to bottom:
-
-<table>
-<tr>
-<td width="50%" valign="top"><img src="docs/images/detail-window-snap-top.png" alt="Window Snap page: header with switch, permission card, Settings tab with options"></td>
-<td width="50%" valign="top">
-
-- **Header:** icon, name, one sentence, the real state (`Running`, `Off`, `Needs Accessibility`) and its switch.
-- **What to do:** the permission card ([Permissions](#permissions)), a one-time setup step (Menu Bar Organizer:
-  ⌘-drag the icons to hide left of `┊`), and notices (errors, a shortcut another app holds, System Monitor alerts).
-- **Overview:** the gadget at work, drawn by its own views and following your settings; Controls to use it right away
-  (Window Snap's grid of 18 layouts, buttons, sliders; `Turn On` while it is off); Features; Keys and Gestures; Good to
-  Know (what macOS does not allow).
-- **Settings:** its Options (saved at once, with a note when a system setting stands in the way), Menu Bar Access (pin
-  it to the menu bar, a shortcut that opens its controls) and the state of each permission it uses. A gadget that is on
-  opens here; one that is off opens on Overview.
-
-</td>
-</tr>
-</table>
-
-<table>
-<tr>
-<td width="50%" valign="top"><img src="docs/images/detail-window-snap-shortcuts.png" alt="Shortcuts tab: summary, Restore Defaults and groups of key caps"></td>
-<td width="50%" valign="top"><img src="docs/images/permissions.png" alt="The Permissions page: Accessibility, Screen Recording, Notifications and Desktop & Dock tiling with their state"></td>
-</tr>
-<tr>
-<td valign="top">
-
-- **Shortcuts:** how many are set, how many another app holds, and `Restore Defaults…` for this gadget. Window Snap's
-  24 are grouped (Halves, Quarters, Thirds, Two Thirds, Size and Position, Displays); a group with a clash opens by
-  itself. Click a key cap field and type a new combination; ⌫ removes it, ↺ brings back the default, Esc cancels. A
-  combination macOS reserves, another action uses, or another app already holds is refused with the reason.
-
-</td>
-<td valign="top">
-
-- **Permissions:** everything macOS asks you to allow, who uses it and why, its state and the one thing to do; plus
-  the system setting Window Snap depends on (Desktop & Dock tiling, macOS 15 and later).
-- **General:** Open at Login, Show This Window at Launch (Always / When Something Needs You / Never), the dot on the
-  menu bar icon, the settings file, Reset All Settings, the version and Quit.
-
-</td>
-</tr>
-</table>
+> The pictures further down (`docs/images/detail-*.png`, `permissions.png`, `gallery-*.png`) were taken from the old
+> separate settings window and are due to be re-taken from the panel on a real Mac.
 
 ## Combos
 
@@ -626,7 +598,7 @@ When another app already holds a combination, the gadget's page says so and keep
   button, and the control screen says it in words as well (`Running / Needs Accessibility / Error`).
 - Control screens: Menu Bar Organizer (collapse / expand, show always-hidden), System Monitor (CPU, memory and network
   figures), Window Snap (the layout grid), File Shelf (open / close, add clipboard, item count), Capture Float (area,
-  window, screen, previous area, lock, close all), Focus Dim (strength, pause), Disk Map (free space, open the window). `Settings…` opens the settings window on that
+  window, screen, previous area, lock, close all), Focus Dim (strength, pause), Disk Map (free space, open the window). `Settings…` opens the settings panel on that
   gadget.
 - **Pin to the menu bar** per tool: a pinned tool gets its own menu bar icon that opens its control screen directly.
   Pinning is separate from on / off and never asks for a permission.
@@ -720,10 +692,10 @@ and `codesign`).
   `ctl pin <module> on|off`, `ctl shortcut <module> <keyCode> <carbonMods>|clear`, `ctl panel list|tool <module>|back|close`,
   `ctl appearance dark|light|system`, `ctl relaunch`, `ctl dump`, `ctl quit`. Prints the state JSON (the `ui` section holds the panel,
   gallery, pin and shortcut state). Not meant for release use.
-  - Settings window: `ctl gallery select <module>`, `ctl gallery page home|general|permissions|<module>`,
-    `ctl gallery tab overview|settings|shortcuts`, `ctl gallery hover <module>|off [file.png]` (the overview card, and its picture), `ctl gallery page combos`, `ctl combo select|order|edit <id>`,
+  - Settings panel (of the widget window): `ctl gallery select <module>`, `ctl gallery page home|general|permissions|<module>`
+    (`home` closes the panel), `ctl gallery tab overview|settings|shortcuts|permissions` (`overview` is the 설정 tab now), `ctl gallery page combos`, `ctl combo select|order|edit <id>`,
     `ctl combo new [preset]`, `ctl combo save`, `ctl combo undo`, `ctl combo welcome on|off`, `ctl panel combos`, `ctl gallery sample on|off` (pictures with sample data),
-    `ctl gallery detail <file.png>` (the whole page), `ctl gallery content <file.png>` (the shown tab only),
+    `ctl gallery detail <file.png>` (the whole page of the panel), `ctl gallery content <file.png>` (the shown tab only),
     `ctl gallery preview <module> <file.png> [light]`,
     `ctl permstage accessibility|screenRecording <notAllowed|waiting|stillNotAllowed|restartNeeded|updated|auto>`
     (shows a permission card stage), `ctl allowed <module>` (the "allowed" confirmation),

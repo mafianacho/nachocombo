@@ -73,7 +73,7 @@ final class ComputerUseSimplifyCaptureTests: XCTestCase {
 
     @discardableResult
     private func capture(_ content: NSView, name: String, dark: Bool, margin: CGFloat = 24) throws -> Data {
-        let background = DetailBackgroundView()
+        let background = PaperBackgroundView()
         background.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         content.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(content)
@@ -193,5 +193,17 @@ final class ComputerUseSimplifyCaptureTests: XCTestCase {
             XCTAssertTrue(all.contains("TLS Certificate Fingerprint"))
             XCTAssertTrue(all.contains("Connection Addresses"))
         }
+    }
+}
+
+/// The panel's paper ground behind a captured page (the old settings window's detail background).
+private final class PaperBackgroundView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        Brand.paper.setFill()
+        bounds.fill()
+    }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 }

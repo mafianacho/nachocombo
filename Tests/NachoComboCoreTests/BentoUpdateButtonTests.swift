@@ -35,14 +35,8 @@ final class BentoUpdateButtonTests: XCTestCase {
         for s in all { XCTAssertFalse(model(s, editing: true).visible, "\(s)") }
     }
 
-    func testConfirmParentPrefersWidgetWhenClickedThere() {
-        XCTAssertEqual(BentoUpdateLogic.confirmParent(fromWidget: true, widgetVisible: true, settingsVisible: true), .widget)
-        XCTAssertEqual(BentoUpdateLogic.confirmParent(fromWidget: true, widgetVisible: true, settingsVisible: false), .widget)
-    }
-
-    func testConfirmParentKeepsSettingsPathAsBefore() {
-        XCTAssertEqual(BentoUpdateLogic.confirmParent(fromWidget: false, widgetVisible: true, settingsVisible: true), .settings)
-        XCTAssertEqual(BentoUpdateLogic.confirmParent(fromWidget: false, widgetVisible: true, settingsVisible: false), .none)
-        XCTAssertEqual(BentoUpdateLogic.confirmParent(fromWidget: true, widgetVisible: false, settingsVisible: true), .settings)
+    func testConfirmParentIsTheWidgetWindowWhenShown() {
+        XCTAssertEqual(BentoUpdateLogic.confirmParent(widgetVisible: true), .widget)
+        XCTAssertEqual(BentoUpdateLogic.confirmParent(widgetVisible: false), .none)
     }
 }

@@ -65,7 +65,7 @@ final class ToolListView: NSView {
 
         let settings = UI.linkButton("Settings…", color: .labelColor, target: self, action: #selector(settingsClicked))
         settings.setAccessibilityIdentifier("panel-settings")
-        settings.setAccessibilityHelp("Opens the settings window")
+        settings.setAccessibilityHelp("Opens the settings panel in the widget window")
         settings.keyEquivalent = ","
         settings.keyEquivalentModifierMask = .command
         let quit = UI.linkButton("Quit", color: .labelColor, target: self, action: #selector(quitClicked))
@@ -245,7 +245,7 @@ final class ToolDetailView: NSView {
                                          symbolTrailing: true, target: self, action: #selector(settingsClicked))
         settingsLink.setAccessibilityIdentifier("panel-tool-settings")
         settingsLink.setAccessibilityLabel("Open \(module.displayName) settings")
-        settingsLink.setAccessibilityHelp("Opens the settings window")
+        settingsLink.setAccessibilityHelp("Opens the settings panel in the widget window")
         settingsLink.keyEquivalent = ","
         settingsLink.keyEquivalentModifierMask = .command
         views.append(UI.hstack([settingsLink, UI.spacer()], spacing: 8))
@@ -528,7 +528,7 @@ final class ComboEntryRow: NSControl {
         setAccessibilityRole(.button)
         setAccessibilityLabel("Combos")
         setAccessibilityIdentifier("panel-combos")
-        let icon = NSImageView(image: SidebarView.symbolIcon("takeoutbag.and.cup.and.straw.fill", tint: Brand.nacho,
+        let icon = NSImageView(image: SettingsIcon.symbolIcon("takeoutbag.and.cup.and.straw.fill", tint: Brand.nacho,
                                                              glyph: Brand.onNacho))
         icon.setAccessibilityElement(false)
         let name = UI.label("Combo", style: .body, weight: .medium)

@@ -37,7 +37,7 @@ final class ComputerUseCard: NSObject {
     private let emergencyButton = NSButton(title: "Emergency Stop (\(ComputerUseModule.emergencyLabel))", target: nil, action: nil)
 
     // LAN mode
-    private let lanCheck = NSButton(checkboxWithTitle: "Allow connections from other computers on the same network (LAN mode)", target: nil, action: nil)
+    private let lanCheck = NSButton(checkboxWithTitle: "Allow other computers on the same network (LAN mode)", target: nil, action: nil)
     private let lanBox = NSStackView()
     private let lanUrlList = NSStackView()
     private var lanUrlSignature = ""
@@ -53,7 +53,7 @@ final class ComputerUseCard: NSObject {
     private let copyPEMButton = NSButton(title: "Copy Certificate (PEM)", target: nil, action: nil)
     private let regenerateButton = NSButton(title: "Regenerate Certificate", target: nil, action: nil)
     private let sleepCheck = NSButton(checkboxWithTitle: "Keep the Mac awake while the server is on", target: nil, action: nil)
-    private let bonjourCheck = NSButton(checkboxWithTitle: "Announce the service name on the same network (Bonjour)", target: nil, action: nil)
+    private let bonjourCheck = NSButton(checkboxWithTitle: "Announce on the same network (Bonjour)", target: nil, action: nil)
 
     init(module: ComputerUseModule, manager: ModuleManager, width: CGFloat) {
         self.module = module

@@ -34,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     private let updater = UpdateController()
     private var mainItem: NSStatusItem!
     private var bentoWindow: BentoWindowController!
-    private var settingsWindow: SettingsWindowController!
     private var panel: PanelController!
     private let toolShortcuts = ToolShortcutCenter()
     private let actionShortcuts = ActionShortcutCenter()
@@ -56,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     /// Polls the permissions while a switched-on gadget waits for one (macOS does not announce a grant).
     private var permissionWatch: Timer?
     private var permissionWatchStarted = Date.distantPast
-    private var settingsWindowWasVisible = false
+    private var settingsPanelWasVisible = false
     private var firstLaunch = false
     /// The box before the last order, for Undo (a few minutes, until the next order).
     private var undoBox: (name: String, box: BoxSnapshot, at: Date)?
@@ -171,8 +170,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         clock.optionsProvider = options
         disk.optionsProvider = options
 
-        settingsWindow = SettingsWindowController(host: self)
-        bentoWindow = BentoWindowController(host: self)
+        // NACHO-856: the settings are a panel inside the widget window; there is no separate settings window.
+        bentoWindow = BentoWindowController(host: self, settingsHost: self)
 
         monitor.settingsProvider = { [weak self] in self?.manager.settings.monitorSettings ?? .defaults }
         monitor.settingsChanged = { [weak self] value in self?.updateMonitorSettings(value) }
@@ -266,13 +265,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         // The first launch always shows the window; later launches follow General ▸ Show This Window at Launch.
         if firstLaunch {
             // Everything starts off: the first window is the combo menu.
-            settingsWindow.combos.welcome = true
-            settingsWindow.select(.combos)
+            bentoWindow.settingsPanel?.combos.welcome = true
         }
         switch manager.settings.launchWindow {
-        case _ where firstLaunch: settingsWindow.show()
+        case _ where firstLaunch: showSettings(entry: .firstRunCombo)
         case .always: bentoWindow.show()
-        case .whenNeeded: if gadgetsNeedingUser().isEmpty == false { showSettings(gadgetsNeedingUser().first) }
+        case .whenNeeded:
+            if let first = gadgetsNeedingUser().first { showSettings(first, entry: .whenNeeded(first, needsPermission: needsPermission(first))) }
         case .never: break
         }
         // NACHO-300: after an update, the bundled "What's new" window once (nothing to show: no window).
@@ -327,15 +326,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         }
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn, !waiting.isEmpty {
-            settingsWindow.select(.permissions)
-            settingsWindow.show()
+            showSettings(entry: .permissionsOverview)
         }
     }
 
-    private func showSettings(_ id: ModuleID? = nil) {
-        if let id = id { settingsWindow.select(id) }
-        settingsWindow.show()
+    /// Every way into the settings: the widget window comes to the front and its right-hand panel shows the page.
+    /// Without an entry, a gadget opens its own page and nil opens the app settings.
+    private func showSettings(_ id: ModuleID? = nil, entry: SettingsEntry? = nil) {
+        let resolved = entry ?? id.map { SettingsEntry.gadgetOpenSettings($0) } ?? .menuBarSettings
+        bentoWindow.openPanel(resolved.route)
         startPermissionWatchIfNeeded(restart: true)
+    }
+
+    /// The settings panel is on screen (the old "settings window is visible").
+    private var settingsVisible: Bool { bentoWindow?.isVisible == true && bentoWindow.isPanelOpen }
+
+    /// The gadget waits for a permission (its page opens on the Permissions tab), else it needs something else.
+    private func needsPermission(_ id: ModuleID) -> Bool {
+        if case .needsPermission = manager.states[id] ?? .off { return true }
+        return false
     }
 
     private func updateMonitorSettings(_ value: MonitorSettings) {
@@ -349,7 +358,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         computerUseGadgetCard?.refresh(state: manager.states[.computerUse] ?? .off)
         applyActionShortcuts()
         panel.refresh()
-        settingsWindow.refresh()
         bentoWindow?.refresh()
         refreshPinnedItems()
         refreshMainItem()
@@ -418,7 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         notePermissionGrants()
         for id in started {
             recentlyAllowed[id] = Date()
-            if let permission = id.info.requiredPermission, settingsVisits[permission] != nil, settingsWindowWasVisible {
+            if let permission = id.info.requiredPermission, settingsVisits[permission] != nil, settingsPanelWasVisible {
                 showSettings(id)
             }
             if let permission = id.info.requiredPermission { settingsVisits[permission] = nil }
@@ -487,7 +495,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     }
 
     private func permissionTick() {
-        if settingsWindow.isVisible { settingsWindowWasVisible = true }
+        if settingsVisible { settingsPanelWasVisible = true }
         if Date().timeIntervalSince(permissionWatchStarted) > 600 {
             permissionWatch?.invalidate()
             permissionWatch = nil
@@ -527,7 +535,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         alert.icon = GadgetIcon.image(for: id, size: 64)
         alert.addButton(withTitle: "Continue")
         alert.addButton(withTitle: "Not Now")
-        alert.beginSheetModal(for: settingsWindow.window) { response in
+        alert.beginSheetModal(for: bentoWindow.window) { response in
             if response == .alertFirstButtonReturn { proceed() } else { cancelled() }
         }
     }
@@ -539,7 +547,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             manager.setEnabled(id, on)
             return
         }
-        if navigate { showSettings(id) } else { settingsWindow.show() }
+        if navigate { showSettings(id, entry: .permissionNeeded(id)) } else { bentoWindow.show() }
         confirmPermission(for: id, then: { [weak self] in
             self?.manager.setEnabled(id, true)
             self?.startPermissionWatchIfNeeded(restart: true)
@@ -672,11 +680,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         var labels: [String: String] = [:]
         for id in ModuleID.allCases { if let s = manager.settings.shortcut(for: id) { labels[id.rawValue] = s.label } }
         extra["toolShortcutLabels"] = labels
-        var gallery: [String: Any] = ["selected": settingsWindow.page.key, "visible": settingsWindow.isVisible,
-                                      "tab": settingsWindow.detail.tab.key,
-                                      "overviewShown": settingsWindow.overview?.shown?.rawValue ?? "",
-                                      "windowFrame": NSStringFromRect(settingsWindow.window.frame),
-                                      "contentFitting": NSStringFromSize(settingsWindow.window.contentView?.fittingSize ?? .zero)]
+        let route = bentoWindow.panelRoute
+        var gallery: [String: Any] = ["selected": route?.key ?? "", "visible": settingsVisible,
+                                      "tab": bentoWindow.settingsPanel?.tabKey ?? "",
+                                      "windowFrame": NSStringFromRect(bentoWindow.window.frame),
+                                      "contentFitting": NSStringFromSize(bentoWindow.window.contentView?.fittingSize ?? .zero)]
         for id in ModuleID.allCases {
             var entry: [String: Any] = ["subtitle": gadgetSubtitle(id), "attention": gadgetAttention(id),
                                         "badge": gadgetBadgeCount(id), "status": gadgetStatusLine(id) ?? ""]
@@ -689,7 +697,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         extra["mainItemAttention"] = !gadgetsNeedingUser().isEmpty
         extra["loginItem"] = "\(loginItemState)"
         extra["combo"] = ["ordered": manager.settings.combo ?? "", "current": ComboCatalog.current(manager.settings)?.id ?? "",
-                          "shown": settingsWindow.combos.selected.id]
+                          "shown": bentoWindow.settingsPanel?.combos.selected.id ?? ""]
         // How the UI currently looks to the system: light/dark, the accent color the controls follow, Reduce Motion.
         extra["appearance"] = NSApp.effectiveAppearance.name.rawValue
         if let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB) {
@@ -893,14 +901,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
 
     func panelOpenCombos(newCombo: Bool) {
         panel.close()
-        settingsWindow.select(.combos)
-        if newCombo { settingsWindow.combos.startNewCombo() }
-        settingsWindow.show()
+        showSettings(entry: .combos)
+        if newCombo { bentoWindow.settingsPanel?.combos.startNewCombo() }
     }
 
     func panelOpenGadget(_ id: ModuleID?) {
         panel.close()
-        if let id = id { showSettings(id) } else { settingsWindow.select(.permissions); settingsWindow.show() }
+        if let id = id { showSettings(id, entry: .permissionNeeded(id)) } else { showSettings(entry: .permissionsOverview) }
     }
     func panelSetPinned(_ id: ModuleID, _ pinned: Bool) {
         manager.setPinned(id, pinned)
@@ -1199,7 +1206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     func gadgetOpenPermissionSettings(_ permission: GadgetPermission) {
         if permission != .notifications {
             settingsVisits[permission] = Date()
-            settingsWindowWasVisible = settingsWindow.isVisible
+            settingsPanelWasVisible = settingsVisible
             startPermissionWatchIfNeeded(restart: true)
         }
         openPermissionPane(permission)
@@ -1238,7 +1245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case .fullDiskAccess: openPermissionPane(.fullDiskAccess)
         }
         settingsVisits[permission] = Date()
-        settingsWindowWasVisible = settingsWindow.isVisible
+        settingsPanelWasVisible = settingsVisible
         startPermissionWatchIfNeeded(restart: true)
         stateChanged()
     }
@@ -1277,7 +1284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         if let url = URL(string: address) { NSWorkspace.shared.open(url) }
     }
 
-    var gadgetWindow: NSWindow? { settingsWindow.window }
+    var gadgetWindow: NSWindow? { bentoWindow.window }
 
     // MARK: SettingsHost
 
@@ -1469,13 +1476,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     var currentVersion: String { updater.currentVersion }
     func checkForUpdatesNow() { updater.check(manual: true) }
     func installUpdate() { installUpdate(from: nil) }
-    /// `from`: the window the click came from (the widget window); the sheet hangs there. Otherwise the Settings window if open.
+    /// The sheet hangs on the widget window (the click's own window, else the main one) while that is on screen.
     func installUpdate(from window: NSWindow?) {
-        let parent = BentoUpdateLogic.confirmParent(fromWidget: window != nil, widgetVisible: window?.isVisible ?? false,
-                                                    settingsVisible: settingsWindow.isVisible)
-        switch parent {
-        case .widget: updater.confirmAndInstall(window: window)
-        case .settings: updater.confirmAndInstall(window: settingsWindow.window)
+        let target = window ?? bentoWindow.window
+        switch BentoUpdateLogic.confirmParent(widgetVisible: target.isVisible) {
+        case .widget: updater.confirmAndInstall(window: target)
         case .none: updater.confirmAndInstall(window: nil)
         }
     }
@@ -1484,7 +1489,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
     }
     @objc private func menuInstallUpdate() { installUpdate() }
     var previousVersion: String? { updater.previousVersion }
-    func revertUpdate() { updater.confirmRollback(window: settingsWindow.isVisible ? settingsWindow.window : nil) }
+    func revertUpdate() { updater.confirmRollback(window: bentoWindow.isVisible ? bentoWindow.window : nil) }
 
     func orderCombo(_ id: String) {
         guard let combo = ComboCatalog.combo(id, in: manager.settings) else { return }
@@ -1495,7 +1500,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         }
         manager.order(combo, enable: ready)
         applyBoxSettings()
-        settingsWindow.combos.welcome = false
+        bentoWindow.settingsPanel?.combos.welcome = false
         stateChanged()
     }
 
@@ -1645,9 +1650,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         // A combo that still needs a permission continues on the Combos page, where its Allow buttons are.
         if let combo = ComboCatalog.combo(id, in: manager.settings),
            combo.gadgets.contains(where: { $0.info.requiredPermission.map { gadgetPermissionGranted($0) != true } ?? false }) {
-            settingsWindow.combos.select(id)
-            settingsWindow.select(.combos)
-            settingsWindow.show()
+            bentoWindow.settingsPanel?.combos.select(id)
+            showSettings(entry: .combos)
         }
     }
     @objc private func menuUndoOrder() { undoOrder() }
@@ -1707,15 +1711,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
         case "gallery" where parts.count >= 3:
             switch parts[1] {
             case "select": if let id = ModuleID(rawValue: parts[2]) { showSettings(id) }
-            case "page": if let page = SettingsPage(key: parts[2]) { settingsWindow.select(page); settingsWindow.show() }
+            case "page":
+                // The old page keys still work: gadget ids, combos, general, permissions, mcp; `home` closes the panel.
+                showSettings(entry: .deepLink(page: parts[2], tab: nil))
             case "tab":
-                if let tab = DetailTab.allCases.first(where: { $0.key == parts[2] }) { settingsWindow.detail.select(tab: tab) }
-            case "sample": samplePreviews = parts[2] == "on"; settingsWindow.refreshPreview()
-            case "hover":
-                settingsWindow.simulateHover(ModuleID(rawValue: parts[2]))
-                if parts.count == 4 { _ = settingsWindow.writeOverviewSnapshot(to: URL(fileURLWithPath: parts[3])) }
-            case "detail": settingsWindow.show(); _ = settingsWindow.writeDetailSnapshot(to: URL(fileURLWithPath: parts[2]))
-            case "content": settingsWindow.show(); _ = settingsWindow.writeTabSnapshot(to: URL(fileURLWithPath: parts[2]))
+                // The old tab keys still work (`overview` is Settings now); only for a gadget's page.
+                if case .gadget(let id, _)? = bentoWindow.panelRoute, let tab = GadgetPanelTab(legacyKey: parts[2]) {
+                    bentoWindow.openPanel(.gadget(id, tab))
+                }
+            case "sample": samplePreviews = parts[2] == "on"; bentoWindow.settingsPanel?.refreshPreview()
+            case "detail": bentoWindow.show(); _ = bentoWindow.settingsPanel?.writeDetailSnapshot(to: URL(fileURLWithPath: parts[2]))
+            case "content": bentoWindow.show(); _ = bentoWindow.settingsPanel?.writeTabSnapshot(to: URL(fileURLWithPath: parts[2]))
             case "preview" where parts.count >= 4:
                 if let id = ModuleID(rawValue: parts[2]) {
                     let appearance = NSAppearance(named: parts.last == "light" ? .aqua : .darkAqua)!
@@ -1731,8 +1737,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             default: break
             }
         case "settings" where parts.count == 3 && parts[1] == "snapshot":
-            settingsWindow.show()
-            _ = settingsWindow.writeSnapshot(to: URL(fileURLWithPath: parts[2]))
+            if !bentoWindow.isPanelOpen { showSettings() }
+            _ = bentoWindow.settingsPanel?.writeSnapshot(to: URL(fileURLWithPath: parts[2]))
         case "monitor" where parts.count >= 2:
             handleMonitor(Array(parts.dropFirst()))
         case "shelf" where parts.count >= 2:
@@ -1770,12 +1776,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             // Accessibility elements (role / label / value / help / key) of the visible screen, read from AppKit.
             switch parts[1] {
             case "panel": lastA11y = ["panel": panel.accessibilityTree, "route": panel.route.name]
-            case "settings": lastA11y = ["settings": settingsWindow.accessibilityTree]
+            case "settings": lastA11y = ["settings": bentoWindow.settingsPanel?.accessibilityTree ?? []]
             case "board": lastA11y = ["board": bentoWindow.accessibilityTree]
             default: lastA11y = [:]
             }
         case "snapshot" where parts.count == 3:
-            let window: NSWindow? = parts[1] == "panel" ? panel.window : settingsWindow.window
+            let window: NSWindow? = parts[1] == "panel" ? panel.window : bentoWindow.window
             if let w = window, w.windowNumber > 0,
                let image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber),
                                                    [.boundsIgnoreFraming]) {
@@ -1818,13 +1824,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost, SettingsHos
             // `combo welcome on|off`.
             let argument = parts.count >= 3 ? parts[2] : ""
             switch parts[1] {
-            case "select": settingsWindow.combos.select(argument); settingsWindow.select(.combos)
+            case "select": bentoWindow.settingsPanel?.combos.select(argument); showSettings(entry: .combos)
             case "order": orderCombo(argument)
-            case "welcome": settingsWindow.combos.welcome = argument == "on"
-            case "new": settingsWindow.select(.combos); settingsWindow.combos.startNewCombo(copying: ComboCatalog.combo(argument))
-            case "edit": settingsWindow.select(.combos); settingsWindow.combos.edit(argument)
+            case "welcome": bentoWindow.settingsPanel?.combos.welcome = argument == "on"
+            case "new": showSettings(entry: .combos); bentoWindow.settingsPanel?.combos.startNewCombo(copying: ComboCatalog.combo(argument))
+            case "edit": showSettings(entry: .combos); bentoWindow.settingsPanel?.combos.edit(argument)
             case "undo": undoOrder()
-            case "save": settingsWindow.combos.saveDraft()
+            case "save": bentoWindow.settingsPanel?.combos.saveDraft()
             default: break
             }
 
@@ -2150,7 +2156,7 @@ extension AppDelegate: BentoHost {
 
     func bentoSetPinned(_ id: ModuleID, _ pinned: Bool) { panelSetPinned(id, pinned) }
 
-    func bentoOpen(_ id: ModuleID) { showSettings(id) }
+    func bentoOpen(_ id: ModuleID) { showSettings(id, entry: .widgetClick(id)) }
 
     func bentoPerform(_ id: ModuleID) {
         switch id {
@@ -2162,11 +2168,11 @@ extension AppDelegate: BentoHost {
             if gadgetPermissionGranted(.accessibility) == false { gadgetOpenPermissionSettings(.accessibility) }
             else if gadgetPermissionGranted(.screenRecording) == false { gadgetOpenPermissionSettings(.screenRecording) }
         default:
-            showSettings(id)
+            showSettings(id, entry: .widgetClick(id))
         }
     }
 
-    func bentoOpenSettings() { showSettings() }
+    func bentoOpenSettings() { showSettings(entry: .settingsPill) }
 
     func bentoOpenBoard() { bentoWindow.show() }
 

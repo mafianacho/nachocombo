@@ -10,7 +10,7 @@ protocol BentoHost: AnyObject {
     func bentoPetImage(signedIn: Bool) -> NSImage?
     func bentoSetEnabled(_ id: ModuleID, _ on: Bool)
     func bentoSetPinned(_ id: ModuleID, _ pinned: Bool)
-    /// The tool's page in Settings (a widget click, Return on a focused widget).
+    /// The tool's page in the settings panel (the menu bar mini board's click; the widget wall's tile click goes to the window).
     func bentoOpen(_ id: ModuleID)
     /// The widget's own button (sign in, open the chat, open a permission).
     func bentoPerform(_ id: ModuleID)
@@ -358,6 +358,8 @@ final class BentoBoardView: NSView {
     private(set) var selectedID: ModuleID?
     var onSelectionChange: ((ModuleID?) -> Void)?
     var onOpenHiddenMenu: ((NSView) -> Void)?
+    /// A widget tile was clicked in normal mode (Return on a focused tile too).
+    var onTileClick: ((ModuleID) -> Void)?
     var padding: CGFloat = Brand.Bento.padding
     /// The window's top bar already leaves room above the board.
     var topPadding: CGFloat = 0
@@ -430,7 +432,10 @@ final class BentoBoardView: NSView {
 
     private func makeCard(_ id: ModuleID) -> BentoCardView {
         let card = BentoCardView(module: id)
-        card.onOpen = { [weak self] id in self?.host?.bentoOpen(id) }
+        // A tile click opens (or closes) the settings panel of the widget window; without one, the host opens it.
+        card.onOpen = { [weak self] id in
+            if let handler = self?.onTileClick { handler(id) } else { self?.host?.bentoOpen(id) }
+        }
         card.onToggle = { [weak self] id, on in self?.host?.bentoSetEnabled(id, on) }
         card.onAction = { [weak self] id in self?.host?.bentoPerform(id) }
         card.onEditKey = { [weak self] id, key in self?.editKey(id, key) }
@@ -672,6 +677,8 @@ final class BentoEditDrawer: NSView {
     weak var host: BentoHost?
     var onSize: ((ModuleID, BentoSize) -> Void)?
     var onHide: ((ModuleID) -> Void)?
+    /// "단축키" of the drawer: the gadget's Shortcuts tab in the settings panel.
+    var onShortcuts: ((ModuleID) -> Void)?
     private(set) var module: ModuleID?
     private let title = NSTextField(labelWithString: "")
     private let hint = NSTextField(wrappingLabelWithString: "")
@@ -709,7 +716,7 @@ final class BentoEditDrawer: NSView {
         }
         shortcutLine.onPress = { [weak self] in
             guard let id = self?.module else { return }
-            self?.host?.bentoOpen(id)
+            if let handler = self?.onShortcuts { handler(id) } else { self?.host?.bentoOpen(id) }
         }
         hideLine.onPress = { [weak self] in
             guard let id = self?.module else { return }
