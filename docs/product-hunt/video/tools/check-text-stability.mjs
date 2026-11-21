@@ -9,7 +9,7 @@
 // usage: node tools/check-text-stability.mjs <video.mp4 | folder of 00000.png ...> [--report out.md] [--json out.json]
 //          [--timeline timeline.json] [--srt captions.en.srt] [--only S04a,S04c] [--no-captions] [--tmp dir] [--selftest]
 //   Input is a finished MP4 (frames are decoded with ffmpeg) or the PNG frames the renderer wrote (exact mode).
-//   ffmpeg comes from tools/ffmpeg.sh's settings: FFMPEG_MODE=local, FFMPEG_IMAGE, FFMPEG_DOCKER_USER, DOCKER_HOST.
+//   ffmpeg comes from tools/ffmpeg.sh's settings: FFMPEG_MODE=local, FFMPEG_IMAGE, FFMPEG_DOCKER_USER, DOCKER_HOST, MULTICA_TASK_ID (container label and name, see ffmpeg.sh).
 //   --tmp is where ffmpeg writes its raw frames while this runs (default: a hidden folder next to the input, removed afterwards).
 //
 // What is measured, per element and per stable window (scene start + 1.6 s ... scene end - 0.5 s, narrowed to the time the
@@ -205,6 +205,7 @@ function buildTargets(timeline, cues, only, withCaptions) {
 // ffmpeg writes raw frames to a temporary file, CHUNK frames at a time, and this script reads that file. (Piping the raw
 // frames through `docker run` stdout is about 25 times slower than writing to a mounted folder.)
 const CHUNK = 250;
+let dockerRuns = 0;
 function runFfmpeg(args, inputDir, tmpDir) {
   const mode = process.env.FFMPEG_MODE || 'docker';
   const image = process.env.FFMPEG_IMAGE || 'jrottenberg/ffmpeg@sha256:292a972c60356abd651d9a4f9c808c13e7473f65ad400b7eb99215f4e571931d';
@@ -212,6 +213,9 @@ function runFfmpeg(args, inputDir, tmpDir) {
   if (mode === 'local') { cmd = 'ffmpeg'; cargs = ['-hide_banner', '-v', 'error', ...args.map((x) => x.replace('{in}', inputDir).replace('{out}', tmpDir))]; cwd = inputDir; }
   else {
     const extra = process.env.FFMPEG_DOCKER_USER ? ['-u', process.env.FFMPEG_DOCKER_USER] : [];
+    // Same rule as tools/ffmpeg.sh: with MULTICA_TASK_ID set, label the container and give it a name that is new for every call.
+    const owner = process.env.MULTICA_TASK_ID;
+    if (owner) extra.push('--label', `mafianacho.owner=${owner}`, '--name', `nc-video-${owner.replace(/[^A-Za-z0-9_.-]/g, '_')}-${process.pid}-${++dockerRuns}`);
     cmd = 'docker';
     cargs = ['run', '--rm', ...extra, '-v', `${inputDir}:/w:ro`, '-v', `${tmpDir}:/o`, '-w', '/w', '--entrypoint', 'ffmpeg', image, '-hide_banner', '-v', 'error', ...args.map((x) => x.replace('{in}', '/w').replace('{out}', '/o'))];
   }

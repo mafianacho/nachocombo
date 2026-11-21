@@ -37,6 +37,9 @@ titles, the cursor and the panel slide are code, not a video editor.
   (tag `7-ubuntu`, FFmpeg 7.1 with x264, about 87 MB; pulled once, never removed by these scripts). Rootless Docker: set
   `DOCKER_HOST=unix:///run/user/<uid>/docker.sock`; rootful Docker: also set `FFMPEG_DOCKER_USER="$(id -u):$(id -g)"`.
   Without Docker, `FFMPEG_MODE=local` uses an `ffmpeg` on the PATH that has libx264, palettegen, tile and drawtext.
+  When several automated runs share one Docker daemon, set `MULTICA_TASK_ID=<run id>`: every ffmpeg container then gets the label
+  `mafianacho.owner=<run id>` and its own name `nc-video-<run id>-<pid>-<n>`, so a cleanup can be limited to a run's own containers
+  (`docker ps --filter label=mafianacho.owner=<run id>`). Unset, the `docker run` command is unchanged. `tools/ffmpeg.test.sh` checks this with a fake `docker`.
 - About 1 GB of free disk for the frames while building (removed afterwards unless `--keep-frames`), and about 6 to 7 minutes for 1875 frames: the render
   is one browser page drawing every frame in order (about 250 s; more pages with `--workers N` are faster but must pass `tools/check-text-stability.mjs`),
   then checks, encode, GIF and, with `--preview`, the small copy (about 90 s together).
