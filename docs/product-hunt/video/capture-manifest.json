@@ -46,7 +46,7 @@
       "commands": [
         "gallery page home",
         "sleep 1",
-        "settings snapshot {out}"
+        "snapshot widget {out}"
       ],
       "appearance": "dark",
       "minWidth": 1800,
@@ -62,7 +62,7 @@
         "gallery page calendarClock",
         "gallery tab overview",
         "sleep 1",
-        "settings snapshot {out}"
+        "snapshot widget {out}"
       ],
       "appearance": "dark",
       "minWidth": 1800,
@@ -78,7 +78,7 @@
         "gallery page windowSnap",
         "gallery tab shortcuts",
         "sleep 1",
-        "settings snapshot {out}"
+        "snapshot widget {out}"
       ],
       "appearance": "dark",
       "minWidth": 1800,
@@ -94,7 +94,7 @@
         "gallery page windowSnap",
         "gallery tab permissions",
         "sleep 1",
-        "settings snapshot {out}"
+        "snapshot widget {out}"
       ],
       "appearance": "dark",
       "minWidth": 1800,

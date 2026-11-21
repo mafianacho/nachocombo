@@ -31,25 +31,25 @@ ctl monitor menubar "$OUT/c01-menu-bar.png" sample
 # c02-wall-home.png: The widget window with the gadget wall, no panel open
 ctl gallery page home
 sleep 1
-ctl settings snapshot "$OUT/c02-wall-home.png"
+ctl snapshot widget "$OUT/c02-wall-home.png"
 
 # c03-wall-panel-calendar.png: The same window with the right-hand panel open on Calendar Clock, Settings tab (same window size as wall-home so the two overlay exactly)
 ctl gallery page calendarClock
 ctl gallery tab overview
 sleep 1
-ctl settings snapshot "$OUT/c03-wall-panel-calendar.png"
+ctl snapshot widget "$OUT/c03-wall-panel-calendar.png"
 
 # c04-wall-panel-shortcuts.png: Window Snap panel, Shortcuts tab, same window size
 ctl gallery page windowSnap
 ctl gallery tab shortcuts
 sleep 1
-ctl settings snapshot "$OUT/c04-wall-panel-shortcuts.png"
+ctl snapshot widget "$OUT/c04-wall-panel-shortcuts.png"
 
 # c05-wall-panel-permissions.png: Window Snap panel, Permissions tab, same window size
 ctl gallery page windowSnap
 ctl gallery tab permissions
 sleep 1
-ctl settings snapshot "$OUT/c05-wall-panel-permissions.png"
+ctl snapshot widget "$OUT/c05-wall-panel-permissions.png"
 
 # c10-window-snap.png: Window Snap picture: a window snapped to the left half and one dragged to the right edge (the app draws the desktop around it)
 ctl gallery preview windowSnap "$OUT/c10-window-snap.png"
