@@ -20,7 +20,7 @@ done
 [ -f "$VIDEO" ] || { echo "run.sh: video not found: $VIDEO" >&2; exit 2; }
 VIDEO="$(realpath "$VIDEO")"; DIR="$(dirname "$VIDEO")"; BASE="$(basename "$VIDEO")"
 case "$OUTSUB" in /*) OUTSUB="$(realpath --relative-to="$DIR" "$OUTSUB")" ;; esac
-case "$OUTSUB" in ../*|..) echo "run.sh: --out must be inside $DIR" >&2; exit 2 ;; esac
+case "$OUTSUB" in ""|.|./|../*|..) echo "run.sh: --out must be a sub-folder inside $DIR" >&2; exit 2 ;; esac
 OUT="$DIR/$OUTSUB"
 rm -rf "$OUT"; mkdir -p "$OUT/frames"
 

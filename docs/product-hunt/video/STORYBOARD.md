@@ -80,7 +80,7 @@ account, chat or login, the Windows app, notarization.
 Shot by the next step from a **v0.13.0 (or newer) debug build** with `./capture.sh <out dir>` (generated from
 `capture-manifest.json`; it runs exactly the commands below). All captures are the app's own renders on sample data, 2x,
 and none contains the desktop, the real menu bar or another app. Appearance is dark unless the table says light.
-Run it on a clean test user account of a Mac; it quits a running Nacho Combo first.
+Run it on a clean test user account of a Mac. It refuses to start while a Nacho Combo process is already running (the Mac may be shared) and never kills one unless `KILL_RUNNING=1` is set.
 
 Setup before the first capture: `ctl appearance dark`, `ctl gallery sample on`. Teardown after the last: `ctl disk hide`,
 `ctl gallery page home`, `ctl gallery sample off`, `ctl appearance system`. `{out}` below is the file name in the output folder.
