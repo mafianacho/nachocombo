@@ -16,14 +16,16 @@ map, plus the experimental [Computer Use](#computer-use-experimental) (an MCP se
 combo. No third-party apps, code or brands are used; the brand fonts are open-licensed
 ([Brand](#brand)).
 
-<img src="docs/images/gallery-dark.png" width="100%" alt="The widget window with the gadget wall (this picture still shows the old settings window and will be replaced)">
+<img src="docs/images/gallery-dark.png" width="100%" alt="The widget window with the gadget wall on the left and the Calendar Clock panel open on the right">
 
 The app lives in the menu bar as its nacho box icon and has no Dock icon. Opening the app shows the **widget window**: every
 gadget is a widget on a wall, and the settings open in a **panel on the right of that window** (there is no separate
 settings window).
 
 > The screenshots are rendered by the app itself (`scripts/screenshots.sh`). Where a gadget works on other apps'
-> windows, the desktop around it is drawn; System Monitor pictures use sample numbers.
+> windows, the desktop around it is drawn; System Monitor pictures use sample numbers. The pictures of the widget window
+> and its settings panel (`gallery-*.png`, `combos.png`, `permissions.png`, `detail-*.png`) are off-screen renders from the
+> CI test run with made-up data (the version number in them is a test value), not screenshots of a real Mac.
 
 ## Contents
 - [Usage](#usage)
@@ -86,12 +88,9 @@ minimum width is 480 pt, the panel's own width, so every control of the panel al
 
 Choices are saved at once and restored on the next launch, exactly as before: the panel only moved where they are set.
 
-> The pictures further down (`docs/images/detail-*.png`, `permissions.png`, `gallery-*.png`) were taken from the old
-> separate settings window and are due to be re-taken from the panel on a real Mac.
-
 ## Combos
 
-<img src="docs/images/combos.png" width="560" alt="The Combos page: seven numbered combos on a dark menu board, and Desk chosen: its tray, what gets easier, what changes in your box and what it asks for">
+<img src="docs/images/combos.png" width="480" alt="The Combos tab of the app settings panel: seven numbered combos on a dark menu board, Starter chosen, and its tray of gadgets">
 
 A combo switches on a few gadgets together and tunes a few options for one way of working. Before you order, the board
 shows what it lights up, what gets easier (with your own shortcuts), what changes in your box and which permissions it
@@ -324,7 +323,7 @@ Capture part of the screen and keep it floating above your work as a reference.
 - Needs **Screen Recording**, to read the pixels of the area you select. macOS 15 and later ask again about once a month.
   The system screenshot shortcuts (⇧⌘3, ⇧⌘4, ⇧⌘5) stay with macOS. Nothing is recorded or uploaded.
 
-<img src="docs/images/detail-capture-float-keys.png" width="400" alt="Capture Float page, Overview: keys and gestures and what macOS does not allow">
+<img src="docs/images/detail-capture-float-keys.png" width="400" alt="Capture Float's panel: its options, Menu Bar Access and the folded Overview that holds the keys and gestures and what macOS does not allow">
 
 ### Focus Dim
 
